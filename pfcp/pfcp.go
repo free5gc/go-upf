@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/m-asama/upf/factory"
+	"github.com/m-asama/upf/forwarder"
 	"github.com/m-asama/upf/logger"
 )
 
@@ -13,13 +14,15 @@ type PfcpServer struct {
 	conn    *net.UDPConn
 	done    chan bool
 	running bool
+	driver  forwarder.Driver
 }
 
-func NewPfcpServer(listen string) *PfcpServer {
+func NewPfcpServer(listen string, driver forwarder.Driver) *PfcpServer {
 	return &PfcpServer{
 		listen:  listen,
 		done:    make(chan bool),
 		running: false,
+		driver:  driver,
 	}
 }
 
