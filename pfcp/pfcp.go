@@ -44,16 +44,10 @@ func (s *PfcpServer) main(startDispacher chan bool) {
 	startDispacher <- true
 	s.running = true
 
-	for {
-		select {
-		case <-s.done:
-			logger.PfcpLog.Infoln(s.listen, "closing udp connection")
-			s.conn.Close()
-			logger.PfcpLog.Infoln(s.listen, "closed udp connection")
-			return
-		default:
-		}
-	}
+	<-s.done
+	logger.PfcpLog.Infoln(s.listen, "closing udp connection")
+	s.conn.Close()
+	logger.PfcpLog.Infoln(s.listen, "closed udp connection")
 	logger.PfcpLog.Infoln(s.listen, "main exit")
 }
 
