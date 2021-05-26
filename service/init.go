@@ -13,6 +13,7 @@ import (
 
 	"github.com/m-asama/upf/context"
 	"github.com/m-asama/upf/factory"
+	"github.com/m-asama/upf/forwarder"
 	"github.com/m-asama/upf/logger"
 	"github.com/m-asama/upf/pfcp"
 )
@@ -116,6 +117,12 @@ func (upf *UPF) Start() {
 
 	initLog.Infoln("Server started")
 
+	driver, err := forwarder.OpenGtp5g()
+	if err != nil {
+		return
+	}
+	defer driver.Close()
+
 	exit := make(chan bool)
 
 	signalChannel := make(chan os.Signal, 1)
@@ -128,7 +135,7 @@ func (upf *UPF) Start() {
 	}()
 
 	for _, configPfcp := range factory.UpfConfig.Configuration.Pfcp {
-		pfcpServer := pfcp.NewPfcpServer(configPfcp.Addr)
+		pfcpServer := pfcp.NewPfcpServer(configPfcp.Addr, driver)
 		pfcpServer.Start()
 		pfcpServers = append(pfcpServers, pfcpServer)
 	}
