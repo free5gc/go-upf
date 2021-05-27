@@ -63,6 +63,8 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (*netlink.Gtp5gSdfFilter, error) {
 		return nil, err
 	}
 
+	fields := 0
+
 	if v.HasFD() {
 		// TODO:
 		// v.FlowDescription string
@@ -77,6 +79,7 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (*netlink.Gtp5gSdfFilter, error) {
 			SportList: []uint32{23, 24, 25},
 			DportList: []uint32{26, 27, 28},
 		}
+		fields++
 	}
 	if v.HasTTC() {
 		// TODO:
@@ -84,6 +87,7 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (*netlink.Gtp5gSdfFilter, error) {
 		var x uint16
 		x = 29
 		sdf.TosTrafficClass = &x
+		fields++
 	}
 	if v.HasSPI() {
 		// TODO:
@@ -91,6 +95,7 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (*netlink.Gtp5gSdfFilter, error) {
 		var x uint32
 		x = 30
 		sdf.SecurityParamIdx = &x
+		fields++
 	}
 	if v.HasFL() {
 		// TODO:
@@ -98,9 +103,15 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (*netlink.Gtp5gSdfFilter, error) {
 		var x uint32
 		x = 31
 		sdf.FlowLabel = &x
+		fields++
 	}
 	if v.HasBID() {
 		sdf.BiId = &v.SDFFilterID
+		fields++
+	}
+
+	if fields == 0 {
+		return nil, nil
 	}
 
 	return sdf, nil
@@ -111,8 +122,9 @@ func (g *Gtp5g) newPdi(i *ie.IE) (*netlink.Gtp5gPdi, error) {
 
 	ies, err := i.PDI()
 	if err != nil {
-		return pdi, err
+		return nil, err
 	}
+	fields := 0
 	for _, x := range ies {
 		switch x.Type {
 		case ie.SourceInterface:
@@ -125,6 +137,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (*netlink.Gtp5gPdi, error) {
 				Teid:         v.TEID,
 				GtpuAddrIpv4: v.IPv4Address,
 			}
+			fields++
 		case ie.NetworkInstance:
 		case ie.UEIPAddress:
 			v, err := x.UEIPAddress()
@@ -132,14 +145,20 @@ func (g *Gtp5g) newPdi(i *ie.IE) (*netlink.Gtp5gPdi, error) {
 				break
 			}
 			pdi.UeAddrIpv4 = &v.IPv4Address
+			fields++
 		case ie.SDFFilter:
 			v, err := g.newSdfFilter(x)
 			if err != nil {
 				break
 			}
 			pdi.Sdf = v
+			fields++
 		case ie.ApplicationID:
 		}
+	}
+
+	if fields == 0 {
+		return nil, nil
 	}
 
 	return pdi, nil
@@ -197,20 +216,67 @@ func (g *Gtp5g) CreatePDR(req *ie.IE) error {
 
 	// TODO:
 	// Not in 3GPP spec, just used for routing
-	var roleAddrIpv4 net.IP
-	roleAddrIpv4 = net.IPv4(34, 35, 36, 37)
-	pdr.RoleAddrIpv4 = &roleAddrIpv4
+	// var roleAddrIpv4 net.IP
+	// roleAddrIpv4 = net.IPv4(34, 35, 36, 37)
+	// pdr.RoleAddrIpv4 = &roleAddrIpv4
 
 	// TODO:
 	// Not in 3GPP spec, just used for buffering
-	unixSockPath := "/tmp/free5gc_unix_sock"
-	pdr.UnixSockPath = &unixSockPath
+	// unixSockPath := "/tmp/free5gc_unix_sock"
+	// pdr.UnixSockPath = &unixSockPath
 
 	return netlink.Gtp5gAddPdr(g.link, &pdr)
 }
 
 func (g *Gtp5g) UpdatePDR(req *ie.IE) error {
 	var pdr netlink.Gtp5gPdr
+
+	ies, err := req.UpdatePDR()
+	if err != nil {
+		return err
+	}
+
+	for _, i := range ies {
+		switch i.Type {
+		case ie.PDRID:
+			v, err := i.PDRID()
+			if err != nil {
+				break
+			}
+			pdr.Id = v
+		case ie.Precedence:
+			v, err := i.Precedence()
+			if err != nil {
+				break
+			}
+			pdr.Precedence = &v
+		case ie.PDI:
+			v, err := g.newPdi(i)
+			if err != nil {
+				break
+			}
+			pdr.Pdi = v
+		case ie.OuterHeaderRemoval:
+			v, err := i.OuterHeaderRemovalDescription()
+			if err != nil {
+				break
+			}
+			pdr.OuterHdrRemoval = &v
+			// ignore GTPUExternsionHeaderDeletion
+		case ie.FARID:
+			v, err := i.FARID()
+			if err != nil {
+				break
+			}
+			pdr.FarId = &v
+		case ie.QERID:
+			v, err := i.QERID()
+			if err != nil {
+				break
+			}
+			pdr.QerId = &v
+		}
+	}
 
 	return netlink.Gtp5gModPdr(g.link, &pdr)
 }
@@ -221,13 +287,10 @@ func (g *Gtp5g) RemovePDR(req *ie.IE) error {
 	return netlink.Gtp5gDelPdr(g.link, &pdr)
 }
 
-func (g *Gtp5g) newForwardingParameter(i *ie.IE) (*netlink.Gtp5gForwardingParameter, error) {
+func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (*netlink.Gtp5gForwardingParameter, error) {
 	p := new(netlink.Gtp5gForwardingParameter)
 
-	ies, err := i.ForwardingParameters()
-	if err != nil {
-		return nil, err
-	}
+	fields := 0
 	for _, x := range ies {
 		switch x.Type {
 		case ie.DestinationInterface:
@@ -238,11 +301,19 @@ func (g *Gtp5g) newForwardingParameter(i *ie.IE) (*netlink.Gtp5gForwardingParame
 				break
 			}
 			p.HdrCreation = &netlink.Gtp5gOuterHeaderCreation{
-				Desp:         v.OuterHeaderCreationDescription,
-				Teid:         v.TEID,
-				PeerAddrIpv4: v.IPv4Address,
-				Port:         v.PortNumber,
+				Desp: v.OuterHeaderCreationDescription,
 			}
+			if x.HasTEID() {
+				p.HdrCreation.Teid = v.TEID
+				// GTPv1-U port
+				p.HdrCreation.Port = 2152
+			} else {
+				p.HdrCreation.Port = v.PortNumber
+			}
+			if x.HasIPv4() {
+				p.HdrCreation.PeerAddrIpv4 = v.IPv4Address
+			}
+			fields++
 		case ie.ForwardingPolicy:
 			v, err := x.ForwardingPolicyIdentifier()
 			if err != nil {
@@ -251,7 +322,12 @@ func (g *Gtp5g) newForwardingParameter(i *ie.IE) (*netlink.Gtp5gForwardingParame
 			p.FwdPolicy = &netlink.Gtp5gForwardingPolicy{
 				Identifier: v,
 			}
+			fields++
 		}
+	}
+
+	if fields == 0 {
+		return nil, nil
 	}
 
 	return p, nil
@@ -279,7 +355,11 @@ func (g *Gtp5g) CreateFAR(req *ie.IE) error {
 			}
 			far.ApplyAction = v
 		case ie.ForwardingParameters:
-			v, err := g.newForwardingParameter(i)
+			xs, err := i.ForwardingParameters()
+			if err != nil {
+				return err
+			}
+			v, err := g.newForwardingParameter(xs)
 			if err != nil {
 				break
 			}
@@ -292,6 +372,38 @@ func (g *Gtp5g) CreateFAR(req *ie.IE) error {
 
 func (g *Gtp5g) UpdateFAR(req *ie.IE) error {
 	var far netlink.Gtp5gFar
+
+	ies, err := req.UpdateFAR()
+	if err != nil {
+		return err
+	}
+	for _, i := range ies {
+		switch i.Type {
+		case ie.FARID:
+			v, err := i.FARID()
+			if err != nil {
+				return err
+			}
+			far.Id = v
+		case ie.ApplyAction:
+			v, err := i.ApplyAction()
+			if err != nil {
+				return err
+			}
+			far.ApplyAction = v
+		case ie.UpdateForwardingParameters:
+			xs, err := i.UpdateForwardingParameters()
+			if err != nil {
+				return err
+			}
+			v, err := g.newForwardingParameter(xs)
+			if err != nil {
+				break
+			}
+			far.FwdParam = v
+		}
+	}
+
 	return netlink.Gtp5gModFar(g.link, &far)
 }
 
