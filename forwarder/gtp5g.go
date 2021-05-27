@@ -2,6 +2,7 @@ package forwarder
 
 import (
 	"net"
+	"os"
 
 	"github.com/vishvananda/netlink"
 	"github.com/wmnsk/go-pfcp/ie"
@@ -10,6 +11,7 @@ import (
 type Gtp5g struct {
 	link *netlink.Gtp5g
 	conn *net.UDPConn
+	f    *os.File
 }
 
 func OpenGtp5g() (*Gtp5g, error) {
@@ -17,22 +19,23 @@ func OpenGtp5g() (*Gtp5g, error) {
 
 	_, err := netlink.LinkByName("gtp5g0")
 	if err == nil {
-		return g, err
+		return nil, err
 	}
 
 	laddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:2152")
 	if err != nil {
-		return g, err
+		return nil, err
 	}
 	conn, err := net.ListenUDP("udp", laddr)
 	if err != nil {
-		return g, err
+		return nil, err
 	}
 
+	// TODO: Duplicate fd
 	f, err := conn.File()
 	if err != nil {
 		conn.Close()
-		return g, err
+		return nil, err
 	}
 	attr := netlink.NewLinkAttrs()
 	attr.Name = "gtp5g0"
@@ -41,9 +44,18 @@ func OpenGtp5g() (*Gtp5g, error) {
 	if err != nil {
 		f.Close()
 		conn.Close()
-		return g, err
+		return nil, err
 	}
 
+	err = netlink.LinkSetUp(link)
+	if err != nil {
+		netlink.LinkDel(link)
+		f.Close()
+		conn.Close()
+		return nil, err
+	}
+
+	g.f = f
 	g.conn = conn
 	g.link = link
 
@@ -53,6 +65,7 @@ func OpenGtp5g() (*Gtp5g, error) {
 func (g *Gtp5g) Close() {
 	netlink.LinkDel(g.link)
 	g.conn.Close()
+	g.f.Close()
 }
 
 func (g *Gtp5g) newSdfFilter(i *ie.IE) (*netlink.Gtp5gSdfFilter, error) {
