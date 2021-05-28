@@ -14,7 +14,7 @@ type Gtp5g struct {
 	f    *os.File
 }
 
-func OpenGtp5g() (*Gtp5g, error) {
+func OpenGtp5g(addr string) (*Gtp5g, error) {
 	g := new(Gtp5g)
 
 	_, err := netlink.LinkByName("gtp5g0")
@@ -22,7 +22,7 @@ func OpenGtp5g() (*Gtp5g, error) {
 		return nil, err
 	}
 
-	laddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:2152")
+	laddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, err
 	}

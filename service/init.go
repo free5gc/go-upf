@@ -117,8 +117,19 @@ func (upf *UPF) Start() {
 
 	initLog.Infoln("Server started")
 
-	driver, err := forwarder.OpenGtp5g()
+	var gtpuaddr string
+	for _, gtpu := range factory.UpfConfig.Configuration.Gtpu {
+		gtpuaddr = fmt.Sprintf("%s:%v", gtpu.Addr, 2152)
+		initLog.Infof("GTP Address: %q\n", gtpuaddr)
+		break
+	}
+	if gtpuaddr == "" {
+		initLog.Errorln("not found GTP address")
+		return
+	}
+	driver, err := forwarder.OpenGtp5g(gtpuaddr)
 	if err != nil {
+		initLog.Errorln(err)
 		return
 	}
 	defer driver.Close()

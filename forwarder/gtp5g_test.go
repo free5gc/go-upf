@@ -9,7 +9,7 @@ import (
 )
 
 func TestGtp5g_CreateRules(t *testing.T) {
-	g, err := OpenGtp5g()
+	g, err := OpenGtp5g(":2152")
 	if err != nil {
 		t.Fatal(err)
 	}
