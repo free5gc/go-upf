@@ -2,12 +2,14 @@ package service
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"github.com/vishvananda/netlink"
 
 	"github.com/free5gc/path_util"
 
@@ -133,6 +135,22 @@ func (upf *UPF) Start() {
 		return
 	}
 	defer driver.Close()
+
+	link := driver.Link()
+	for _, dnn := range factory.UpfConfig.Configuration.DnnList {
+		_, dst, err := net.ParseCIDR(dnn.Cidr)
+		if err != nil {
+			initLog.Errorln(err)
+			continue
+		}
+		route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
+		err = netlink.RouteAdd(&route)
+		if err != nil {
+			initLog.Errorln(err)
+			return
+		}
+		break
+	}
 
 	exit := make(chan bool)
 

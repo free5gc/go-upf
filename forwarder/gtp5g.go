@@ -68,6 +68,10 @@ func (g *Gtp5g) Close() {
 	g.f.Close()
 }
 
+func (g *Gtp5g) Link() netlink.Link {
+	return g.link
+}
+
 func (g *Gtp5g) newSdfFilter(i *ie.IE) (*netlink.Gtp5gSdfFilter, error) {
 	sdf := new(netlink.Gtp5gSdfFilter)
 
