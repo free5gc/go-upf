@@ -2,7 +2,6 @@ package pfcp
 
 import (
 	"net"
-	"time"
 
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
@@ -26,11 +25,6 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 	if addr, ok := s.conn.LocalAddr().(*net.UDPAddr); ok {
 		pfcpaddr = addr.IP.String()
 	}
-
-	// TODO:
-	// startup timestamp?
-	// &Self()->recoveryTime
-	var recoveryTime time.Time
 
 	// ASSOSI = 0
 	// ASSONI = 1
@@ -67,7 +61,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 		req.Header.SequenceNumber,
 		ie.NewNodeID(pfcpaddr, "", ""),
 		ie.NewCause(ie.CauseRequestAccepted),
-		ie.NewRecoveryTimeStamp(recoveryTime),
+		ie.NewRecoveryTimeStamp(s.recoveryTime),
 		// TODO:
 		// ie.NewUPFunctionFeatures(),
 		ie.NewUserPlaneIPResourceInformation(
