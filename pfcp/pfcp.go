@@ -3,6 +3,7 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/m-asama/upf/factory"
@@ -17,6 +18,7 @@ type PfcpServer struct {
 	running      bool
 	recoveryTime time.Time
 	driver       forwarder.Driver
+	nodes        sync.Map
 }
 
 func NewPfcpServer(listen string, driver forwarder.Driver) *PfcpServer {
