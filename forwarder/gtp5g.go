@@ -1,6 +1,7 @@
 package forwarder
 
 import (
+	"errors"
 	"net"
 	"os"
 
@@ -300,7 +301,11 @@ func (g *Gtp5g) UpdatePDR(req *ie.IE) error {
 
 func (g *Gtp5g) RemovePDR(req *ie.IE) error {
 	var pdr netlink.Gtp5gPdr
-
+	v, err := req.PDRID()
+	if err != nil {
+		return errors.New("not found PDRID")
+	}
+	pdr.Id = v
 	return netlink.Gtp5gDelPdr(g.link, &pdr)
 }
 
@@ -426,6 +431,11 @@ func (g *Gtp5g) UpdateFAR(req *ie.IE) error {
 
 func (g *Gtp5g) RemoveFAR(req *ie.IE) error {
 	var far netlink.Gtp5gFar
+	v, err := req.FARID()
+	if err != nil {
+		return errors.New("not found FARID")
+	}
+	far.Id = v
 	return netlink.Gtp5gDelFar(g.link, &far)
 }
 
@@ -521,11 +531,98 @@ func (g *Gtp5g) CreateQER(req *ie.IE) error {
 func (g *Gtp5g) UpdateQER(req *ie.IE) error {
 	var qer netlink.Gtp5gQer
 
+	ies, err := req.UpdateQER()
+	if err != nil {
+		return err
+	}
+	for _, i := range ies {
+		switch i.Type {
+		case ie.QERID:
+			// M
+			v, err := i.QERID()
+			if err != nil {
+				break
+			}
+			qer.Id = v
+		case ie.QERCorrelationID:
+			// C
+			v, err := i.QERCorrelationID()
+			if err != nil {
+				break
+			}
+			qer.QerCorrId = v
+		case ie.GateStatus:
+			// M
+			v, err := i.GateStatus()
+			if err != nil {
+				break
+			}
+			qer.UlDlGate = v
+		case ie.MBR:
+			// C
+			ul, err := i.MBRUL()
+			if err != nil {
+				break
+			}
+			dl, err := i.MBRDL()
+			if err != nil {
+				break
+			}
+			qer.Mbr = netlink.Gtp5gMbr{
+				UlHigh: uint32(ul >> 8),
+				UlLow:  uint8(ul),
+				DlHigh: uint32(dl >> 8),
+				DlLow:  uint8(dl),
+			}
+		case ie.GBR:
+			// C
+			ul, err := i.GBRUL()
+			if err != nil {
+				break
+			}
+			dl, err := i.GBRDL()
+			if err != nil {
+				break
+			}
+			qer.Gbr = netlink.Gtp5gGbr{
+				UlHigh: uint32(ul >> 8),
+				UlLow:  uint8(ul),
+				DlHigh: uint32(dl >> 8),
+				DlLow:  uint8(dl),
+			}
+		case ie.QFI:
+			// C
+			v, err := i.QFI()
+			if err != nil {
+				break
+			}
+			qer.Qfi = v
+		case ie.RQI:
+			// C
+			v, err := i.RQI()
+			if err != nil {
+				break
+			}
+			qer.Rqi = v
+		case ie.PagingPolicyIndicator:
+			// C
+			v, err := i.PagingPolicyIndicator()
+			if err != nil {
+				break
+			}
+			qer.Ppi = v
+		}
+	}
+
 	return netlink.Gtp5gModQer(g.link, &qer)
 }
 
 func (g *Gtp5g) RemoveQER(req *ie.IE) error {
 	var qer netlink.Gtp5gQer
-
+	v, err := req.QERID()
+	if err != nil {
+		return errors.New("not found QERID")
+	}
+	qer.Id = v
 	return netlink.Gtp5gDelQer(g.link, &qer)
 }
