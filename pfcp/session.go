@@ -6,7 +6,6 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
-	"github.com/m-asama/upf/factory"
 	"github.com/m-asama/upf/logger"
 )
 
@@ -34,14 +33,6 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 		}
 	}
 
-	cfg := factory.UpfConfig.Configuration
-
-	var pfcpaddr string
-	for _, e := range cfg.Pfcp {
-		pfcpaddr = e.Addr
-		break
-	}
-
 	var seid uint64
 	var v4 net.IP
 	var v6 net.IP
@@ -50,7 +41,11 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	// allocate a session
 	seid = 1
 
-	v4 = net.ParseIP(pfcpaddr)
+	var pfcpaddr string
+	if addr, ok := s.conn.LocalAddr().(*net.UDPAddr); ok {
+		v4 = addr.IP
+		pfcpaddr = v4.String()
+	}
 
 	rsp := message.NewSessionEstablishmentResponse(
 		0,    // mp

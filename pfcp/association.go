@@ -14,12 +14,17 @@ import (
 func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetupRequest, addr net.Addr) {
 	logger.PfcpLog.Infoln(s.listen, "handleAssociationSetupRequest")
 
+	// TODO:
+	// deleting the existing PFCP association and associated PFCP sessions,
+	// if a PFCP association was already established for the Node ID
+	// received in the request, regardless of the Recovery Timestamp
+	// received in the request.
+
 	cfg := factory.UpfConfig.Configuration
 
 	var pfcpaddr string
-	for _, e := range cfg.Pfcp {
-		pfcpaddr = e.Addr
-		break
+	if addr, ok := s.conn.LocalAddr().(*net.UDPAddr); ok {
+		pfcpaddr = addr.IP.String()
 	}
 
 	// TODO:
