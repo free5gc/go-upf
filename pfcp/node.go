@@ -146,10 +146,14 @@ func (n *Node) Reset() {
 }
 
 func (n *Node) Sess(seid uint64) (*Sess, bool) {
-	if seid >= uint64(len(n.sess)) {
+	if seid == 0 {
 		return nil, false
 	}
-	sess := n.sess[seid]
+	i := int(seid) - 1
+	if i >= len(n.sess) {
+		return nil, false
+	}
+	sess := n.sess[i]
 	return sess, sess != nil
 }
 
@@ -157,22 +161,30 @@ func (n *Node) New(seid uint64) *Sess {
 	sess := NewSess()
 	sess.node = n
 	sess.RemoteID = seid
-	l := len(n.free)
-	if l != 0 {
-		sess.LocalID = n.free[l-1]
-		n.free = n.free[:l-1]
-		n.sess[sess.LocalID] = sess
+	last := len(n.free) - 1
+	if last >= 0 {
+		sess.LocalID = n.free[last]
+		n.free = n.free[:last]
+		n.sess[sess.LocalID-1] = sess
 	} else {
-		sess.LocalID = uint64(len(n.sess))
 		n.sess = append(n.sess, sess)
+		sess.LocalID = uint64(len(n.sess))
 	}
 	return sess
 }
 
 func (n *Node) Delete(seid uint64) {
-	if seid < uint64(len(n.sess)) {
-		n.sess[seid].Close()
-		n.sess[seid] = nil
+	if seid == 0 {
+		return
 	}
+	i := int(seid) - 1
+	if i >= len(n.sess) {
+		return
+	}
+	if n.sess[i] == nil {
+		return
+	}
+	n.sess[i].Close()
+	n.sess[i] = nil
 	n.free = append(n.free, seid)
 }
