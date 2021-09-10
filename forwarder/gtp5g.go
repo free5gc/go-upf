@@ -2,10 +2,12 @@ package forwarder
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"os"
 
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netlink/nl"
 	"github.com/wmnsk/go-pfcp/ie"
 )
 
@@ -73,6 +75,36 @@ func (g *Gtp5g) Link() netlink.Link {
 	return g.link
 }
 
+func (g *Gtp5g) newIpFilterRule(s string) (*netlink.Gtp5gIpFilterRule, error) {
+	r := new(netlink.Gtp5gIpFilterRule)
+	fd, err := ParseFlowDesc(s)
+	if err != nil {
+		return nil, err
+	}
+	switch fd.Action {
+	case "permit":
+		r.Action = nl.GTP5G_SDF_FILTER_PERMIT
+	default:
+		return nil, fmt.Errorf("not support action %v", fd.Action)
+	}
+	switch fd.Dir {
+	case "in":
+		r.Direction = nl.GTP5G_SDF_FILTER_IN
+	case "out":
+		r.Direction = nl.GTP5G_SDF_FILTER_OUT
+	default:
+		return nil, fmt.Errorf("not support dir %v", fd.Dir)
+	}
+	r.Proto = fd.Proto
+	r.Src = fd.Src.IP
+	r.Smask = net.IP(fd.Src.Mask)
+	r.Dest = fd.Dst.IP
+	r.Dmask = net.IP(fd.Dst.Mask)
+	r.SportList = fd.SrcPorts
+	r.DportList = fd.DstPorts
+	return r, nil
+}
+
 func (g *Gtp5g) newSdfFilter(i *ie.IE) (*netlink.Gtp5gSdfFilter, error) {
 	sdf := new(netlink.Gtp5gSdfFilter)
 
@@ -84,19 +116,11 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (*netlink.Gtp5gSdfFilter, error) {
 	fields := 0
 
 	if v.HasFD() {
-		// TODO:
-		// v.FlowDescription string
-		sdf.Rule = &netlink.Gtp5gIpFilterRule{
-			Action:    12,
-			Direction: 13,
-			Proto:     14,
-			Src:       net.IPv4(15, 16, 17, 18),
-			Smask:     net.IPv4(255, 255, 255, 0),
-			Dest:      net.IPv4(19, 20, 21, 22),
-			Dmask:     net.IPv4(255, 255, 0, 0),
-			SportList: []uint32{23, 24, 25},
-			DportList: []uint32{26, 27, 28},
+		rule, err := g.newIpFilterRule(v.FlowDescription)
+		if err != nil {
+			return nil, err
 		}
+		sdf.Rule = rule
 		fields++
 	}
 	if v.HasTTC() {
