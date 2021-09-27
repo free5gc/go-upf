@@ -9,7 +9,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
-	"github.com/vishvananda/netlink"
 
 	"github.com/free5gc/path_util"
 
@@ -143,8 +142,7 @@ func (upf *UPF) Start() {
 			initLog.Errorln(err)
 			continue
 		}
-		route := netlink.Route{LinkIndex: link.Attrs().Index, Dst: dst}
-		err = netlink.RouteAdd(&route)
+		err = link.RouteAdd(dst)
 		if err != nil {
 			initLog.Errorln(err)
 			return
