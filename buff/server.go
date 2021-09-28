@@ -2,7 +2,6 @@ package buff
 
 import (
 	"net"
-	"os"
 	"unsafe"
 )
 
@@ -13,7 +12,6 @@ const (
 
 type Server struct {
 	conn   *net.UnixConn
-	f      *os.File
 	q      map[uint16]chan []byte
 	qlen   int
 	notify func(uint16)
@@ -32,13 +30,6 @@ func OpenServer(addr string, qlen int, notify func(uint16)) (*Server, error) {
 	}
 	s.conn = conn
 
-	f, err := conn.File()
-	if err != nil {
-		s.Close()
-		return nil, err
-	}
-	s.f = f
-
 	s.q = make(map[uint16]chan []byte)
 	s.qlen = qlen
 
@@ -52,9 +43,6 @@ func OpenServer(addr string, qlen int, notify func(uint16)) (*Server, error) {
 func (s *Server) Close() {
 	if s.conn != nil {
 		s.conn.Close()
-	}
-	if s.f != nil {
-		s.f.Close()
 	}
 }
 
