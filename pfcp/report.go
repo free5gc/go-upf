@@ -3,11 +3,27 @@ package pfcp
 import (
 	"net"
 
+	"github.com/m-asama/upf/report"
+	"github.com/m-asama/upf/logger"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 )
 
-func (s *PfcpServer) SendDLDataReport(addr net.Addr, seid uint64, pdrid uint16) error {
+func (s *PfcpServer) ServeReport(addr net.Addr, seid uint64, r report.Report) {
+	logger.PfcpLog.Infoln(s.listen, "ServeReport")
+	switch r.Type() {
+	case report.DLDR:
+		r := r.(report.DLDReport)
+		err := s.ServeDLDReport(addr, seid, r.PDRID)
+		if err != nil {
+			logger.PfcpLog.Errorln(s.listen, err)
+		}
+	}
+}
+
+func (s *PfcpServer) ServeDLDReport(addr net.Addr, seid uint64, pdrid uint16) error {
+	logger.PfcpLog.Infoln(s.listen, "ServeDLDReport")
+
 	seq := uint32(1)
 	msg := message.NewSessionReportRequest(
 		0,

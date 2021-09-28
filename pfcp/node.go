@@ -1,7 +1,10 @@
 package pfcp
 
 import (
+	"net"
+
 	"github.com/m-asama/upf/forwarder"
+	"github.com/m-asama/upf/report"
 	"github.com/wmnsk/go-pfcp/ie"
 )
 
@@ -12,6 +15,7 @@ type Sess struct {
 	PDRIDs   map[uint16]struct{}
 	FARIDs   map[uint32]struct{}
 	QERIDs   map[uint32]struct{}
+	handler  func(net.Addr, uint64, report.Report)
 }
 
 func NewSess() *Sess {
@@ -119,6 +123,23 @@ func (s *Sess) RemoveQER(req *ie.IE) error {
 		delete(s.QERIDs, id)
 	}
 	return err
+}
+
+func (s *Sess) HandleReport(handler func(net.Addr, uint64, report.Report)) {
+	s.handler = handler
+	s.node.driver.HandleReport(s)
+}
+
+func (s *Sess) ServeReport(r report.Report) {
+	if s.handler == nil {
+		return
+	}
+	addr := s.node.ID + ":8805"
+	laddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return
+	}
+	s.handler(laddr, s.RemoteID, r)
 }
 
 type Node struct {

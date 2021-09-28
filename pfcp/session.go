@@ -49,6 +49,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	// allocate a session
 	sess := node.New(fseid.SEID)
 
+	sess.HandleReport(s.ServeReport)
+
 	// TODO: rollback transaction
 	for _, i := range req.CreateFAR {
 		err := sess.CreateFAR(i)
