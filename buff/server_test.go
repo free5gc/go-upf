@@ -5,6 +5,8 @@ import (
 	"net"
 	"os"
 	"testing"
+
+	"github.com/m-asama/upf/report"
 )
 
 func TestServer(t *testing.T) {
@@ -12,15 +14,20 @@ func TestServer(t *testing.T) {
 	defer close(done)
 	addr := "test.unsock"
 	qlen := 10
-	os.Remove(addr)
-	s, err := OpenServer(addr, qlen, func(pdrid uint16) {
-		done <- pdrid
-	})
+	s, err := OpenServer(addr, qlen)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 	defer os.Remove(addr)
+
+	s.HandleFunc(func(r report.Report) {
+		switch r.Type() {
+		case report.DLDR:
+			r := r.(report.DLDReport)
+			done <- r.PDRID
+		}
+	})
 
 	laddr, err := net.ResolveUnixAddr("unixgram", addr)
 	if err != nil {

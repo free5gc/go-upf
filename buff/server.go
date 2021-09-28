@@ -2,7 +2,10 @@ package buff
 
 import (
 	"net"
+	"os"
 	"unsafe"
+
+	"github.com/m-asama/upf/report"
 )
 
 const (
@@ -11,15 +14,16 @@ const (
 )
 
 type Server struct {
-	conn   *net.UnixConn
-	q      map[uint16]chan []byte
-	qlen   int
-	notify func(uint16)
+	conn    *net.UnixConn
+	q       map[uint16]chan []byte
+	qlen    int
+	handler report.Handler
 }
 
-func OpenServer(addr string, qlen int, notify func(uint16)) (*Server, error) {
+func OpenServer(addr string, qlen int) (*Server, error) {
 	s := new(Server)
 
+	os.Remove(addr)
 	laddr, err := net.ResolveUnixAddr("unixgram", addr)
 	if err != nil {
 		return nil, err
@@ -33,17 +37,21 @@ func OpenServer(addr string, qlen int, notify func(uint16)) (*Server, error) {
 	s.q = make(map[uint16]chan []byte)
 	s.qlen = qlen
 
-	s.notify = notify
-
 	go s.Serve()
 
 	return s, nil
 }
 
 func (s *Server) Close() {
-	if s.conn != nil {
-		s.conn.Close()
-	}
+	s.conn.Close()
+}
+
+func (s *Server) Handle(handler report.Handler) {
+	s.handler = handler
+}
+
+func (s *Server) HandleFunc(f func(report.Report)) {
+	s.handler = report.HandlerFunc(f)
 }
 
 func (s *Server) Serve() {
@@ -62,7 +70,9 @@ func (s *Server) Serve() {
 			continue
 		}
 		if action&NOCP != 0 {
-			s.notify(pdrid)
+			if s.handler != nil {
+				s.handler.ServeReport(report.DLDReport{pdrid})
+			}
 		}
 		pkt := make([]byte, n-4)
 		copy(pkt, b[4:n])
