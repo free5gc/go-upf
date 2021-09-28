@@ -3,11 +3,20 @@ package forwarder
 import (
 	"errors"
 	"fmt"
+	"net"
 	"syscall"
 
 	"github.com/khirono/go-gtp5gnl"
 	"github.com/khirono/go-nl"
+	"github.com/m-asama/upf/buff"
+	"github.com/m-asama/upf/gtpv1"
+	"github.com/m-asama/upf/report"
 	"github.com/wmnsk/go-pfcp/ie"
+)
+
+const (
+	SOCKPATH = "/tmp/free5gc_unix_sock"
+	BUFFLEN  = 512
 )
 
 type Gtp5g struct {
@@ -15,6 +24,7 @@ type Gtp5g struct {
 	link   *Gtp5gLink
 	conn   *nl.Conn
 	client *gtp5gnl.Client
+	bs     *buff.Server
 }
 
 func OpenGtp5g(addr string) (*Gtp5g, error) {
@@ -48,6 +58,13 @@ func OpenGtp5g(addr string) (*Gtp5g, error) {
 	}
 	g.client = c
 
+	bs, err := buff.OpenServer(SOCKPATH, BUFFLEN)
+	if err != nil {
+		g.Close()
+		return nil, err
+	}
+	g.bs = bs
+
 	return g, nil
 }
 
@@ -60,6 +77,9 @@ func (g *Gtp5g) Close() {
 	}
 	if g.mux != nil {
 		g.mux.Close()
+	}
+	if g.bs != nil {
+		g.bs.Close()
 	}
 }
 
@@ -317,10 +337,12 @@ func (g *Gtp5g) CreatePDR(req *ie.IE) error {
 	// roleAddrIpv4 = net.IPv4(34, 35, 36, 37)
 	// pdr.RoleAddrIpv4 = &roleAddrIpv4
 
-	// TODO:
+	// XXX:
 	// Not in 3GPP spec, just used for buffering
-	// unixSockPath := "/tmp/free5gc_unix_sock"
-	// pdr.UnixSockPath = &unixSockPath
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.PDR_UNIX_SOCKET_PATH,
+		Value: nl.AttrString(SOCKPATH),
+	})
 
 	return gtp5gnl.CreatePDR(g.client, g.link.link, pdrid, attrs)
 }
@@ -533,6 +555,7 @@ func (g *Gtp5g) UpdateFAR(req *ie.IE) error {
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
 				Value: nl.AttrU8(v),
 			})
+			g.applyAction(farid, v)
 		case ie.UpdateForwardingParameters:
 			xs, err := i.UpdateForwardingParameters()
 			if err != nil {
@@ -838,4 +861,95 @@ func (g *Gtp5g) RemoveQER(req *ie.IE) error {
 		return errors.New("not found QERID")
 	}
 	return gtp5gnl.RemoveQER(g.client, g.link.link, int(v))
+}
+
+func (g *Gtp5g) HandleReport(handler report.Handler) {
+	g.bs.Handle(handler)
+}
+
+const (
+	DROP = 1 << 0
+	FORW = 1 << 1
+	BUFF = 1 << 2
+)
+
+func (g *Gtp5g) applyAction(farid int, action uint8) {
+	far, err := gtp5gnl.GetFAR(g.client, g.link.link, farid)
+	if err != nil {
+		return
+	}
+	if far.Action&BUFF == 0 {
+		return
+	}
+	switch {
+	case action&DROP != 0:
+		// BUFF -> DROP
+		for _, pdrid := range far.PDRIDs {
+			for {
+				_, ok := g.bs.Pop(pdrid)
+				if !ok {
+					break
+				}
+			}
+		}
+	case action&FORW != 0:
+		// BUFF -> FORW
+		for _, pdrid := range far.PDRIDs {
+			pdr, err := gtp5gnl.GetPDR(g.client, g.link.link, int(pdrid))
+			if err != nil {
+				continue
+			}
+			var qer *gtp5gnl.QER
+			if pdr.QERID != nil {
+				q, err := gtp5gnl.GetQER(g.client, g.link.link, int(*pdr.QERID))
+				if err != nil {
+					continue
+				}
+				qer = q
+			}
+			for {
+				pkt, ok := g.bs.Pop(pdrid)
+				if !ok {
+					break
+				}
+				err := g.WritePacket(far, qer, pkt)
+				if err != nil {
+					continue
+				}
+			}
+		}
+	}
+}
+
+func (g *Gtp5g) WritePacket(far *gtp5gnl.FAR, qer *gtp5gnl.QER, pkt []byte) error {
+	if far.Param == nil || far.Param.Creation == nil {
+		return errors.New("far param not found")
+	}
+	hc := far.Param.Creation
+	addr := &net.UDPAddr{
+		IP:   hc.PeerAddr,
+		Port: int(hc.Port),
+	}
+	msg := gtpv1.Message{
+		Flags:   0x34,
+		Type:    gtpv1.MsgTypeTPDU,
+		TEID:    hc.TEID,
+		Payload: pkt,
+	}
+	if qer != nil {
+		msg.Exts = []gtpv1.Encoder{
+			gtpv1.PDUSessionContainer{
+				PDUType:   0,
+				QoSFlowID: qer.QFI,
+			},
+		}
+	}
+	n := msg.Len()
+	b := make([]byte, n)
+	_, err := msg.Encode(b)
+	if err != nil {
+		return err
+	}
+	_, err = g.link.WriteTo(b, addr)
+	return err
 }

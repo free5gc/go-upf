@@ -1,6 +1,7 @@
 package forwarder
 
 import (
+	"github.com/m-asama/upf/report"
 	"github.com/wmnsk/go-pfcp/ie"
 )
 
@@ -18,4 +19,6 @@ type Driver interface {
 	CreateQER(*ie.IE) error
 	UpdateQER(*ie.IE) error
 	RemoveQER(*ie.IE) error
+
+	HandleReport(report.Handler)
 }

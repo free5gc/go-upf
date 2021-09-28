@@ -127,3 +127,7 @@ func (g *Gtp5gLink) RouteAdd(dst *net.IPNet) error {
 	}
 	return rtnlroute.Create(g.client, r)
 }
+
+func (g *Gtp5gLink) WriteTo(b []byte, addr net.Addr) (int, error) {
+	return g.conn.WriteTo(b, addr)
+}
