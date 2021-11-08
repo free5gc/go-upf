@@ -2,7 +2,6 @@ package pfcp
 
 import (
 	"net"
-	"time"
 
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
@@ -14,18 +13,37 @@ import (
 func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetupRequest, addr net.Addr) {
 	logger.PfcpLog.Infoln(s.listen, "handleAssociationSetupRequest")
 
+	if req.NodeID == nil {
+		logger.PfcpLog.Errorln(s.listen, "not found NodeID")
+		return
+	}
+	nodeid, err := req.NodeID.NodeID()
+	if err != nil {
+		logger.PfcpLog.Errorln(s.listen, err)
+		return
+	}
+	logger.PfcpLog.Infof("%v nodeid: %v\n", s.listen, nodeid)
+
+	// deleting the existing PFCP association and associated PFCP sessions,
+	// if a PFCP association was already established for the Node ID
+	// received in the request, regardless of the Recovery Timestamp
+	// received in the request.
+	if ni, ok := s.nodes.Load(nodeid); ok {
+		if node, ok := ni.(*Node); ok {
+			logger.PfcpLog.Infof("delete node: %#+v\n", node)
+			node.Reset()
+		}
+		s.nodes.Delete(ni)
+	}
+	node := NewNode(nodeid, s.driver)
+	s.nodes.Store(nodeid, node)
+
 	cfg := factory.UpfConfig.Configuration
 
 	var pfcpaddr string
-	for _, e := range cfg.Pfcp {
-		pfcpaddr = e.Addr
-		break
+	if addr, ok := s.conn.LocalAddr().(*net.UDPAddr); ok {
+		pfcpaddr = addr.IP.String()
 	}
-
-	// TODO:
-	// startup timestamp?
-	// &Self()->recoveryTime
-	var recoveryTime time.Time
 
 	// ASSOSI = 0
 	// ASSONI = 1
@@ -62,7 +80,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 		req.Header.SequenceNumber,
 		ie.NewNodeID(pfcpaddr, "", ""),
 		ie.NewCause(ie.CauseRequestAccepted),
-		ie.NewRecoveryTimeStamp(recoveryTime),
+		ie.NewRecoveryTimeStamp(s.recoveryTime),
 		// TODO:
 		// ie.NewUPFunctionFeatures(),
 		ie.NewUserPlaneIPResourceInformation(

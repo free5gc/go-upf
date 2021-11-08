@@ -3,6 +3,8 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/m-asama/upf/factory"
 	"github.com/m-asama/upf/forwarder"
@@ -10,19 +12,22 @@ import (
 )
 
 type PfcpServer struct {
-	listen  string
-	conn    *net.UDPConn
-	done    chan bool
-	running bool
-	driver  forwarder.Driver
+	listen       string
+	conn         *net.UDPConn
+	done         chan bool
+	running      bool
+	recoveryTime time.Time
+	driver       forwarder.Driver
+	nodes        sync.Map
 }
 
 func NewPfcpServer(listen string, driver forwarder.Driver) *PfcpServer {
 	return &PfcpServer{
-		listen:  listen,
-		done:    make(chan bool),
-		running: false,
-		driver:  driver,
+		listen:       listen,
+		done:         make(chan bool),
+		running:      false,
+		recoveryTime: time.Now(),
+		driver:       driver,
 	}
 }
 
