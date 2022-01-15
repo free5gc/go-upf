@@ -1,8 +1,8 @@
 package context
 
 import (
-	"github.com/m-asama/upf/factory"
-	"github.com/m-asama/upf/logger"
+	"github.com/free5gc/go-upf/factory"
+	"github.com/free5gc/go-upf/logger"
 )
 
 func init() {

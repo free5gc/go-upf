@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/m-asama/upf/report"
+	"github.com/free5gc/go-upf/report"
 )
 
 func TestServer(t *testing.T) {

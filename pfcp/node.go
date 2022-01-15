@@ -3,8 +3,8 @@ package pfcp
 import (
 	"net"
 
-	"github.com/m-asama/upf/forwarder"
-	"github.com/m-asama/upf/report"
+	"github.com/free5gc/go-upf/forwarder"
+	"github.com/free5gc/go-upf/report"
 	"github.com/wmnsk/go-pfcp/ie"
 )
 

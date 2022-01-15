@@ -5,7 +5,7 @@ import (
 
 	"github.com/wmnsk/go-pfcp/message"
 
-	"github.com/m-asama/upf/logger"
+	"github.com/free5gc/go-upf/logger"
 )
 
 func (s *PfcpServer) handleHeartbeatRequest(msg *message.HeartbeatRequest, addr net.Addr) {

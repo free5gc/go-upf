@@ -11,8 +11,8 @@ import (
 
 	"github.com/free5gc/version"
 
-	"github.com/m-asama/upf/logger"
-	"github.com/m-asama/upf/service"
+	"github.com/free5gc/go-upf/logger"
+	"github.com/free5gc/go-upf/service"
 )
 
 var UPF = &service.UPF{}

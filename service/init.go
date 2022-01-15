@@ -12,11 +12,11 @@ import (
 
 	"github.com/free5gc/path_util"
 
-	"github.com/m-asama/upf/context"
-	"github.com/m-asama/upf/factory"
-	"github.com/m-asama/upf/forwarder"
-	"github.com/m-asama/upf/logger"
-	"github.com/m-asama/upf/pfcp"
+	"github.com/free5gc/go-upf/context"
+	"github.com/free5gc/go-upf/factory"
+	"github.com/free5gc/go-upf/forwarder"
+	"github.com/free5gc/go-upf/logger"
+	"github.com/free5gc/go-upf/pfcp"
 )
 
 type UPF struct{}

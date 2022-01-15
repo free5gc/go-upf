@@ -6,11 +6,11 @@ import (
 	"net"
 	"syscall"
 
+	"github.com/free5gc/go-upf/buff"
+	"github.com/free5gc/go-upf/gtpv1"
+	"github.com/free5gc/go-upf/report"
 	"github.com/khirono/go-gtp5gnl"
 	"github.com/khirono/go-nl"
-	"github.com/m-asama/upf/buff"
-	"github.com/m-asama/upf/gtpv1"
-	"github.com/m-asama/upf/report"
 	"github.com/wmnsk/go-pfcp/ie"
 )
 

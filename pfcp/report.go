@@ -3,8 +3,8 @@ package pfcp
 import (
 	"net"
 
-	"github.com/m-asama/upf/report"
-	"github.com/m-asama/upf/logger"
+	"github.com/free5gc/go-upf/logger"
+	"github.com/free5gc/go-upf/report"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 )
@@ -35,12 +35,12 @@ func (s *PfcpServer) ServeDLDReport(addr net.Addr, seid uint64, pdrid uint16) er
 		ie.NewDownlinkDataReport(
 			ie.NewPDRID(pdrid),
 			/*
-			ie.NewDownlinkDataServiceInformation(
-				true,
-				true,
-				ppi,
-				qfi,
-			),
+				ie.NewDownlinkDataServiceInformation(
+					true,
+					true,
+					ppi,
+					qfi,
+				),
 			*/
 		),
 	)
