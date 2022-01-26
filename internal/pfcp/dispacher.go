@@ -3,7 +3,7 @@ package pfcp
 import (
 	"github.com/wmnsk/go-pfcp/message"
 
-	"github.com/free5gc/go-upf/logger"
+	"github.com/free5gc/go-upf/internal/logger"
 )
 
 func (s *PfcpServer) dispacher(startDispacher chan bool) {

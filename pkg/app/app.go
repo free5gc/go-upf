@@ -1,4 +1,4 @@
-package service
+package app
 
 import (
 	"fmt"
@@ -10,13 +10,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
+	"github.com/free5gc/go-upf/internal/context"
+	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/free5gc/go-upf/internal/pfcp"
+	"github.com/free5gc/go-upf/pkg/factory"
 	"github.com/free5gc/path_util"
-
-	"github.com/free5gc/go-upf/context"
-	"github.com/free5gc/go-upf/factory"
-	"github.com/free5gc/go-upf/forwarder"
-	"github.com/free5gc/go-upf/logger"
-	"github.com/free5gc/go-upf/pfcp"
 )
 
 type UPF struct{}

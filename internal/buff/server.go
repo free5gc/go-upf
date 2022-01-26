@@ -5,7 +5,7 @@ import (
 	"os"
 	"unsafe"
 
-	"github.com/free5gc/go-upf/report"
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 const (
@@ -71,7 +71,7 @@ func (s *Server) Serve() {
 		}
 		if action&NOCP != 0 {
 			if s.handler != nil {
-				s.handler.ServeReport(report.DLDReport{pdrid})
+				s.handler.ServeReport(report.DLDReport{PDRID: pdrid})
 			}
 		}
 		pkt := make([]byte, n-4)

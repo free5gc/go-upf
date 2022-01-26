@@ -6,7 +6,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/free5gc/go-upf/logger"
+	"github.com/free5gc/go-upf/internal/logger"
 )
 
 var (

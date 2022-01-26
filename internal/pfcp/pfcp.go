@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/free5gc/go-upf/factory"
-	"github.com/free5gc/go-upf/forwarder"
-	"github.com/free5gc/go-upf/logger"
+	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/free5gc/go-upf/pkg/factory"
 )
 
 type PfcpServer struct {

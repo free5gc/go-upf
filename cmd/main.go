@@ -11,11 +11,11 @@ import (
 
 	"github.com/free5gc/version"
 
-	"github.com/free5gc/go-upf/logger"
-	"github.com/free5gc/go-upf/service"
+	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/free5gc/go-upf/pkg/app"
 )
 
-var UPF = &service.UPF{}
+var UPF = &app.UPF{}
 
 var appLog *logrus.Entry
 

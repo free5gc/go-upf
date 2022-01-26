@@ -3,9 +3,10 @@ package pfcp
 import (
 	"net"
 
-	"github.com/free5gc/go-upf/forwarder"
-	"github.com/free5gc/go-upf/report"
 	"github.com/wmnsk/go-pfcp/ie"
+
+	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 type Sess struct {

@@ -3,10 +3,11 @@ package pfcp
 import (
 	"net"
 
-	"github.com/free5gc/go-upf/logger"
-	"github.com/free5gc/go-upf/report"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
+
+	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 func (s *PfcpServer) ServeReport(addr net.Addr, seid uint64, r report.Report) {

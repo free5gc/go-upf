@@ -1,8 +1,9 @@
 package forwarder
 
 import (
-	"github.com/free5gc/go-upf/report"
 	"github.com/wmnsk/go-pfcp/ie"
+
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 type Driver interface {
