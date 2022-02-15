@@ -9,10 +9,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"github.com/free5gc/version"
-
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/pkg/app"
+	"github.com/free5gc/version"
 )
 
 var UPF = &app.UPF{}

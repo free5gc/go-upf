@@ -157,7 +157,7 @@ func (upf *UPF) Start() {
 		<-signalChannel
 		upf.Terminate()
 		exit <- true
-		//os.Exit(0)
+		// os.Exit(0)
 	}()
 
 	for _, configPfcp := range factory.UpfConfig.Configuration.Pfcp {
@@ -166,7 +166,7 @@ func (upf *UPF) Start() {
 		pfcpServers = append(pfcpServers, pfcpServer)
 	}
 
-	//time.Sleep(1000 * time.Millisecond)
+	// time.Sleep(1000 * time.Millisecond)
 
 	<-exit
 }

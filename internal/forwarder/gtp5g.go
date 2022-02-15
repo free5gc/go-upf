@@ -12,6 +12,7 @@ import (
 
 	"github.com/free5gc/go-upf/internal/buff"
 	"github.com/free5gc/go-upf/internal/gtpv1"
+	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
 )
 
@@ -35,7 +36,12 @@ func OpenGtp5g(addr string) (*Gtp5g, error) {
 	if err != nil {
 		return nil, err
 	}
-	go mux.Serve()
+	go func() {
+		err = mux.Serve()
+		if err != nil {
+			logger.Gtp5gLog.Warnf("mux Serve err: %+v", err)
+		}
+	}()
 	g.mux = mux
 
 	link, err := OpenGtp5gLink(mux, addr)
@@ -173,8 +179,7 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (nl.AttrList, error) {
 	if v.HasTTC() {
 		// TODO:
 		// v.ToSTrafficClass string
-		var x uint16
-		x = 29
+		x := uint16(29)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.SDF_FILTER_TOS_TRAFFIC_CLASS,
 			Value: nl.AttrU16(x),
@@ -183,8 +188,7 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (nl.AttrList, error) {
 	if v.HasSPI() {
 		// TODO:
 		// v.SecurityParameterIndex string
-		var x uint32
-		x = 30
+		x := uint32(30)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.SDF_FILTER_SECURITY_PARAMETER_INDEX,
 			Value: nl.AttrU32(x),
@@ -193,8 +197,7 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (nl.AttrList, error) {
 	if v.HasFL() {
 		// TODO:
 		// v.FlowLabel string
-		var x uint32
-		x = 31
+		x := uint32(31)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.SDF_FILTER_FLOW_LABEL,
 			Value: nl.AttrU32(x),
@@ -338,7 +341,7 @@ func (g *Gtp5g) CreatePDR(req *ie.IE) error {
 	// roleAddrIpv4 = net.IPv4(34, 35, 36, 37)
 	// pdr.RoleAddrIpv4 = &roleAddrIpv4
 
-	// XXX:
+	// TODO:
 	// Not in 3GPP spec, just used for buffering
 	attrs = append(attrs, nl.Attr{
 		Type:  gtp5gnl.PDR_UNIX_SOCKET_PATH,

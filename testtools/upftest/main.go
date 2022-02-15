@@ -42,24 +42,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if _, err := conn.Write(asreq); err != nil {
+	if _, err = conn.Write(asreq); err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("sent PFCP Association Setup Request to: %s", raddr)
 
-	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+	if err = conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		log.Fatal(err)
 	}
 
 	waiting = true
 	for waiting {
-		n, addr, err := conn.ReadFrom(buf)
-		if err != nil {
-			log.Fatal(err)
+		n, addr, err1 := conn.ReadFrom(buf)
+		if err1 != nil {
+			log.Fatal(err1)
 		}
 
-		msg, err := message.Parse(buf[:n])
-		if err != nil {
+		msg, err1 := message.Parse(buf[:n])
+		if err1 != nil {
 			log.Printf("ignored undecodable message: %x, error: %s", buf[:n], err)
 			continue
 		}
@@ -75,7 +75,7 @@ func main() {
 			log.Printf("got non accepted response")
 			return
 		}
-		if cause, _ := asres.Cause.Cause(); cause != ie.CauseRequestAccepted || err != nil {
+		if cause, err1 := asres.Cause.Cause(); cause != ie.CauseRequestAccepted || err1 != nil {
 			log.Printf("got non accepted response")
 			return
 		}
@@ -184,11 +184,9 @@ func main() {
 			log.Printf("got non accepted response")
 			return
 		}
-		if cause, _ := seres.Cause.Cause(); cause != ie.CauseRequestAccepted || err != nil {
+		if cause, err := seres.Cause.Cause(); cause != ie.CauseRequestAccepted || err != nil {
 			log.Printf("got non accepted response")
 			return
 		}
-
 	}
-
 }

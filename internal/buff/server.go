@@ -5,6 +5,7 @@ import (
 	"os"
 	"unsafe"
 
+	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
 )
 
@@ -23,7 +24,10 @@ type Server struct {
 func OpenServer(addr string, qlen int) (*Server, error) {
 	s := new(Server)
 
-	os.Remove(addr)
+	err := os.Remove(addr)
+	if err != nil {
+		logger.BuffLog.Traceln(err)
+	}
 	laddr, err := net.ResolveUnixAddr("unixgram", addr)
 	if err != nil {
 		return nil, err
@@ -43,7 +47,10 @@ func OpenServer(addr string, qlen int) (*Server, error) {
 }
 
 func (s *Server) Close() {
-	s.conn.Close()
+	err := s.conn.Close()
+	if err != nil {
+		logger.BuffLog.Warnf("Server close err: %+v", err)
+	}
 }
 
 func (s *Server) Handle(handler report.Handler) {

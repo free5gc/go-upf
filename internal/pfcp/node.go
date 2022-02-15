@@ -6,6 +6,7 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
 )
 
@@ -30,28 +31,39 @@ func NewSess() *Sess {
 func (s *Sess) Close() {
 	for id := range s.FARIDs {
 		i := ie.NewRemoveFAR(ie.NewFARID(id))
-		s.RemoveFAR(i)
+		err := s.RemoveFAR(i)
+		if err != nil {
+			logger.SessLog.Errorf("Remove FAR err: %+v", err)
+		}
 	}
 	for id := range s.QERIDs {
 		i := ie.NewRemoveQER(ie.NewQERID(id))
-		s.RemoveQER(i)
+		err := s.RemoveQER(i)
+		if err != nil {
+			logger.SessLog.Errorf("Remove QER err: %+v", err)
+		}
 	}
 	for id := range s.PDRIDs {
 		i := ie.NewRemovePDR(ie.NewPDRID(id))
-		s.RemovePDR(i)
+		err := s.RemovePDR(i)
+		if err != nil {
+			logger.SessLog.Errorf("remove PDR err: %+v", err)
+		}
 	}
 }
 
 func (s *Sess) CreatePDR(req *ie.IE) error {
 	err := s.node.driver.CreatePDR(req)
-	if err == nil {
-		id, err := req.PDRID()
-		if err != nil {
-			return err
-		}
-		s.PDRIDs[id] = struct{}{}
+	if err != nil {
+		return err
 	}
-	return err
+
+	id, err := req.PDRID()
+	if err != nil {
+		return err
+	}
+	s.PDRIDs[id] = struct{}{}
+	return nil
 }
 
 func (s *Sess) UpdatePDR(req *ie.IE) error {
@@ -60,26 +72,30 @@ func (s *Sess) UpdatePDR(req *ie.IE) error {
 
 func (s *Sess) RemovePDR(req *ie.IE) error {
 	err := s.node.driver.RemovePDR(req)
-	if err == nil {
-		id, err := req.PDRID()
-		if err != nil {
-			return err
-		}
-		delete(s.PDRIDs, id)
+	if err != nil {
+		return err
 	}
-	return err
+
+	id, err := req.PDRID()
+	if err != nil {
+		return err
+	}
+	delete(s.PDRIDs, id)
+	return nil
 }
 
 func (s *Sess) CreateFAR(req *ie.IE) error {
 	err := s.node.driver.CreateFAR(req)
-	if err == nil {
-		id, err := req.FARID()
-		if err != nil {
-			return err
-		}
-		s.FARIDs[id] = struct{}{}
+	if err != nil {
+		return err
 	}
-	return err
+
+	id, err := req.FARID()
+	if err != nil {
+		return err
+	}
+	s.FARIDs[id] = struct{}{}
+	return nil
 }
 
 func (s *Sess) UpdateFAR(req *ie.IE) error {
@@ -88,26 +104,30 @@ func (s *Sess) UpdateFAR(req *ie.IE) error {
 
 func (s *Sess) RemoveFAR(req *ie.IE) error {
 	err := s.node.driver.RemoveFAR(req)
-	if err == nil {
-		id, err := req.FARID()
-		if err != nil {
-			return err
-		}
-		delete(s.FARIDs, id)
+	if err != nil {
+		return err
 	}
-	return err
+
+	id, err := req.FARID()
+	if err != nil {
+		return err
+	}
+	delete(s.FARIDs, id)
+	return nil
 }
 
 func (s *Sess) CreateQER(req *ie.IE) error {
 	err := s.node.driver.CreateQER(req)
-	if err == nil {
-		id, err := req.QERID()
-		if err != nil {
-			return err
-		}
-		s.QERIDs[id] = struct{}{}
+	if err != nil {
+		return err
 	}
-	return err
+
+	id, err := req.QERID()
+	if err != nil {
+		return err
+	}
+	s.QERIDs[id] = struct{}{}
+	return nil
 }
 
 func (s *Sess) UpdateQER(req *ie.IE) error {
@@ -116,14 +136,16 @@ func (s *Sess) UpdateQER(req *ie.IE) error {
 
 func (s *Sess) RemoveQER(req *ie.IE) error {
 	err := s.node.driver.RemoveQER(req)
-	if err == nil {
-		id, err := req.QERID()
-		if err != nil {
-			return err
-		}
-		delete(s.QERIDs, id)
+	if err != nil {
+		return err
 	}
-	return err
+
+	id, err := req.QERID()
+	if err != nil {
+		return err
+	}
+	delete(s.QERIDs, id)
+	return nil
 }
 
 func (s *Sess) HandleReport(handler func(net.Addr, uint64, report.Report)) {

@@ -53,21 +53,21 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 
 	// TODO: rollback transaction
 	for _, i := range req.CreateFAR {
-		err := sess.CreateFAR(i)
+		err = sess.CreateFAR(i)
 		if err != nil {
 			logger.PfcpLog.Errorln(s.listen, err)
 		}
 	}
 
 	for _, i := range req.CreateQER {
-		err := sess.CreateQER(i)
+		err = sess.CreateQER(i)
 		if err != nil {
 			logger.PfcpLog.Errorln(s.listen, err)
 		}
 	}
 
 	for _, i := range req.CreatePDR {
-		err := sess.CreatePDR(i)
+		err = sess.CreatePDR(i)
 		if err != nil {
 			logger.PfcpLog.Errorln(s.listen, err)
 		}

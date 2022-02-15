@@ -19,7 +19,12 @@ func TestServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	defer os.Remove(addr)
+	defer func() {
+		err = os.Remove(addr)
+		if err != nil {
+			t.Log(err)
+		}
+	}()
 
 	s.HandleFunc(func(r report.Report) {
 		switch r.Type() {
@@ -38,7 +43,12 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() {
+		err = conn.Close()
+		if err != nil {
+			t.Log(err)
+		}
+	}()
 
 	pkt := []byte{
 		0x03, 0x00,

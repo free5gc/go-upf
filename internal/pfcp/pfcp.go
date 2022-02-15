@@ -54,7 +54,10 @@ func (s *PfcpServer) main(startDispacher chan bool) {
 
 	<-s.done
 	logger.PfcpLog.Infoln(s.listen, "closing udp connection")
-	s.conn.Close()
+	err = s.conn.Close()
+	if err != nil {
+		logger.PfcpLog.Errorf("%+v", err)
+	}
 	logger.PfcpLog.Infoln(s.listen, "closed udp connection")
 	logger.PfcpLog.Infoln(s.listen, "main exit")
 }

@@ -12,12 +12,15 @@ import (
 )
 
 var (
-	log     *logrus.Logger
-	AppLog  *logrus.Entry
-	InitLog *logrus.Entry
-	CfgLog  *logrus.Entry
-	PfcpLog *logrus.Entry
-	CtxLog  *logrus.Entry
+	log      *logrus.Logger
+	AppLog   *logrus.Entry
+	InitLog  *logrus.Entry
+	CfgLog   *logrus.Entry
+	PfcpLog  *logrus.Entry
+	CtxLog   *logrus.Entry
+	BuffLog  *logrus.Entry
+	SessLog  *logrus.Entry
+	Gtp5gLog *logrus.Entry
 )
 
 func init() {
@@ -47,6 +50,9 @@ func init() {
 	CfgLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Cfg"})
 	PfcpLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Pfcp"})
 	CtxLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Ctx"})
+	BuffLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Buff"})
+	SessLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Sess"})
+	Gtp5gLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Gtp5g"})
 }
 
 func SetLogLevel(level logrus.Level) {

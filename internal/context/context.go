@@ -10,8 +10,7 @@ func init() {
 
 var upfContext UPFContext
 
-type UPFContext struct {
-}
+type UPFContext struct{}
 
 func InitUpfContext(config *factory.Config) {
 	if config == nil {

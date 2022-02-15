@@ -9,6 +9,8 @@ import (
 	"github.com/khirono/go-nl"
 	"github.com/khirono/go-rtnllink"
 	"github.com/khirono/go-rtnlroute"
+
+	"github.com/free5gc/go-upf/internal/logger"
 )
 
 type Gtp5gLink struct {
@@ -95,13 +97,22 @@ func OpenGtp5gLink(mux *nl.Mux, addr string) (*Gtp5gLink, error) {
 
 func (g *Gtp5gLink) Close() {
 	if g.f != nil {
-		g.f.Close()
+		err := g.f.Close()
+		if err != nil {
+			logger.Gtp5gLog.Warnf("file close err: %+v", err)
+		}
 	}
 	if g.conn != nil {
-		g.conn.Close()
+		err := g.conn.Close()
+		if err != nil {
+			logger.Gtp5gLog.Warnf("conn close err: %+v", err)
+		}
 	}
 	if g.link != nil {
-		rtnllink.Remove(g.client, "upfgtp")
+		err := rtnllink.Remove(g.client, "upfgtp")
+		if err != nil {
+			logger.Gtp5gLog.Warnf("rtnllink remove err: %+v", err)
+		}
 	}
 	if g.rtconn != nil {
 		g.rtconn.Close()
