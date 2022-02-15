@@ -12,10 +12,10 @@ VERSION = $(shell git describe --tags)
 BUILD_TIME = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 COMMIT_HASH = $(shell git log --pretty="%H" -1 | cut -c1-8)
 COMMIT_TIME = $(shell git log --pretty="%ai" -1 | awk '{time=$$(1)"T"$$(2)"Z"; print time}')
-LDFLAGS = -X github.com/free5gc/version.VERSION=$(VERSION) \
-          -X github.com/free5gc/version.BUILD_TIME=$(BUILD_TIME) \
-          -X github.com/free5gc/version.COMMIT_HASH=$(COMMIT_HASH) \
-          -X github.com/free5gc/version.COMMIT_TIME=$(COMMIT_TIME)
+LDFLAGS = -X github.com/free5gc/util/version.VERSION=$(VERSION) \
+          -X github.com/free5gc/util/version.BUILD_TIME=$(BUILD_TIME) \
+          -X github.com/free5gc/util/version.COMMIT_HASH=$(COMMIT_HASH) \
+          -X github.com/free5gc/util/version.COMMIT_TIME=$(COMMIT_TIME)
 
 .PHONY: $(NF) clean
 

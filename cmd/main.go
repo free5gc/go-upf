@@ -1,46 +1,71 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
 	"os"
+	"runtime/debug"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/pkg/app"
-	"github.com/free5gc/version"
+	"github.com/free5gc/go-upf/pkg/factory"
+	"github.com/free5gc/util/version"
 )
 
 var UPF = &app.UPF{}
 
-var appLog *logrus.Entry
-
-func init() {
-	appLog = logger.AppLog
-}
-
 func main() {
+	defer func() {
+		if p := recover(); p != nil {
+			// Print stack for panic to log. Fatalf() will let program exit.
+			logger.MainLog.Fatalf("panic: %v\n%s", p, string(debug.Stack()))
+		}
+	}()
+
 	app := cli.NewApp()
 	app.Name = "upf"
-	fmt.Print(app.Name, "\n")
-	appLog.Infoln("UPF version: ", version.GetVersion())
-	app.Usage = "-free5gccfg common configuration file -upfcfg upf configuration file"
+	app.Usage = "5G User Plane Function (UPF)"
 	app.Action = action
-	app.Flags = UPF.GetCliCmd()
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "config, c",
+			Usage: "Load configuration from `FILE`",
+		},
+		cli.StringFlag{
+			Name:  "log, l",
+			Usage: "Output NF log to `FILE`",
+		},
+		cli.StringFlag{
+			Name:  "log5gc, lc",
+			Usage: "Output free5gc log to `FILE`",
+		},
+	}
+
 	rand.Seed(time.Now().UnixNano())
 
 	if err := app.Run(os.Args); err != nil {
-		appLog.Errorf("UPF Run Error: %v", err)
+		logger.MainLog.Errorf("UPF Cli Run Error: %v", err)
 	}
 }
 
-func action(c *cli.Context) error {
-	if err := UPF.Initialize(c); err != nil {
-		appLog.Errorf("%+v", err)
-		return fmt.Errorf("Failed to initialize !!")
+func action(cliCtx *cli.Context) error {
+	err := logger.LogFileHook(cliCtx.String("log"), cliCtx.String("log5gc"))
+	if err != nil {
+		return err
+	}
+
+	logger.MainLog.Infoln("UPF version: ", version.GetVersion())
+
+	cfg, err := factory.ReadConfig(cliCtx.String("config"))
+	if err != nil {
+		return err
+	}
+	factory.UpfConfig = *cfg
+
+	if err := UPF.Initialize(cliCtx); err != nil {
+		return err
 	}
 
 	UPF.Start()

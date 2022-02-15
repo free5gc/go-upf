@@ -32,7 +32,8 @@ func NewPfcpServer(listen string, driver forwarder.Driver) *PfcpServer {
 }
 
 func (s *PfcpServer) main(startDispacher chan bool) {
-	listen := fmt.Sprintf("%s:%s", s.listen, factory.UPF_DEFAULT_PORT)
+	listen := fmt.Sprintf("%s:%d", s.listen, factory.UpfPfcpDefaultPort)
+	logger.PfcpLog.Infof("PFCP Address: %q", listen)
 	laddr, err := net.ResolveUDPAddr("udp", listen)
 	if err != nil {
 		logger.PfcpLog.Errorf("%+v", err)

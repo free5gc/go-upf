@@ -14,6 +14,7 @@ import (
 	"github.com/free5gc/go-upf/internal/gtpv1"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/pkg/factory"
 )
 
 const (
@@ -455,7 +456,7 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 				// GTPv1-U port
 				hc = append(hc, nl.Attr{
 					Type:  gtp5gnl.OUTER_HEADER_CREATION_PORT,
-					Value: nl.AttrU16(2152),
+					Value: nl.AttrU16(factory.UpfGtpDefaultPort),
 				})
 			} else {
 				hc = append(hc, nl.Attr{

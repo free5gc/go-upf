@@ -15,121 +15,67 @@ import (
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/pfcp"
 	"github.com/free5gc/go-upf/pkg/factory"
-	"github.com/free5gc/path_util"
 )
 
 type UPF struct{}
 
-type (
-	Config struct {
-		upfcfg string
-	}
-)
-
-var config Config
-
-var upfCLi = []cli.Flag{
-	cli.StringFlag{
-		Name:  "free5gccfg",
-		Usage: "common config file",
-	},
-	cli.StringFlag{
-		Name:  "upfcfg",
-		Usage: "config file",
-	},
-}
-
-var initLog *logrus.Entry
-
 var pfcpServers []*pfcp.PfcpServer
 
 func init() {
-	initLog = logger.InitLog
 	pfcpServers = make([]*pfcp.PfcpServer, 0)
 }
 
-func (*UPF) GetCliCmd() (flags []cli.Flag) {
-	return upfCLi
-}
-
 func (upf *UPF) Initialize(c *cli.Context) error {
-	config = Config{
-		upfcfg: c.String("upfcfg"),
-	}
-
-	if config.upfcfg != "" {
-		if err := factory.InitConfigFactory(config.upfcfg); err != nil {
-			return err
-		}
-	} else {
-		DefaultUpfConfigPath := path_util.Free5gcPath("free5gc/config/upfcfg.yaml")
-		if err := factory.InitConfigFactory(DefaultUpfConfigPath); err != nil {
-			return err
-		}
-	}
-
 	upf.setLogLevel()
-
-	if err := factory.CheckConfigVersion(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
 func (upf *UPF) setLogLevel() {
-	if factory.UpfConfig.Configuration == nil {
-		initLog.Warnln("UPF config without log level setting!!!")
+	cfg := factory.UpfConfig.Configuration
+	if cfg == nil {
+		logger.InitLog.Warnln("UPF config without log level setting!!!")
 		return
 	}
-
-	if factory.UpfConfig.Configuration.DebugLevel != "" {
-		if level, err := logrus.ParseLevel(factory.UpfConfig.Configuration.DebugLevel); err != nil {
-			initLog.Warnf("UPF Log level [%s] is invalid, set to [info] level",
-				factory.UpfConfig.Configuration.DebugLevel)
-			logger.SetLogLevel(logrus.InfoLevel)
-		} else {
-			initLog.Infof("UPF Log level is set to [%s] level", level)
-			logger.SetLogLevel(level)
-		}
-	} else {
-		initLog.Infoln("UPF Log level is default set to [info] level")
-		logger.SetLogLevel(logrus.InfoLevel)
-	}
-	logger.SetReportCaller(factory.UpfConfig.Configuration.ReportCaller)
+	setLoggerLogLevel("UPF", cfg.DebugLevel, cfg.ReportCaller,
+		logger.SetLogLevel, logger.SetReportCaller)
 }
 
-func (upf *UPF) FilterCli(c *cli.Context) (args []string) {
-	for _, flag := range upf.GetCliCmd() {
-		name := flag.GetName()
-		value := fmt.Sprint(c.Generic(name))
-		if value == "" {
-			continue
+func setLoggerLogLevel(loggerName, DebugLevel string, reportCaller bool,
+	logLevelFn func(l logrus.Level), reportCallerFn func(b bool)) {
+	if DebugLevel != "" {
+		if level, err := logrus.ParseLevel(DebugLevel); err != nil {
+			logger.InitLog.Warnf("%s Log level [%s] is invalid, set to [info] level",
+				loggerName, DebugLevel)
+			logLevelFn(logrus.InfoLevel)
+		} else {
+			logger.InitLog.Infof("%s Log level is set to [%s] level", loggerName, level)
+			logLevelFn(level)
 		}
-
-		args = append(args, "--"+name, value)
+	} else {
+		logger.InitLog.Infof("%s Log level is default set to [info] level", loggerName)
+		logLevelFn(logrus.InfoLevel)
 	}
-	return args
+	reportCallerFn(reportCaller)
 }
 
 func (upf *UPF) Start() {
 	context.InitUpfContext(&factory.UpfConfig)
 
-	initLog.Infoln("Server started")
+	logger.InitLog.Infoln("Server started")
 
 	var gtpuaddr string
 	for _, gtpu := range factory.UpfConfig.Configuration.Gtpu {
-		gtpuaddr = fmt.Sprintf("%s:%v", gtpu.Addr, 2152)
-		initLog.Infof("GTP Address: %q\n", gtpuaddr)
+		gtpuaddr = fmt.Sprintf("%s:%d", gtpu.Addr, factory.UpfGtpDefaultPort)
+		logger.InitLog.Infof("GTP Address: %q", gtpuaddr)
 		break
 	}
 	if gtpuaddr == "" {
-		initLog.Errorln("not found GTP address")
+		logger.InitLog.Errorln("not found GTP address")
 		return
 	}
 	driver, err := forwarder.OpenGtp5g(gtpuaddr)
 	if err != nil {
-		initLog.Errorln(err)
+		logger.InitLog.Errorln(err)
 		return
 	}
 	defer driver.Close()
@@ -138,12 +84,12 @@ func (upf *UPF) Start() {
 	for _, dnn := range factory.UpfConfig.Configuration.DnnList {
 		_, dst, err := net.ParseCIDR(dnn.Cidr)
 		if err != nil {
-			initLog.Errorln(err)
+			logger.InitLog.Errorln(err)
 			continue
 		}
 		err = link.RouteAdd(dst)
 		if err != nil {
-			initLog.Errorln(err)
+			logger.InitLog.Errorln(err)
 			return
 		}
 		break
@@ -176,8 +122,4 @@ func (upf *UPF) Terminate() {
 	for _, pfcpServer := range pfcpServers {
 		pfcpServer.Terminate()
 	}
-}
-
-func (upf *UPF) Exec(c *cli.Context) error {
-	return nil
 }

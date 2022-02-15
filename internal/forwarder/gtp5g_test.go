@@ -2,14 +2,17 @@ package forwarder
 
 import (
 	"net"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/wmnsk/go-pfcp/ie"
+
+	"github.com/free5gc/go-upf/pkg/factory"
 )
 
 func TestGtp5g_CreateRules(t *testing.T) {
-	g, err := OpenGtp5g(":2152")
+	g, err := OpenGtp5g(":" + strconv.Itoa(factory.UpfGtpDefaultPort))
 	if err != nil {
 		t.Fatal(err)
 	}

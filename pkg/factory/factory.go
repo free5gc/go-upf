@@ -11,29 +11,45 @@ import (
 
 var UpfConfig Config
 
-func InitConfigFactory(f string) error {
-	if content, err := ioutil.ReadFile(f); err != nil {
-		return err
-	} else {
-		UpfConfig = Config{}
+// TODO: Support configuration update from REST api
+func InitConfigFactory(f string, cfg *Config) error {
+	if f == "" {
+		// Use default config path
+		f = UpfDefaultConfigPath
+	}
 
-		if yamlErr := yaml.Unmarshal(content, &UpfConfig); yamlErr != nil {
-			return yamlErr
+	if content, err := ioutil.ReadFile(f); err != nil {
+		return fmt.Errorf("[Factory] %+v", err)
+	} else {
+		logger.CfgLog.Infof("Read config from [%s]", f)
+		if yamlErr := yaml.Unmarshal(content, cfg); yamlErr != nil {
+			return fmt.Errorf("[Factory] %+v", yamlErr)
 		}
 	}
 
 	return nil
 }
 
-func CheckConfigVersion() error {
-	currentVersion := UpfConfig.GetVersion()
-
-	if currentVersion != UPF_EXPECTED_CONFIG_VERSION {
-		return fmt.Errorf("UPF config version is [%s], but expected is [%s].",
-			currentVersion, UPF_EXPECTED_CONFIG_VERSION)
+func CheckConfigVersion(cfg *Config) error {
+	currentVersion := cfg.Version()
+	if currentVersion != UpfExpectedConfigVersion {
+		return fmt.Errorf("config version is [%s], but expected is [%s].",
+			currentVersion, UpfExpectedConfigVersion)
 	}
-
-	logger.CfgLog.Infof("UPF config version [%s]", currentVersion)
+	logger.CfgLog.Infof("config version [%s]", currentVersion)
 
 	return nil
+}
+
+func ReadConfig(cfgPath string) (*Config, error) {
+	cfg := &Config{}
+	if err := InitConfigFactory(cfgPath, cfg); err != nil {
+		return nil, fmt.Errorf("ReadConfig [%s] Error: %+v", cfgPath, err)
+	}
+	if err := CheckConfigVersion(cfg); err != nil {
+		return nil, err
+	}
+
+	cfg.Print()
+	return cfg, nil
 }
