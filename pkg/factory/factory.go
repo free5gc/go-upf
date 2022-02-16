@@ -9,7 +9,7 @@ import (
 	"github.com/free5gc/go-upf/internal/logger"
 )
 
-var UpfConfig Config
+var UpfConfig *Config
 
 // TODO: Support configuration update from REST api
 func InitConfigFactory(f string, cfg *Config) error {

@@ -62,13 +62,13 @@ func action(cliCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	factory.UpfConfig = *cfg
+	factory.UpfConfig = cfg
 
-	if err := UPF.Initialize(cliCtx); err != nil {
+	UPF.SetLogLevel()
+
+	if err := UPF.Run(); err != nil {
 		return err
 	}
-
-	UPF.Start()
 
 	return nil
 }
