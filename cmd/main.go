@@ -9,12 +9,10 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/free5gc/go-upf/internal/logger"
-	"github.com/free5gc/go-upf/pkg/app"
+	upfapp "github.com/free5gc/go-upf/pkg/app"
 	"github.com/free5gc/go-upf/pkg/factory"
 	"github.com/free5gc/util/version"
 )
-
-var UPF = &app.UPF{}
 
 func main() {
 	defer func() {
@@ -62,11 +60,13 @@ func action(cliCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	factory.UpfConfig = cfg
 
-	UPF.SetLogLevel()
+	upf, err := upfapp.NewUpf(cfg)
+	if err != nil {
+		return err
+	}
 
-	if err := UPF.Run(); err != nil {
+	if err := upf.Run(); err != nil {
 		return err
 	}
 

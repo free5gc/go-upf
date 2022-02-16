@@ -19,32 +19,38 @@ import (
 )
 
 type UPF struct {
-	ctx context.Context
-	wg  sync.WaitGroup
+	ctx         context.Context
+	wg          sync.WaitGroup
+	cfg         *factory.Config
+	pfcpServers []*pfcp.PfcpServer
 }
 
-var pfcpServers []*pfcp.PfcpServer
-
-func init() {
-	pfcpServers = make([]*pfcp.PfcpServer, 0)
-}
-
-func (u *UPF) SetLogLevel() {
-	cfg := factory.UpfConfig.Configuration
-	if cfg == nil {
-		logger.InitLog.Warnln("UPF config without log level setting!!!")
-		return
+func NewUpf(cfg *factory.Config) (*UPF, error) {
+	upf := &UPF{
+		cfg:         cfg,
+		pfcpServers: make([]*pfcp.PfcpServer, 0),
 	}
+
 	setLoggerLogLevel("UPF", cfg.DebugLevel, cfg.ReportCaller,
+		logger.SetLogLevel, logger.SetReportCaller)
+	return upf, nil
+}
+
+func (u *UPF) Config() *factory.Config {
+	return u.cfg
+}
+
+func (u *UPF) SetLogLevel(lvl string, caller bool) {
+	setLoggerLogLevel("UPF", lvl, caller,
 		logger.SetLogLevel, logger.SetReportCaller)
 }
 
-func setLoggerLogLevel(loggerName, DebugLevel string, reportCaller bool,
+func setLoggerLogLevel(loggerName, debugLevel string, reportCaller bool,
 	logLevelFn func(l logrus.Level), reportCallerFn func(b bool)) {
-	if DebugLevel != "" {
-		if level, err := logrus.ParseLevel(DebugLevel); err != nil {
+	if debugLevel != "" {
+		if level, err := logrus.ParseLevel(debugLevel); err != nil {
 			logger.InitLog.Warnf("%s Log level [%s] is invalid, set to [info] level",
-				loggerName, DebugLevel)
+				loggerName, debugLevel)
 			logLevelFn(logrus.InfoLevel)
 		} else {
 			logger.InitLog.Infof("%s Log level is set to [%s] level", loggerName, level)
@@ -68,7 +74,7 @@ func (u *UPF) Run() error {
 	go u.listenShutdownEvent()
 
 	var gtpuaddr string
-	for _, gtpu := range factory.UpfConfig.Configuration.Gtpu {
+	for _, gtpu := range u.cfg.Gtpu {
 		gtpuaddr = fmt.Sprintf("%s:%d", gtpu.Addr, factory.UpfGtpDefaultPort)
 		logger.InitLog.Infof("GTP Address: %q", gtpuaddr)
 		break
@@ -83,7 +89,7 @@ func (u *UPF) Run() error {
 	defer driver.Close()
 
 	link := driver.Link()
-	for _, dnn := range factory.UpfConfig.Configuration.DnnList {
+	for _, dnn := range u.cfg.DnnList {
 		_, dst, err := net.ParseCIDR(dnn.Cidr)
 		if err != nil {
 			logger.InitLog.Errorln(err)
@@ -96,10 +102,10 @@ func (u *UPF) Run() error {
 		break
 	}
 
-	for _, configPfcp := range factory.UpfConfig.Configuration.Pfcp {
-		pfcpServer := pfcp.NewPfcpServer(configPfcp.Addr, driver)
+	for _, cfgPfcp := range u.cfg.Pfcp {
+		pfcpServer := pfcp.NewPfcpServer(cfgPfcp.Addr, driver)
 		pfcpServer.Start(&u.wg)
-		pfcpServers = append(pfcpServers, pfcpServer)
+		u.pfcpServers = append(u.pfcpServers, pfcpServer)
 	}
 
 	logger.InitLog.Infoln("Server started")
@@ -129,7 +135,7 @@ func (u *UPF) listenShutdownEvent() {
 	}()
 
 	<-u.ctx.Done()
-	for _, pfcpServer := range pfcpServers {
+	for _, pfcpServer := range u.pfcpServers {
 		pfcpServer.Terminate()
 	}
 }
@@ -147,4 +153,5 @@ func (u *UPF) Start() {
 
 func (u *UPF) Terminate() {
 	logger.MainLog.Infof("Terminating UPF...")
+	logger.MainLog.Infof("UPF terminated")
 }

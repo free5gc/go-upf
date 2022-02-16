@@ -9,8 +9,6 @@ import (
 	"github.com/free5gc/go-upf/internal/logger"
 )
 
-var UpfConfig *Config
-
 // TODO: Support configuration update from REST api
 func InitConfigFactory(f string, cfg *Config) error {
 	if f == "" {
@@ -31,7 +29,7 @@ func InitConfigFactory(f string, cfg *Config) error {
 }
 
 func CheckConfigVersion(cfg *Config) error {
-	currentVersion := cfg.Version()
+	currentVersion := cfg.GetVersion()
 	if currentVersion != UpfExpectedConfigVersion {
 		return fmt.Errorf("config version is [%s], but expected is [%s].",
 			currentVersion, UpfExpectedConfigVersion)

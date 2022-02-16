@@ -13,7 +13,13 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
+type upf interface {
+	Config() *factory.Config
+}
+
 type PfcpServer struct {
+	upf
+
 	listen       string
 	conn         *net.UDPConn
 	recoveryTime time.Time

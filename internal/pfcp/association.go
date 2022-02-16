@@ -7,7 +7,6 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/logger"
-	"github.com/free5gc/go-upf/pkg/factory"
 )
 
 func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetupRequest, addr net.Addr) {
@@ -38,7 +37,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 	node := NewNode(nodeid, s.driver)
 	s.nodes.Store(nodeid, node)
 
-	cfg := factory.UpfConfig.Configuration
+	cfg := s.Config()
 
 	var pfcpaddr string
 	if addr, ok := s.conn.LocalAddr().(*net.UDPAddr); ok {
