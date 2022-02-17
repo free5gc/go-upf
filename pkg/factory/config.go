@@ -18,8 +18,8 @@ type Config struct {
 	Version      string    `yaml:"version,omitempty"`
 	Description  string    `yaml:"description,omitempty"`
 	Pfcp         []Pfcp    `yaml:"pfcp"`
-	Gtpu         []Gtpu    `yaml:"gtpu"`
-	DnnList      []DnnList `yaml:"dnn_list"`
+	Gtpu         *Gtpu     `yaml:"gtpu"`
+	DnnList      []DnnList `yaml:"dnnList"`
 	DebugLevel   string    `yaml:"debugLevel"`
 	ReportCaller bool      `yaml:"reportCaller"`
 }
@@ -29,7 +29,13 @@ type Pfcp struct {
 }
 
 type Gtpu struct {
+	Forwarder string   `yaml:"forwarder"`
+	IfList    []IfInfo `yaml:"ifList"`
+}
+
+type IfInfo struct {
 	Addr   string `yaml:"addr"`
+	Type   string `yaml:"type,omitempty"`
 	Name   string `yaml:"name,omitempty"`
 	IfName string `yaml:"ifname,omitempty"`
 }

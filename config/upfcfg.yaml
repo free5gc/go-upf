@@ -5,15 +5,18 @@ description: UPF initial local configuration
 pfcp:
   - addr: 127.0.0.8
 
-# The IP list of the N3/N9 interfaces on this UPF
-# If there are multiple connection, set addr to 0.0.0.0 or list all the addresses
 gtpu:
-  - addr: 127.0.0.8
-    # name: upf.5gc.nctu.me
-    # ifname: gtpif
+  forwarder: gtp5g
+  # The IP list of the N3/N9 interfaces on this UPF
+  # If there are multiple connection, set addr to 0.0.0.0 or list all the addresses
+  ifList:
+    - addr: 127.0.0.8
+      type: N3
+      # name: upf.5gc.nctu.me
+      # ifname: gtpif
 
 # The DNN list supported by UPF
-dnn_list:
+dnnList:
   - dnn: internet # Data Network Name
     cidr: 10.60.0.0/24 # Classless Inter-Domain Routing for assigned IPv4 pool of UE
     # natifname: eth0

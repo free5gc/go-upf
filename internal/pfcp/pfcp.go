@@ -13,13 +13,7 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
-type upf interface {
-	Config() *factory.Config
-}
-
 type PfcpServer struct {
-	upf
-
 	listen       string
 	conn         *net.UDPConn
 	recoveryTime time.Time
@@ -83,7 +77,7 @@ func (s *PfcpServer) Start(wg *sync.WaitGroup) {
 	logger.PfcpLog.Infoln(s.listen, "started")
 }
 
-func (s *PfcpServer) Terminate() {
+func (s *PfcpServer) Stop() {
 	logger.PfcpLog.Infoln(s.listen, "Stopping pfcp server")
 	if s.conn != nil {
 		err := s.conn.Close()

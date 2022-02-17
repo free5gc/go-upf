@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
-	"net"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -73,34 +71,11 @@ func (u *UPF) Run() error {
 	 * context */
 	go u.listenShutdownEvent()
 
-	var gtpuaddr string
-	for _, gtpu := range u.cfg.Gtpu {
-		gtpuaddr = fmt.Sprintf("%s:%d", gtpu.Addr, factory.UpfGtpDefaultPort)
-		logger.InitLog.Infof("GTP Address: %q", gtpuaddr)
-		break
-	}
-	if gtpuaddr == "" {
-		return fmt.Errorf("not found GTP address")
-	}
-	driver, err := forwarder.OpenGtp5g(gtpuaddr)
+	driver, err := forwarder.NewDriver(u.cfg)
 	if err != nil {
 		return err
 	}
 	defer driver.Close()
-
-	link := driver.Link()
-	for _, dnn := range u.cfg.DnnList {
-		_, dst, err := net.ParseCIDR(dnn.Cidr)
-		if err != nil {
-			logger.InitLog.Errorln(err)
-			continue
-		}
-		err = link.RouteAdd(dst)
-		if err != nil {
-			return err
-		}
-		break
-	}
 
 	for _, cfgPfcp := range u.cfg.Pfcp {
 		pfcpServer := pfcp.NewPfcpServer(cfgPfcp.Addr, driver)
@@ -136,7 +111,7 @@ func (u *UPF) listenShutdownEvent() {
 
 	<-u.ctx.Done()
 	for _, pfcpServer := range u.pfcpServers {
-		pfcpServer.Terminate()
+		pfcpServer.Stop()
 	}
 }
 
