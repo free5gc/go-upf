@@ -37,43 +37,10 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 	node := NewNode(nodeid, s.driver)
 	s.nodes.Store(nodeid, node)
 
-	cfg := s.Config()
-
 	var pfcpaddr string
 	if addr, ok := s.conn.LocalAddr().(*net.UDPAddr); ok {
 		pfcpaddr = addr.IP.String()
 	}
-
-	// ASSOSI = 0
-	// ASSONI = 1
-	// TEIDRI(3) = 1
-	// V6 = 0
-	// V4 = 1
-	var flags uint8
-	flags |= uint8(1) << 5
-	flags |= uint8(1) << 2
-	flags |= uint8(1) << 0
-
-	// tRange = 0
-	var tRange uint8
-
-	// TODO: only IPv4
-	var v4 string
-	var v6 string
-	for _, e := range cfg.Gtpu {
-		v4 = e.Addr
-		break
-	}
-
-	// DNN
-	var ni string
-	for _, e := range cfg.DnnList {
-		ni = e.Dnn
-		break
-	}
-
-	// si = 0
-	var si uint8
 
 	rsp := message.NewAssociationSetupResponse(
 		req.Header.SequenceNumber,
@@ -82,14 +49,6 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 		ie.NewRecoveryTimeStamp(s.recoveryTime),
 		// TODO:
 		// ie.NewUPFunctionFeatures(),
-		ie.NewUserPlaneIPResourceInformation(
-			flags,  // flags(spare, ASSOSI, ASSONI, TEIDRI(3), V6, V4
-			tRange, // TEID Range
-			v4,     // IPv4 Address
-			v6,     // IPv6 Address
-			ni,     // network instance
-			si,     // source interface
-		),
 	)
 
 	b, err := rsp.Marshal()
