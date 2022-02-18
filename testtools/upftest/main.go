@@ -60,7 +60,7 @@ func main() {
 
 		msg, err1 := message.Parse(buf[:n])
 		if err1 != nil {
-			log.Printf("ignored undecodable message: %x, error: %s", buf[:n], err)
+			log.Printf("ignored undecodable message: %x, error: %s", buf[:n], err1)
 			continue
 		}
 

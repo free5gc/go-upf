@@ -32,7 +32,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 		}
 		s.nodes.Delete(ni)
 	}
-	node := NewNode(nodeid, s.driver)
+	node := s.NewNode(nodeid, s.driver)
 	s.nodes.Store(nodeid, node)
 
 	var pfcpaddr string

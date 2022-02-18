@@ -45,6 +45,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		wg.Done()
 	}()
 
+	var err error
 	laddr, err := net.ResolveUDPAddr("udp", s.listen)
 	if err != nil {
 		s.log.Errorf("Resolve err: %+v", err)
@@ -60,14 +61,14 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 
 	buf := make([]byte, 1500)
 	for {
-		n, addr, err1 := s.conn.ReadFrom(buf)
-		if err1 != nil {
-			s.log.Errorf("%+v", err1)
+		n, addr, err := s.conn.ReadFrom(buf)
+		if err != nil {
+			s.log.Errorf("%+v", err)
 			break
 		}
-		err1 = s.dispacher(buf[:n], addr)
-		if err1 != nil {
-			s.log.Errorln(err1)
+		err = s.dispacher(buf[:n], addr)
+		if err != nil {
+			s.log.Errorln(err)
 			s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(buf))
 		}
 	}
@@ -88,4 +89,14 @@ func (s *PfcpServer) Stop() {
 			s.log.Errorf("Stop pfcp server err: %+v", err)
 		}
 	}
+}
+
+func (s *PfcpServer) NewNode(id string, driver forwarder.Driver) *Node {
+	n := &Node{
+		ID:     id,
+		driver: driver,
+		log:    s.log.WithField(logger.FieldNodeID, "NodeID:"+id),
+	}
+	n.log.Infoln("New node")
+	return n
 }

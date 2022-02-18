@@ -18,12 +18,13 @@ var (
 	PfcpLog  *logrus.Entry
 	CtxLog   *logrus.Entry
 	BuffLog  *logrus.Entry
-	SessLog  *logrus.Entry
 	Gtp5gLog *logrus.Entry
 )
 
 const (
 	FieldListenAddr string = "listen_addr"
+	FieldNodeID     string = "node_id"
+	FieldSessionID  string = "session_id"
 )
 
 func init() {
@@ -35,7 +36,7 @@ func init() {
 		TrimMessages:    true,
 		NoFieldsSpace:   true,
 		HideKeys:        true,
-		FieldsOrder:     []string{"component", "category", FieldListenAddr},
+		FieldsOrder:     []string{"component", "category", FieldListenAddr, FieldNodeID, FieldSessionID},
 	}
 
 	MainLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Main"})
@@ -44,7 +45,6 @@ func init() {
 	PfcpLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Pfcp"})
 	CtxLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Ctx"})
 	BuffLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Buff"})
-	SessLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Sess"})
 	Gtp5gLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Gtp5g"})
 }
 

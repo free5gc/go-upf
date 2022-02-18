@@ -45,7 +45,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	s.log.Infof("seid: %v\n", fseid.SEID)
 
 	// allocate a session
-	sess := node.New(fseid.SEID)
+	sess := node.NewSess(fseid.SEID)
 
 	sess.HandleReport(s.ServeReport)
 
@@ -125,70 +125,70 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 		return
 	}
 
-	sess, ok := node.Sess(req.Header.SEID)
-	if !ok {
-		s.log.Errorf("not found SEID %v\n", req.Header.SEID)
+	sess, err := node.Sess(req.Header.SEID)
+	if err != nil {
+		s.log.Errorln(err)
 		return
 	}
 
 	for _, i := range req.CreateFAR {
-		err := sess.CreateFAR(i)
+		err = sess.CreateFAR(i)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreateQER {
-		err := sess.CreateQER(i)
+		err = sess.CreateQER(i)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreatePDR {
-		err := sess.CreatePDR(i)
+		err = sess.CreatePDR(i)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.RemoveFAR {
-		err := sess.RemoveFAR(i)
+		err = sess.RemoveFAR(i)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.RemoveQER {
-		err := sess.RemoveQER(i)
+		err = sess.RemoveQER(i)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.RemovePDR {
-		err := sess.RemovePDR(i)
+		err = sess.RemovePDR(i)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.UpdateFAR {
-		err := sess.UpdateFAR(i)
+		err = sess.UpdateFAR(i)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.UpdateQER {
-		err := sess.UpdateQER(i)
+		err = sess.UpdateQER(i)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.UpdatePDR {
-		err := sess.UpdatePDR(i)
+		err = sess.UpdatePDR(i)
 		if err != nil {
 			s.log.Errorln(err)
 		}
@@ -237,13 +237,13 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 		return
 	}
 
-	sess, ok := node.Sess(req.Header.SEID)
-	if !ok {
-		s.log.Errorf("not found SEID %v\n", req.Header.SEID)
+	sess, err := node.Sess(req.Header.SEID)
+	if err != nil {
+		s.log.Errorln(err)
 		return
 	}
 
-	node.Delete(req.Header.SEID)
+	node.DeleteSess(req.Header.SEID)
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp

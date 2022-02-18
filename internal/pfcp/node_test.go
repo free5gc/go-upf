@@ -5,30 +5,31 @@ import (
 )
 
 func TestNode(t *testing.T) {
-	n := NewNode("", nil)
+	s := NewPfcpServer("", nil)
+	n := s.NewNode("upf", nil)
 	t.Run("delete 0 no effect", func(t *testing.T) {
-		n.Delete(0)
+		n.DeleteSess(0)
 	})
 	t.Run("sess 0 is not found", func(t *testing.T) {
-		_, ok := n.Sess(0)
-		if ok {
-			t.Errorf("want false; but got %v\n", ok)
+		_, err := n.Sess(0)
+		if err == nil {
+			t.Errorf("want false; but got %v\n", err)
 		}
 	})
 	t.Run("sess 1 is not found", func(t *testing.T) {
-		_, ok := n.Sess(1)
-		if ok {
-			t.Errorf("want false; but got %v\n", ok)
+		_, err := n.Sess(1)
+		if err == nil {
+			t.Errorf("want false; but got %v\n", err)
 		}
 	})
 	t.Run("sess 2 is not found", func(t *testing.T) {
-		_, ok := n.Sess(2)
-		if ok {
-			t.Errorf("want false; but got %v\n", ok)
+		_, err := n.Sess(2)
+		if err == nil {
+			t.Errorf("want false; but got %v\n", err)
 		}
 	})
 	t.Run("new 1", func(t *testing.T) {
-		sess := n.New(10)
+		sess := n.NewSess(10)
 		if sess.LocalID != 1 {
 			t.Errorf("want 1; but got %v\n", sess.LocalID)
 		}
@@ -37,7 +38,7 @@ func TestNode(t *testing.T) {
 		}
 	})
 	t.Run("new 2", func(t *testing.T) {
-		sess := n.New(20)
+		sess := n.NewSess(20)
 		if sess.LocalID != 2 {
 			t.Errorf("want 2; but got %v\n", sess.LocalID)
 		}
@@ -46,7 +47,7 @@ func TestNode(t *testing.T) {
 		}
 	})
 	t.Run("new 3", func(t *testing.T) {
-		sess := n.New(30)
+		sess := n.NewSess(30)
 		if sess.LocalID != 3 {
 			t.Errorf("want 3; but got %v\n", sess.LocalID)
 		}
@@ -55,9 +56,9 @@ func TestNode(t *testing.T) {
 		}
 	})
 	t.Run("sess 1", func(t *testing.T) {
-		sess, ok := n.Sess(1)
-		if !ok {
-			t.Fatalf("want true; but got %v\n", ok)
+		sess, err := n.Sess(1)
+		if err != nil {
+			t.Fatalf("want true; but got %v\n", err)
 		}
 		if sess.LocalID != 1 {
 			t.Errorf("want 1; but got %v\n", sess.LocalID)
@@ -67,9 +68,9 @@ func TestNode(t *testing.T) {
 		}
 	})
 	t.Run("sess 2", func(t *testing.T) {
-		sess, ok := n.Sess(2)
-		if !ok {
-			t.Fatalf("want true; but got %v\n", ok)
+		sess, err := n.Sess(2)
+		if err != nil {
+			t.Fatalf("want true; but got %v\n", err)
 		}
 		if sess.LocalID != 2 {
 			t.Errorf("want 2; but got %v\n", sess.LocalID)
@@ -79,9 +80,9 @@ func TestNode(t *testing.T) {
 		}
 	})
 	t.Run("sess 3", func(t *testing.T) {
-		sess, ok := n.Sess(3)
-		if !ok {
-			t.Fatalf("want true; but got %v\n", ok)
+		sess, err := n.Sess(3)
+		if err != nil {
+			t.Fatalf("want true; but got %v\n", err)
 		}
 		if sess.LocalID != 3 {
 			t.Errorf("want 3; but got %v\n", sess.LocalID)
@@ -91,37 +92,37 @@ func TestNode(t *testing.T) {
 		}
 	})
 	t.Run("sess 4 is not found", func(t *testing.T) {
-		_, ok := n.Sess(4)
-		if ok {
-			t.Errorf("want false; but got %v\n", ok)
+		_, err := n.Sess(4)
+		if err == nil {
+			t.Errorf("want false; but got %v\n", err)
 		}
 	})
 	t.Run("delete 2", func(t *testing.T) {
-		n.Delete(2)
+		n.DeleteSess(2)
 	})
 	t.Run("sess 2 is not found", func(t *testing.T) {
-		_, ok := n.Sess(2)
-		if ok {
-			t.Errorf("want false; but got %v\n", ok)
+		_, err := n.Sess(2)
+		if err == nil {
+			t.Errorf("want false; but got %v\n", err)
 		}
 	})
 	t.Run("delete 1", func(t *testing.T) {
-		n.Delete(1)
+		n.DeleteSess(1)
 	})
 	t.Run("sess 1 is not found", func(t *testing.T) {
-		_, ok := n.Sess(1)
-		if ok {
-			t.Errorf("want false; but got %v\n", ok)
+		_, err := n.Sess(1)
+		if err == nil {
+			t.Errorf("want false; but got %v\n", err)
 		}
 	})
 	t.Run("delete 1 no effect", func(t *testing.T) {
-		n.Delete(1)
+		n.DeleteSess(1)
 	})
 	t.Run("delete 4 no effect", func(t *testing.T) {
-		n.Delete(4)
+		n.DeleteSess(4)
 	})
 	t.Run("new 4", func(t *testing.T) {
-		sess := n.New(40)
+		sess := n.NewSess(40)
 		if sess.LocalID != 1 {
 			t.Errorf("want 1; but got %v\n", sess.LocalID)
 		}

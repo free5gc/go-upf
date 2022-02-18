@@ -1,8 +1,11 @@
 package pfcp
 
 import (
+	"fmt"
 	"net"
 
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
@@ -18,14 +21,7 @@ type Sess struct {
 	FARIDs   map[uint32]struct{}
 	QERIDs   map[uint32]struct{}
 	handler  func(net.Addr, uint64, report.Report)
-}
-
-func NewSess() *Sess {
-	s := new(Sess)
-	s.PDRIDs = make(map[uint16]struct{})
-	s.FARIDs = make(map[uint32]struct{})
-	s.QERIDs = make(map[uint32]struct{})
-	return s
+	log      *logrus.Entry
 }
 
 func (s *Sess) Close() {
@@ -33,21 +29,21 @@ func (s *Sess) Close() {
 		i := ie.NewRemoveFAR(ie.NewFARID(id))
 		err := s.RemoveFAR(i)
 		if err != nil {
-			logger.SessLog.Errorf("Remove FAR err: %+v", err)
+			s.log.Errorf("Remove FAR err: %+v", err)
 		}
 	}
 	for id := range s.QERIDs {
 		i := ie.NewRemoveQER(ie.NewQERID(id))
 		err := s.RemoveQER(i)
 		if err != nil {
-			logger.SessLog.Errorf("Remove QER err: %+v", err)
+			s.log.Errorf("Remove QER err: %+v", err)
 		}
 	}
 	for id := range s.PDRIDs {
 		i := ie.NewRemovePDR(ie.NewPDRID(id))
 		err := s.RemovePDR(i)
 		if err != nil {
-			logger.SessLog.Errorf("remove PDR err: %+v", err)
+			s.log.Errorf("remove PDR err: %+v", err)
 		}
 	}
 }
@@ -170,13 +166,7 @@ type Node struct {
 	sess   []*Sess
 	free   []uint64
 	driver forwarder.Driver
-}
-
-func NewNode(id string, driver forwarder.Driver) *Node {
-	n := new(Node)
-	n.ID = id
-	n.driver = driver
-	return n
+	log    *logrus.Entry
 }
 
 func (n *Node) Reset() {
@@ -189,46 +179,59 @@ func (n *Node) Reset() {
 	n.free = []uint64{}
 }
 
-func (n *Node) Sess(seid uint64) (*Sess, bool) {
-	if seid == 0 {
-		return nil, false
+func (n *Node) Sess(lSeid uint64) (*Sess, error) {
+	if lSeid == 0 {
+		return nil, errors.New("Sess: invalid lSeid:0")
 	}
-	i := int(seid) - 1
+	i := int(lSeid) - 1
 	if i >= len(n.sess) {
-		return nil, false
+		return nil, errors.Errorf("Sess: sess not found (lSeid:0x%x)", lSeid)
 	}
 	sess := n.sess[i]
-	return sess, sess != nil
+	if sess == nil {
+		return nil, errors.Errorf("Sess: sess not found (lSeid:0x%x)", lSeid)
+	}
+	return sess, nil
 }
 
-func (n *Node) New(seid uint64) *Sess {
-	sess := NewSess()
-	sess.node = n
-	sess.RemoteID = seid
+func (n *Node) NewSess(rSeid uint64) *Sess {
+	s := &Sess{
+		node:     n,
+		RemoteID: rSeid,
+		PDRIDs:   make(map[uint16]struct{}),
+		FARIDs:   make(map[uint32]struct{}),
+		QERIDs:   make(map[uint32]struct{}),
+	}
 	last := len(n.free) - 1
 	if last >= 0 {
-		sess.LocalID = n.free[last]
+		s.LocalID = n.free[last]
 		n.free = n.free[:last]
-		n.sess[sess.LocalID-1] = sess
+		n.sess[s.LocalID-1] = s
 	} else {
-		n.sess = append(n.sess, sess)
-		sess.LocalID = uint64(len(n.sess))
+		n.sess = append(n.sess, s)
+		s.LocalID = uint64(len(n.sess))
 	}
-	return sess
+	s.log = n.log.WithField(logger.FieldSessionID, fmt.Sprintf("SEID:L(0x%x),R(0x%x)", s.LocalID, rSeid))
+	s.log.Infoln("New session")
+	return s
 }
 
-func (n *Node) Delete(seid uint64) {
-	if seid == 0 {
+func (n *Node) DeleteSess(lSeid uint64) {
+	if lSeid == 0 {
+		n.log.Warnln("DeleteSess: invalid lSeid:0")
 		return
 	}
-	i := int(seid) - 1
+	i := int(lSeid) - 1
 	if i >= len(n.sess) {
+		n.log.Warnf("DeleteSess: sess not found (lSeid:0x%x)", lSeid)
 		return
 	}
 	if n.sess[i] == nil {
+		n.log.Warnf("DeleteSess: sess not found (lSeid:0x%x)", lSeid)
 		return
 	}
+	n.sess[i].log.Infoln("sess deleted")
 	n.sess[i].Close()
 	n.sess[i] = nil
-	n.free = append(n.free, seid)
+	n.free = append(n.free, lSeid)
 }
