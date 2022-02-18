@@ -5,23 +5,21 @@ import (
 
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
-
-	"github.com/free5gc/go-upf/internal/logger"
 )
 
 func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetupRequest, addr net.Addr) {
-	logger.PfcpLog.Infoln(s.listen, "handleAssociationSetupRequest")
+	s.log.Infoln("handleAssociationSetupRequest")
 
 	if req.NodeID == nil {
-		logger.PfcpLog.Errorln(s.listen, "not found NodeID")
+		s.log.Errorln("not found NodeID")
 		return
 	}
 	nodeid, err := req.NodeID.NodeID()
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
-	logger.PfcpLog.Infof("%v nodeid: %v\n", s.listen, nodeid)
+	s.log.Infof("nodeid: %v\n", nodeid)
 
 	// deleting the existing PFCP association and associated PFCP sessions,
 	// if a PFCP association was already established for the Node ID
@@ -29,7 +27,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 	// received in the request.
 	if ni, ok := s.nodes.Load(nodeid); ok {
 		if node, ok := ni.(*Node); ok {
-			logger.PfcpLog.Infof("delete node: %#+v\n", node)
+			s.log.Infof("delete node: %#+v\n", node)
 			node.Reset()
 		}
 		s.nodes.Delete(ni)
@@ -53,21 +51,21 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 
 	b, err := rsp.Marshal()
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
 
 	_, err = s.conn.WriteTo(b, addr)
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
 }
 
 func (s *PfcpServer) handleAssociationUpdateRequest(msg *message.AssociationUpdateRequest, addr net.Addr) {
-	logger.PfcpLog.Infoln(s.listen, "handleAssociationUpdateRequest")
+	s.log.Infoln("handleAssociationUpdateRequest")
 }
 
 func (s *PfcpServer) handleAssociationReleaseRequest(msg *message.AssociationReleaseRequest, addr net.Addr) {
-	logger.PfcpLog.Infoln(s.listen, "handleAssociationReleaseRequest")
+	s.log.Infoln("handleAssociationReleaseRequest")
 }

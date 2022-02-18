@@ -5,46 +5,44 @@ import (
 
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
-
-	"github.com/free5gc/go-upf/internal/logger"
 )
 
 func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstablishmentRequest, addr net.Addr) {
 	// TODO: error response
-	logger.PfcpLog.Infoln(s.listen, "handleSessionEstablishmentRequest")
+	s.log.Infoln("handleSessionEstablishmentRequest")
 
 	if req.NodeID == nil {
-		logger.PfcpLog.Errorln("not found NodeID")
+		s.log.Errorln("not found NodeID")
 		return
 	}
 	nodeid, err := req.NodeID.NodeID()
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
-	logger.PfcpLog.Infof("nodeid: %v\n", nodeid)
+	s.log.Infof("nodeid: %v\n", nodeid)
 
 	ni, ok := s.nodes.Load(nodeid)
 	if !ok {
-		logger.PfcpLog.Errorf("not found NodeID %v\n", nodeid)
+		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
 	}
 	node, ok := ni.(*Node)
 	if !ok {
-		logger.PfcpLog.Errorf("not found NodeID %v\n", nodeid)
+		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
 	}
 
 	if req.CPFSEID == nil {
-		logger.PfcpLog.Errorln("not found CP F-SEID")
+		s.log.Errorln("not found CP F-SEID")
 		return
 	}
 	fseid, err := req.CPFSEID.FSEID()
 	if err != nil {
-		logger.PfcpLog.Errorln(err)
+		s.log.Errorln(err)
 		return
 	}
-	logger.PfcpLog.Infof("seid: %v\n", fseid.SEID)
+	s.log.Infof("seid: %v\n", fseid.SEID)
 
 	// allocate a session
 	sess := node.New(fseid.SEID)
@@ -55,21 +53,21 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	for _, i := range req.CreateFAR {
 		err = sess.CreateFAR(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreateQER {
 		err = sess.CreateQER(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreatePDR {
 		err = sess.CreatePDR(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
@@ -95,104 +93,104 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 
 	b, err := rsp.Marshal()
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
 
 	_, err = s.conn.WriteTo(b, addr)
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
 }
 
 func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModificationRequest, addr net.Addr) {
 	// TODO: error response
-	logger.PfcpLog.Infoln(s.listen, "handleSessionModificationRequest")
+	s.log.Infoln("handleSessionModificationRequest")
 
 	var nodeid string
 	if raddr, ok := addr.(*net.UDPAddr); ok {
 		nodeid = raddr.IP.String()
 	}
-	logger.PfcpLog.Infof("nodeid: %v\n", nodeid)
+	s.log.Infof("nodeid: %v\n", nodeid)
 
 	ni, ok := s.nodes.Load(nodeid)
 	if !ok {
-		logger.PfcpLog.Errorf("not found NodeID %v\n", nodeid)
+		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
 	}
 	node, ok := ni.(*Node)
 	if !ok {
-		logger.PfcpLog.Errorf("not found NodeID %v\n", nodeid)
+		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
 	}
 
 	sess, ok := node.Sess(req.Header.SEID)
 	if !ok {
-		logger.PfcpLog.Errorf("not found SEID %v\n", req.Header.SEID)
+		s.log.Errorf("not found SEID %v\n", req.Header.SEID)
 		return
 	}
 
 	for _, i := range req.CreateFAR {
 		err := sess.CreateFAR(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreateQER {
 		err := sess.CreateQER(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreatePDR {
 		err := sess.CreatePDR(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.RemoveFAR {
 		err := sess.RemoveFAR(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.RemoveQER {
 		err := sess.RemoveQER(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.RemovePDR {
 		err := sess.RemovePDR(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.UpdateFAR {
 		err := sess.UpdateFAR(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.UpdateQER {
 		err := sess.UpdateQER(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.UpdatePDR {
 		err := sess.UpdatePDR(i)
 		if err != nil {
-			logger.PfcpLog.Errorln(s.listen, err)
+			s.log.Errorln(err)
 		}
 	}
 
@@ -207,41 +205,41 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 
 	b, err := rsp.Marshal()
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
 
 	_, err = s.conn.WriteTo(b, addr)
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
 }
 
 func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRequest, addr net.Addr) {
 	// TODO: error response
-	logger.PfcpLog.Infoln(s.listen, "handleSessionDeletionRequest")
+	s.log.Infoln("handleSessionDeletionRequest")
 
 	var nodeid string
 	if raddr, ok := addr.(*net.UDPAddr); ok {
 		nodeid = raddr.IP.String()
 	}
-	logger.PfcpLog.Infof("nodeid: %v\n", nodeid)
+	s.log.Infof("nodeid: %v\n", nodeid)
 
 	ni, ok := s.nodes.Load(nodeid)
 	if !ok {
-		logger.PfcpLog.Errorf("not found NodeID %v\n", nodeid)
+		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
 	}
 	node, ok := ni.(*Node)
 	if !ok {
-		logger.PfcpLog.Errorf("not found NodeID %v\n", nodeid)
+		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
 	}
 
 	sess, ok := node.Sess(req.Header.SEID)
 	if !ok {
-		logger.PfcpLog.Errorf("not found SEID %v\n", req.Header.SEID)
+		s.log.Errorf("not found SEID %v\n", req.Header.SEID)
 		return
 	}
 
@@ -258,13 +256,13 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 
 	b, err := rsp.Marshal()
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
 
 	_, err = s.conn.WriteTo(b, addr)
 	if err != nil {
-		logger.PfcpLog.Errorln(s.listen, err)
+		s.log.Errorln(err)
 		return
 	}
 }

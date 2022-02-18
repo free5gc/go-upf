@@ -22,6 +22,10 @@ var (
 	Gtp5gLog *logrus.Entry
 )
 
+const (
+	FieldListenAddr string = "listen_addr"
+)
+
 func init() {
 	log = logrus.New()
 	log.SetReportCaller(false)
@@ -31,7 +35,7 @@ func init() {
 		TrimMessages:    true,
 		NoFieldsSpace:   true,
 		HideKeys:        true,
-		FieldsOrder:     []string{"component", "category"},
+		FieldsOrder:     []string{"component", "category", FieldListenAddr},
 	}
 
 	MainLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Main"})
