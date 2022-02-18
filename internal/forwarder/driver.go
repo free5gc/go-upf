@@ -15,17 +15,17 @@ import (
 type Driver interface {
 	Close()
 
-	CreatePDR(*ie.IE) error
-	UpdatePDR(*ie.IE) error
-	RemovePDR(*ie.IE) error
+	CreatePDR(uint64, *ie.IE) error
+	UpdatePDR(uint64, *ie.IE) error
+	RemovePDR(uint64, *ie.IE) error
 
-	CreateFAR(*ie.IE) error
-	UpdateFAR(*ie.IE) error
-	RemoveFAR(*ie.IE) error
+	CreateFAR(uint64, *ie.IE) error
+	UpdateFAR(uint64, *ie.IE) error
+	RemoveFAR(uint64, *ie.IE) error
 
-	CreateQER(*ie.IE) error
-	UpdateQER(*ie.IE) error
-	RemoveQER(*ie.IE) error
+	CreateQER(uint64, *ie.IE) error
+	UpdateQER(uint64, *ie.IE) error
+	RemoveQER(uint64, *ie.IE) error
 
 	HandleReport(report.Handler)
 }

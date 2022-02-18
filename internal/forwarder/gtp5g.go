@@ -268,7 +268,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	return attrs, nil
 }
 
-func (g *Gtp5g) CreatePDR(req *ie.IE) error {
+func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 	var pdrid int
 	var attrs []nl.Attr
 
@@ -352,7 +352,7 @@ func (g *Gtp5g) CreatePDR(req *ie.IE) error {
 	return gtp5gnl.CreatePDR(g.client, g.link.link, pdrid, attrs)
 }
 
-func (g *Gtp5g) UpdatePDR(req *ie.IE) error {
+func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 	var pdrid int
 	var attrs []nl.Attr
 
@@ -423,7 +423,7 @@ func (g *Gtp5g) UpdatePDR(req *ie.IE) error {
 	return gtp5gnl.UpdatePDR(g.client, g.link.link, pdrid, attrs)
 }
 
-func (g *Gtp5g) RemovePDR(req *ie.IE) error {
+func (g *Gtp5g) RemovePDR(lSeid uint64, req *ie.IE) error {
 	v, err := req.PDRID()
 	if err != nil {
 		return errors.New("not found PDRID")
@@ -489,7 +489,7 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 	return attrs, nil
 }
 
-func (g *Gtp5g) CreateFAR(req *ie.IE) error {
+func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 	var farid int
 	var attrs []nl.Attr
 
@@ -535,7 +535,7 @@ func (g *Gtp5g) CreateFAR(req *ie.IE) error {
 	return gtp5gnl.CreateFAR(g.client, g.link.link, farid, attrs)
 }
 
-func (g *Gtp5g) UpdateFAR(req *ie.IE) error {
+func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 	var farid int
 	var attrs []nl.Attr
 
@@ -582,7 +582,7 @@ func (g *Gtp5g) UpdateFAR(req *ie.IE) error {
 	return gtp5gnl.UpdateFAR(g.client, g.link.link, farid, attrs)
 }
 
-func (g *Gtp5g) RemoveFAR(req *ie.IE) error {
+func (g *Gtp5g) RemoveFAR(lSeid uint64, req *ie.IE) error {
 	v, err := req.FARID()
 	if err != nil {
 		return errors.New("not found FARID")
@@ -590,7 +590,7 @@ func (g *Gtp5g) RemoveFAR(req *ie.IE) error {
 	return gtp5gnl.RemoveFAR(g.client, g.link.link, int(v))
 }
 
-func (g *Gtp5g) CreateQER(req *ie.IE) error {
+func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 	var qerid int
 	var attrs []nl.Attr
 
@@ -725,7 +725,7 @@ func (g *Gtp5g) CreateQER(req *ie.IE) error {
 	return gtp5gnl.CreateQER(g.client, g.link.link, qerid, attrs)
 }
 
-func (g *Gtp5g) UpdateQER(req *ie.IE) error {
+func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 	var qerid int
 	var attrs []nl.Attr
 
@@ -860,7 +860,7 @@ func (g *Gtp5g) UpdateQER(req *ie.IE) error {
 	return gtp5gnl.UpdateQER(g.client, g.link.link, qerid, attrs)
 }
 
-func (g *Gtp5g) RemoveQER(req *ie.IE) error {
+func (g *Gtp5g) RemoveQER(lSeid uint64, req *ie.IE) error {
 	v, err := req.QERID()
 	if err != nil {
 		return errors.New("not found QERID")

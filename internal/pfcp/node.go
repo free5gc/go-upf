@@ -49,7 +49,7 @@ func (s *Sess) Close() {
 }
 
 func (s *Sess) CreatePDR(req *ie.IE) error {
-	err := s.node.driver.CreatePDR(req)
+	err := s.node.driver.CreatePDR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -63,11 +63,11 @@ func (s *Sess) CreatePDR(req *ie.IE) error {
 }
 
 func (s *Sess) UpdatePDR(req *ie.IE) error {
-	return s.node.driver.UpdatePDR(req)
+	return s.node.driver.UpdatePDR(s.LocalID, req)
 }
 
 func (s *Sess) RemovePDR(req *ie.IE) error {
-	err := s.node.driver.RemovePDR(req)
+	err := s.node.driver.RemovePDR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (s *Sess) RemovePDR(req *ie.IE) error {
 }
 
 func (s *Sess) CreateFAR(req *ie.IE) error {
-	err := s.node.driver.CreateFAR(req)
+	err := s.node.driver.CreateFAR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -95,11 +95,11 @@ func (s *Sess) CreateFAR(req *ie.IE) error {
 }
 
 func (s *Sess) UpdateFAR(req *ie.IE) error {
-	return s.node.driver.UpdateFAR(req)
+	return s.node.driver.UpdateFAR(s.LocalID, req)
 }
 
 func (s *Sess) RemoveFAR(req *ie.IE) error {
-	err := s.node.driver.RemoveFAR(req)
+	err := s.node.driver.RemoveFAR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (s *Sess) RemoveFAR(req *ie.IE) error {
 }
 
 func (s *Sess) CreateQER(req *ie.IE) error {
-	err := s.node.driver.CreateQER(req)
+	err := s.node.driver.CreateQER(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -127,11 +127,11 @@ func (s *Sess) CreateQER(req *ie.IE) error {
 }
 
 func (s *Sess) UpdateQER(req *ie.IE) error {
-	return s.node.driver.UpdateQER(req)
+	return s.node.driver.UpdateQER(s.LocalID, req)
 }
 
 func (s *Sess) RemoveQER(req *ie.IE) error {
-	err := s.node.driver.RemoveQER(req)
+	err := s.node.driver.RemoveQER(s.LocalID, req)
 	if err != nil {
 		return err
 	}
