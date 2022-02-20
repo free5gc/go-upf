@@ -3,6 +3,7 @@ package forwarder
 import (
 	"net"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,12 +13,18 @@ import (
 )
 
 func TestGtp5g_CreateRules(t *testing.T) {
-	g, err := OpenGtp5g(":" + strconv.Itoa(factory.UpfGtpDefaultPort))
+	if testing.Short() {
+		t.Skip("skipping testing in short mode")
+	}
+
+	var wg sync.WaitGroup
+	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer g.Close()
 
+	lSeid := uint64(0)
 	t.Run("create rules", func(t *testing.T) {
 		far := ie.NewCreateFAR(
 			ie.NewFARID(2),
@@ -28,7 +35,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			),
 		)
 
-		err = g.CreateFAR(far)
+		err = g.CreateFAR(lSeid, far)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -38,7 +45,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewApplyAction(0x2),
 		)
 
-		err = g.CreateFAR(far)
+		err = g.CreateFAR(lSeid, far)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,7 +57,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewQFI(10),
 		)
 
-		err = g.CreateQER(qer)
+		err = g.CreateQER(lSeid, qer)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +88,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewQERID(1),
 		)
 
-		err = g.CreatePDR(pdr)
+		err = g.CreatePDR(lSeid, pdr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -104,7 +111,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewQERID(1),
 		)
 
-		err = g.CreatePDR(pdr)
+		err = g.CreatePDR(lSeid, pdr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,7 +136,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			),
 		)
 
-		err = g.UpdateFAR(far)
+		err = g.UpdateFAR(lSeid, far)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +158,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewFARID(4),
 		)
 
-		err = g.UpdatePDR(pdr)
+		err = g.UpdatePDR(lSeid, pdr)
 		if err != nil {
 			t.Fatal(err)
 		}
