@@ -3,6 +3,7 @@ package forwarder
 import (
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
@@ -30,7 +31,7 @@ type Driver interface {
 	HandleReport(report.Handler)
 }
 
-func NewDriver(cfg *factory.Config) (Driver, error) {
+func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 	cfgGtpu := cfg.Gtpu
 	if cfgGtpu == nil {
 		return nil, errors.Errorf("no Gtpu config")
@@ -45,9 +46,9 @@ func NewDriver(cfg *factory.Config) (Driver, error) {
 		if gtpuAddr == "" {
 			return nil, errors.Errorf("not found GTP address")
 		}
-		driver, err := OpenGtp5g(gtpuAddr)
+		driver, err := OpenGtp5g(wg, gtpuAddr)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "open Gtp5g")
 		}
 
 		link := driver.Link()

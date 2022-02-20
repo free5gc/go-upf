@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/free5gc/go-upf/internal/report"
@@ -14,7 +15,8 @@ func TestServer(t *testing.T) {
 	defer close(done)
 	addr := "test.unsock"
 	qlen := 10
-	s, err := OpenServer(addr, qlen)
+	var wg sync.WaitGroup
+	s, err := OpenServer(&wg, addr, qlen)
 	if err != nil {
 		t.Fatal(err)
 	}

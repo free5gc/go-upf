@@ -1,13 +1,14 @@
 package forwarder
 
 import (
-	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"syscall"
 
 	"github.com/khirono/go-gtp5gnl"
 	"github.com/khirono/go-nl"
+	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/buff"
@@ -30,12 +31,12 @@ type Gtp5g struct {
 	bs     *buff.Server
 }
 
-func OpenGtp5g(addr string) (*Gtp5g, error) {
+func OpenGtp5g(wg *sync.WaitGroup, addr string) (*Gtp5g, error) {
 	g := new(Gtp5g)
 
 	mux, err := nl.NewMux()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "new Mux")
 	}
 	go func() {
 		err = mux.Serve()
@@ -48,28 +49,28 @@ func OpenGtp5g(addr string) (*Gtp5g, error) {
 	link, err := OpenGtp5gLink(mux, addr)
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "open link")
 	}
 	g.link = link
 
 	conn, err := nl.Open(syscall.NETLINK_GENERIC)
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "open netlink")
 	}
 	g.conn = conn
 
 	c, err := gtp5gnl.NewClient(conn, mux)
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "new client")
 	}
 	g.client = c
 
-	bs, err := buff.OpenServer(SOCKPATH, BUFFLEN)
+	bs, err := buff.OpenServer(wg, SOCKPATH, BUFFLEN)
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "oopen buff server")
 	}
 	g.bs = bs
 

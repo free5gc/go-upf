@@ -9,6 +9,7 @@ import (
 	"github.com/khirono/go-nl"
 	"github.com/khirono/go-rtnllink"
 	"github.com/khirono/go-rtnlroute"
+	"github.com/pkg/errors"
 
 	"github.com/free5gc/go-upf/internal/logger"
 )
@@ -29,7 +30,7 @@ func OpenGtp5gLink(mux *nl.Mux, addr string) (*Gtp5gLink, error) {
 
 	rtconn, err := nl.Open(syscall.NETLINK_ROUTE)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "open")
 	}
 	g.rtconn = rtconn
 	g.client = nl.NewClient(rtconn, mux)
@@ -37,12 +38,12 @@ func OpenGtp5gLink(mux *nl.Mux, addr string) (*Gtp5gLink, error) {
 	laddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "resolve addr")
 	}
 	conn, err := net.ListenUDP("udp", laddr)
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "listen")
 	}
 	g.conn = conn
 
@@ -50,7 +51,7 @@ func OpenGtp5gLink(mux *nl.Mux, addr string) (*Gtp5gLink, error) {
 	f, err := conn.File()
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "file")
 	}
 	g.f = f
 
@@ -79,17 +80,17 @@ func OpenGtp5gLink(mux *nl.Mux, addr string) (*Gtp5gLink, error) {
 	err = rtnllink.Create(g.client, "upfgtp", linkinfo)
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "create")
 	}
 	err = rtnllink.Up(g.client, "upfgtp")
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "up")
 	}
 	link, err := gtp5gnl.GetLink("upfgtp")
 	if err != nil {
 		g.Close()
-		return nil, err
+		return nil, errors.Wrap(err, "get link")
 	}
 	g.link = link
 	return g, nil

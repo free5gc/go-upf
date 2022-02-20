@@ -3,6 +3,7 @@ package buff
 import (
 	"net"
 	"os"
+	"sync"
 	"unsafe"
 
 	"github.com/free5gc/go-upf/internal/logger"
@@ -21,7 +22,7 @@ type Server struct {
 	handler report.Handler
 }
 
-func OpenServer(addr string, qlen int) (*Server, error) {
+func OpenServer(wg *sync.WaitGroup, addr string, qlen int) (*Server, error) {
 	s := new(Server)
 
 	err := os.Remove(addr)
@@ -41,7 +42,9 @@ func OpenServer(addr string, qlen int) (*Server, error) {
 	s.q = make(map[uint16]chan []byte)
 	s.qlen = qlen
 
-	go s.Serve()
+	wg.Add(1)
+	go s.Serve(wg)
+	logger.BuffLog.Infof("buff server started")
 
 	return s, nil
 }
@@ -61,7 +64,12 @@ func (s *Server) HandleFunc(f func(report.Report)) {
 	s.handler = report.HandlerFunc(f)
 }
 
-func (s *Server) Serve() {
+func (s *Server) Serve(wg *sync.WaitGroup) {
+	defer func() {
+		logger.BuffLog.Infof("buff server stopped")
+		wg.Done()
+	}()
+
 	b := make([]byte, 96*1024)
 	for {
 		n, _, err := s.conn.ReadFrom(b)

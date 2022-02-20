@@ -20,6 +20,7 @@ type UPF struct {
 	ctx         context.Context
 	wg          sync.WaitGroup
 	cfg         *factory.Config
+	driver      forwarder.Driver
 	pfcpServers []*pfcp.PfcpServer
 }
 
@@ -71,14 +72,14 @@ func (u *UPF) Run() error {
 	 * context */
 	go u.listenShutdownEvent()
 
-	driver, err := forwarder.NewDriver(u.cfg)
+	var err error
+	u.driver, err = forwarder.NewDriver(&u.wg, u.cfg)
 	if err != nil {
 		return err
 	}
-	defer driver.Close()
 
 	for _, cfgPfcp := range u.cfg.Pfcp {
-		pfcpServer := pfcp.NewPfcpServer(cfgPfcp.Addr, driver)
+		pfcpServer := pfcp.NewPfcpServer(cfgPfcp.Addr, u.driver)
 		pfcpServer.Start(&u.wg)
 		u.pfcpServers = append(u.pfcpServers, pfcpServer)
 	}
@@ -113,6 +114,7 @@ func (u *UPF) listenShutdownEvent() {
 	for _, pfcpServer := range u.pfcpServers {
 		pfcpServer.Stop()
 	}
+	u.driver.Close()
 }
 
 func (u *UPF) WaitRoutineStopped() {
