@@ -25,15 +25,13 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 	// if a PFCP association was already established for the Node ID
 	// received in the request, regardless of the Recovery Timestamp
 	// received in the request.
-	if ni, ok := s.nodes.Load(nodeid); ok {
-		if node, ok := ni.(*Node); ok {
-			s.log.Infof("delete node: %#+v\n", node)
-			node.Reset()
-		}
-		s.nodes.Delete(ni)
+	if node, ok := s.nodes[nodeid]; ok {
+		s.log.Infof("delete node: %#+v\n", node)
+		node.Reset()
+		delete(s.nodes, nodeid)
 	}
 	node := s.NewNode(nodeid, s.driver)
-	s.nodes.Store(nodeid, node)
+	s.nodes[nodeid] = node
 
 	var pfcpaddr string
 	if addr, ok := s.conn.LocalAddr().(*net.UDPAddr); ok {

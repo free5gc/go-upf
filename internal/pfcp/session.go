@@ -22,12 +22,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	}
 	s.log.Infof("nodeid: %v\n", nodeid)
 
-	ni, ok := s.nodes.Load(nodeid)
-	if !ok {
-		s.log.Errorf("not found NodeID %v\n", nodeid)
-		return
-	}
-	node, ok := ni.(*Node)
+	node, ok := s.nodes[nodeid]
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
@@ -114,12 +109,7 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 	}
 	s.log.Infof("nodeid: %v\n", nodeid)
 
-	ni, ok := s.nodes.Load(nodeid)
-	if !ok {
-		s.log.Errorf("not found NodeID %v\n", nodeid)
-		return
-	}
-	node, ok := ni.(*Node)
+	node, ok := s.nodes[nodeid]
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
@@ -226,12 +216,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 	}
 	s.log.Infof("nodeid: %v\n", nodeid)
 
-	ni, ok := s.nodes.Load(nodeid)
-	if !ok {
-		s.log.Errorf("not found NodeID %v\n", nodeid)
-		return
-	}
-	node, ok := ni.(*Node)
+	node, ok := s.nodes[nodeid]
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return

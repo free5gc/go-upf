@@ -20,7 +20,7 @@ type PfcpServer struct {
 	conn         *net.UDPConn
 	recoveryTime time.Time
 	driver       forwarder.Driver
-	nodes        sync.Map
+	nodes        map[string]*Node
 	log          *logrus.Entry
 }
 
@@ -30,6 +30,7 @@ func NewPfcpServer(listen string, driver forwarder.Driver) *PfcpServer {
 		listen:       listen,
 		recoveryTime: time.Now(),
 		driver:       driver,
+		nodes:        make(map[string]*Node),
 		log:          logger.PfcpLog.WithField(logger.FieldListenAddr, listen),
 	}
 }
