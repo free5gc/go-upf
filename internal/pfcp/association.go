@@ -19,7 +19,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 		s.log.Errorln(err)
 		return
 	}
-	s.log.Infof("nodeid: %v\n", nodeid)
+	s.log.Debugf("nodeid: %v\n", nodeid)
 
 	// deleting the existing PFCP association and associated PFCP sessions,
 	// if a PFCP association was already established for the Node ID

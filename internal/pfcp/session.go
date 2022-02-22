@@ -20,7 +20,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 		s.log.Errorln(err)
 		return
 	}
-	s.log.Infof("nodeid: %v\n", nodeid)
+	s.log.Debugf("nodeid: %v\n", nodeid)
 
 	node, ok := s.nodes[nodeid]
 	if !ok {
@@ -37,7 +37,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 		s.log.Errorln(err)
 		return
 	}
-	s.log.Infof("seid: %v\n", fseid.SEID)
+	s.log.Debugf("seid: %v\n", fseid.SEID)
 
 	// allocate a session
 	sess := node.NewSess(fseid.SEID)
@@ -48,21 +48,21 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	for _, i := range req.CreateFAR {
 		err = sess.CreateFAR(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreateQER {
 		err = sess.CreateQER(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreatePDR {
 		err = sess.CreatePDR(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
@@ -107,7 +107,7 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 	if raddr, ok := addr.(*net.UDPAddr); ok {
 		nodeid = raddr.IP.String()
 	}
-	s.log.Infof("nodeid: %v\n", nodeid)
+	s.log.Debugf("nodeid: %v\n", nodeid)
 
 	node, ok := s.nodes[nodeid]
 	if !ok {
@@ -117,70 +117,70 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 
 	sess, err := node.Sess(req.Header.SEID)
 	if err != nil {
-		s.log.Errorln(err)
+		node.log.Errorln(err)
 		return
 	}
 
 	for _, i := range req.CreateFAR {
 		err = sess.CreateFAR(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreateQER {
 		err = sess.CreateQER(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.CreatePDR {
 		err = sess.CreatePDR(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.RemoveFAR {
 		err = sess.RemoveFAR(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.RemoveQER {
 		err = sess.RemoveQER(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.RemovePDR {
 		err = sess.RemovePDR(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.UpdateFAR {
 		err = sess.UpdateFAR(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.UpdateQER {
 		err = sess.UpdateQER(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
 	for _, i := range req.UpdatePDR {
 		err = sess.UpdatePDR(i)
 		if err != nil {
-			s.log.Errorln(err)
+			sess.log.Errorln(err)
 		}
 	}
 
@@ -214,7 +214,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 	if raddr, ok := addr.(*net.UDPAddr); ok {
 		nodeid = raddr.IP.String()
 	}
-	s.log.Infof("nodeid: %v\n", nodeid)
+	s.log.Debugf("nodeid: %v\n", nodeid)
 
 	node, ok := s.nodes[nodeid]
 	if !ok {
@@ -224,7 +224,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 
 	sess, err := node.Sess(req.Header.SEID)
 	if err != nil {
-		s.log.Errorln(err)
+		node.log.Errorln(err)
 		return
 	}
 

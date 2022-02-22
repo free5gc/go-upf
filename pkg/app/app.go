@@ -84,7 +84,7 @@ func (u *UPF) Run() error {
 		u.pfcpServers = append(u.pfcpServers, pfcpServer)
 	}
 
-	logger.InitLog.Infoln("Server started")
+	logger.InitLog.Infoln("UPF started")
 
 	// Wait for interrupt signal to gracefully shutdown
 	sigCh := make(chan os.Signal, 1)

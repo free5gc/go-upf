@@ -11,6 +11,7 @@ import (
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/pkg/factory"
 )
 
 type Sess struct {
@@ -153,7 +154,7 @@ func (s *Sess) ServeReport(r report.Report) {
 	if s.handler == nil {
 		return
 	}
-	addr := s.node.ID + ":8805"
+	addr := fmt.Sprintf("%s:%d", s.node.ID, factory.UpfPfcpDefaultPort)
 	laddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return

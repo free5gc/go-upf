@@ -36,6 +36,8 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 	if cfgGtpu == nil {
 		return nil, errors.Errorf("no Gtpu config")
 	}
+
+	logger.InitLog.Infof("starting Gtpu Forwarder [%s]", cfgGtpu.Forwarder)
 	if cfgGtpu.Forwarder == "gtp5g" {
 		var gtpuAddr string
 		for _, ifInfo := range cfgGtpu.IfList {
