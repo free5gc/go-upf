@@ -84,11 +84,6 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if action&BUFF == 0 {
 			continue
 		}
-		if action&NOCP != 0 {
-			if s.handler != nil {
-				s.handler.ServeReport(report.DLDReport{PDRID: pdrid})
-			}
-		}
 		pkt := make([]byte, n-4)
 		copy(pkt, b[4:n])
 		q, ok := s.q[pdrid]
@@ -97,6 +92,11 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			q = s.q[pdrid]
 		}
 		q <- pkt
+		if action&NOCP != 0 {
+			if s.handler != nil {
+				s.handler.ServeReport(report.DLDReport{PDRID: pdrid})
+			}
+		}
 	}
 	for _, q := range s.q {
 		close(q)

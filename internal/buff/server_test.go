@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/free5gc/go-upf/internal/report"
 )
@@ -20,7 +21,10 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer func() {
+		s.Close()
+		wg.Wait()
+	}()
 	defer func() {
 		err = os.Remove(addr)
 		if err != nil {
@@ -33,6 +37,7 @@ func TestServer(t *testing.T) {
 		case report.DLDR:
 			r := r.(report.DLDReport)
 			done <- r.PDRID
+			time.Sleep(100 * time.Millisecond)
 		}
 	})
 
@@ -59,28 +64,31 @@ func TestServer(t *testing.T) {
 		0xdd, 0xcc,
 	}
 
-	_, err = conn.Write(pkt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pdrid := <-done
+	N := 10
+	for i := 0; i < N; i++ {
+		_, err = conn.Write(pkt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pdrid := <-done
 
-	if pdrid != 3 {
-		t.Errorf("want %v; but got %v\n", 3, pdrid)
-	}
+		if pdrid != 3 {
+			t.Errorf("want %v; but got %v\n", 3, pdrid)
+		}
 
-	pkt, ok := s.Pop(pdrid)
-	if !ok {
-		t.Fatal("not found")
-	}
+		pkt, ok := s.Pop(pdrid)
+		if !ok {
+			t.Fatal("not found")
+		}
 
-	want := []byte{0xee, 0xbb, 0xdd, 0xcc}
-	if !bytes.Equal(pkt, want) {
-		t.Errorf("want %x; but got %x\n", want, pkt)
-	}
+		want := []byte{0xee, 0xbb, 0xdd, 0xcc}
+		if !bytes.Equal(pkt, want) {
+			t.Errorf("want %x; but got %x\n", want, pkt)
+		}
 
-	_, ok = s.Pop(pdrid)
-	if ok {
-		t.Fatal("found")
+		_, ok = s.Pop(pdrid)
+		if ok {
+			t.Fatal("found")
+		}
 	}
 }
