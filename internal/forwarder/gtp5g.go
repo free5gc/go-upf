@@ -38,7 +38,9 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string) (*Gtp5g, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "new Mux")
 	}
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		err = mux.Serve()
 		if err != nil {
 			logger.Gtp5gLog.Warnf("mux Serve err: %+v", err)
