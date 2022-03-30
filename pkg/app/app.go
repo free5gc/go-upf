@@ -44,8 +44,11 @@ func (u *UPF) SetLogLevel(lvl string, caller bool) {
 		logger.SetLogLevel, logger.SetReportCaller)
 }
 
-func setLoggerLogLevel(loggerName, debugLevel string, reportCaller bool,
-	logLevelFn func(l logrus.Level), reportCallerFn func(b bool)) {
+func setLoggerLogLevel(
+	loggerName, debugLevel string, reportCaller bool,
+	logLevelFn func(l logrus.Level),
+	reportCallerFn func(b bool),
+) {
 	if debugLevel != "" {
 		if level, err := logrus.ParseLevel(debugLevel); err != nil {
 			logger.InitLog.Warnf("%s Log level [%s] is invalid, set to [info] level",
@@ -89,8 +92,6 @@ func (u *UPF) Run() error {
 	// Wait for interrupt signal to gracefully shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	// XXX: for testing
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGUSR1)
 	<-sigCh
 
 	// Receive the interrupt signal

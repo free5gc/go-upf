@@ -10,6 +10,10 @@ import (
 )
 
 func TestWaitRoutineStopped(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping testing in short mode")
+	}
+
 	cfg := &factory.Config{
 		Pfcp: []factory.Pfcp{
 			{
@@ -46,9 +50,12 @@ func TestWaitRoutineStopped(t *testing.T) {
 			upf.Start()
 			wg.Done()
 		}()
-		// XXX: Must wait for signal initialized
+		// Must wait for signal initialized
 		time.Sleep(500 * time.Millisecond)
-		syscall.Kill(syscall.Getpid(), syscall.SIGUSR1)
+		err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		if err != nil {
+			t.Fatal(err)
+		}
 		wg.Wait()
 	}
 }
