@@ -89,6 +89,8 @@ func (u *UPF) Run() error {
 	// Wait for interrupt signal to gracefully shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	// XXX: for testing
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGUSR1)
 	<-sigCh
 
 	// Receive the interrupt signal
