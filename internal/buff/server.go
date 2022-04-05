@@ -92,7 +92,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			q = s.q[pdrid]
 		}
 		q <- pkt
-		if action&NOCP != 0 {
+		if action&NOCP != 0 && len(q) == 1 {
 			if s.handler != nil {
 				s.handler.ServeReport(report.DLDReport{PDRID: pdrid})
 			}
