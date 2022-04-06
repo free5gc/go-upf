@@ -251,3 +251,29 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 		return
 	}
 }
+
+func (s *PfcpServer) handleSessionReportResponse(rsp *message.SessionReportResponse, addr net.Addr) {
+	s.log.Infoln("handleSessionReportResponse")
+
+	var nodeid string
+	if raddr, ok := addr.(*net.UDPAddr); ok {
+		nodeid = raddr.IP.String()
+	}
+	s.log.Debugf("nodeid: %v\n", nodeid)
+
+	node, ok := s.nodes[nodeid]
+	if !ok {
+		s.log.Errorf("not found NodeID %v\n", nodeid)
+		return
+	}
+
+	s.log.Debugf("seid: %v\n", rsp.Header.SEID)
+
+	sess, err := node.Sess(rsp.Header.SEID)
+	if err != nil {
+		node.log.Errorln(err)
+		return
+	}
+
+	s.log.Debugf("sess: %#+v\n", sess)
+}

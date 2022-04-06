@@ -27,6 +27,8 @@ func (s *PfcpServer) dispacher(buf []byte, addr net.Addr) error {
 		s.handleSessionModificationRequest(msg, addr)
 	case *message.SessionDeletionRequest:
 		s.handleSessionDeletionRequest(msg, addr)
+	case *message.SessionReportResponse:
+		s.handleSessionReportResponse(msg, addr)
 	default:
 		return errors.Errorf("pfcp dispacher unknown msg type: %d", msgtmp.MessageType())
 	}
