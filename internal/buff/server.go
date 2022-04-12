@@ -66,8 +66,9 @@ func (s *Server) HandleFunc(seid uint64, f func(report.Report)) {
 }
 
 func (s *Server) Drop(seid uint64) {
-	v, ok := s.sess.LoadAndDelete(seid)
+	v, ok := s.sess.Load(seid)
 	if ok {
+		s.sess.Delete(seid)
 		sess := v.(*Sess)
 		sess.Close()
 	}
