@@ -47,6 +47,7 @@ func (s *Sess) Close() {
 			s.log.Errorf("remove PDR err: %+v", err)
 		}
 	}
+	s.DropReport()
 }
 
 func (s *Sess) CreatePDR(req *ie.IE) error {
@@ -147,7 +148,12 @@ func (s *Sess) RemoveQER(req *ie.IE) error {
 
 func (s *Sess) HandleReport(handler func(net.Addr, uint64, report.Report)) {
 	s.handler = handler
-	s.node.driver.HandleReport(s)
+	s.node.driver.HandleReport(s.LocalID, s)
+}
+
+func (s *Sess) DropReport() {
+	s.node.driver.DropReport(s.LocalID)
+	s.handler = nil
 }
 
 func (s *Sess) ServeReport(r report.Report) {

@@ -272,7 +272,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 }
 
 func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
-	var pdrid int
+	var pdrid uint64
 	var attrs []nl.Attr
 
 	ies, err := req.CreatePDR()
@@ -287,7 +287,7 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 			if err != nil {
 				break
 			}
-			pdrid = int(v)
+			pdrid = uint64(v)
 		case ie.Precedence:
 			v, err := i.Precedence()
 			if err != nil {
@@ -352,11 +352,12 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 		Value: nl.AttrString(SOCKPATH),
 	})
 
-	return gtp5gnl.CreatePDR(g.client, g.link.link, pdrid, attrs)
+	oid := gtp5gnl.OID{lSeid, pdrid}
+	return gtp5gnl.CreatePDROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
-	var pdrid int
+	var pdrid uint64
 	var attrs []nl.Attr
 
 	ies, err := req.UpdatePDR()
@@ -371,7 +372,7 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 			if err != nil {
 				break
 			}
-			pdrid = int(v)
+			pdrid = uint64(v)
 		case ie.Precedence:
 			v, err := i.Precedence()
 			if err != nil {
@@ -423,7 +424,8 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 		}
 	}
 
-	return gtp5gnl.UpdatePDR(g.client, g.link.link, pdrid, attrs)
+	oid := gtp5gnl.OID{lSeid, pdrid}
+	return gtp5gnl.UpdatePDROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) RemovePDR(lSeid uint64, req *ie.IE) error {
@@ -431,7 +433,8 @@ func (g *Gtp5g) RemovePDR(lSeid uint64, req *ie.IE) error {
 	if err != nil {
 		return errors.New("not found PDRID")
 	}
-	return gtp5gnl.RemovePDR(g.client, g.link.link, int(v))
+	oid := gtp5gnl.OID{lSeid, uint64(v)}
+	return gtp5gnl.RemovePDROID(g.client, g.link.link, oid)
 }
 
 func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
@@ -493,7 +496,7 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 }
 
 func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
-	var farid int
+	var farid uint64
 	var attrs []nl.Attr
 
 	ies, err := req.CreateFAR()
@@ -507,7 +510,7 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 			if err != nil {
 				return err
 			}
-			farid = int(v)
+			farid = uint64(v)
 		case ie.ApplyAction:
 			v, err := i.ApplyAction()
 			if err != nil {
@@ -535,11 +538,12 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 		}
 	}
 
-	return gtp5gnl.CreateFAR(g.client, g.link.link, farid, attrs)
+	oid := gtp5gnl.OID{lSeid, farid}
+	return gtp5gnl.CreateFAROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
-	var farid int
+	var farid uint64
 	var attrs []nl.Attr
 
 	ies, err := req.UpdateFAR()
@@ -553,7 +557,7 @@ func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 			if err != nil {
 				return err
 			}
-			farid = int(v)
+			farid = uint64(v)
 		case ie.ApplyAction:
 			v, err := i.ApplyAction()
 			if err != nil {
@@ -563,7 +567,7 @@ func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
 				Value: nl.AttrU8(v),
 			})
-			g.applyAction(farid, v)
+			g.applyAction(lSeid, int(farid), v)
 		case ie.UpdateForwardingParameters:
 			xs, err := i.UpdateForwardingParameters()
 			if err != nil {
@@ -582,7 +586,8 @@ func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 		}
 	}
 
-	return gtp5gnl.UpdateFAR(g.client, g.link.link, farid, attrs)
+	oid := gtp5gnl.OID{lSeid, farid}
+	return gtp5gnl.UpdateFAROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) RemoveFAR(lSeid uint64, req *ie.IE) error {
@@ -590,11 +595,12 @@ func (g *Gtp5g) RemoveFAR(lSeid uint64, req *ie.IE) error {
 	if err != nil {
 		return errors.New("not found FARID")
 	}
-	return gtp5gnl.RemoveFAR(g.client, g.link.link, int(v))
+	oid := gtp5gnl.OID{lSeid, uint64(v)}
+	return gtp5gnl.RemoveFAROID(g.client, g.link.link, oid)
 }
 
 func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
-	var qerid int
+	var qerid uint64
 	var attrs []nl.Attr
 
 	ies, err := req.CreateQER()
@@ -609,7 +615,7 @@ func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 			if err != nil {
 				break
 			}
-			qerid = int(v)
+			qerid = uint64(v)
 		case ie.QERCorrelationID:
 			// C
 			v, err := i.QERCorrelationID()
@@ -725,11 +731,12 @@ func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 		}
 	}
 
-	return gtp5gnl.CreateQER(g.client, g.link.link, qerid, attrs)
+	oid := gtp5gnl.OID{lSeid, qerid}
+	return gtp5gnl.CreateQEROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
-	var qerid int
+	var qerid uint64
 	var attrs []nl.Attr
 
 	ies, err := req.UpdateQER()
@@ -744,7 +751,7 @@ func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 			if err != nil {
 				break
 			}
-			qerid = int(v)
+			qerid = uint64(v)
 		case ie.QERCorrelationID:
 			// C
 			v, err := i.QERCorrelationID()
@@ -860,7 +867,8 @@ func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 		}
 	}
 
-	return gtp5gnl.UpdateQER(g.client, g.link.link, qerid, attrs)
+	oid := gtp5gnl.OID{lSeid, qerid}
+	return gtp5gnl.UpdateQEROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) RemoveQER(lSeid uint64, req *ie.IE) error {
@@ -868,11 +876,16 @@ func (g *Gtp5g) RemoveQER(lSeid uint64, req *ie.IE) error {
 	if err != nil {
 		return errors.New("not found QERID")
 	}
-	return gtp5gnl.RemoveQER(g.client, g.link.link, int(v))
+	oid := gtp5gnl.OID{lSeid, uint64(v)}
+	return gtp5gnl.RemoveQEROID(g.client, g.link.link, oid)
 }
 
-func (g *Gtp5g) HandleReport(handler report.Handler) {
-	g.bs.Handle(handler)
+func (g *Gtp5g) HandleReport(lSeid uint64, handler report.Handler) {
+	g.bs.Handle(lSeid, handler)
+}
+
+func (g *Gtp5g) DropReport(lSeid uint64) {
+	g.bs.Drop(lSeid)
 }
 
 const (
@@ -881,7 +894,7 @@ const (
 	BUFF = 1 << 2
 )
 
-func (g *Gtp5g) applyAction(farid int, action uint8) {
+func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 	far, err := gtp5gnl.GetFAR(g.client, g.link.link, farid)
 	if err != nil {
 		return
@@ -894,7 +907,7 @@ func (g *Gtp5g) applyAction(farid int, action uint8) {
 		// BUFF -> DROP
 		for _, pdrid := range far.PDRIDs {
 			for {
-				_, ok := g.bs.Pop(pdrid)
+				_, ok := g.bs.Pop(lSeid, pdrid)
 				if !ok {
 					break
 				}
@@ -903,20 +916,22 @@ func (g *Gtp5g) applyAction(farid int, action uint8) {
 	case action&FORW != 0:
 		// BUFF -> FORW
 		for _, pdrid := range far.PDRIDs {
-			pdr, err := gtp5gnl.GetPDR(g.client, g.link.link, int(pdrid))
+			oid := gtp5gnl.OID{lSeid, uint64(pdrid)}
+			pdr, err := gtp5gnl.GetPDROID(g.client, g.link.link, oid)
 			if err != nil {
 				continue
 			}
 			var qer *gtp5gnl.QER
 			if pdr.QERID != nil {
-				q, err := gtp5gnl.GetQER(g.client, g.link.link, int(*pdr.QERID))
+				oid := gtp5gnl.OID{lSeid, uint64(*pdr.QERID)}
+				q, err := gtp5gnl.GetQEROID(g.client, g.link.link, oid)
 				if err != nil {
 					continue
 				}
 				qer = q
 			}
 			for {
-				pkt, ok := g.bs.Pop(pdrid)
+				pkt, ok := g.bs.Pop(lSeid, pdrid)
 				if !ok {
 					break
 				}

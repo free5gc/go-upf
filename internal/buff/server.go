@@ -1,6 +1,7 @@
 package buff
 
 import (
+	"io"
 	"net"
 	"os"
 	"sync"
@@ -16,10 +17,9 @@ const (
 )
 
 type Server struct {
-	conn    *net.UnixConn
-	q       map[uint16]chan []byte
-	qlen    int
-	handler report.Handler
+	conn *net.UnixConn
+	sess sync.Map
+	qlen int
 }
 
 func OpenServer(wg *sync.WaitGroup, addr string, qlen int) (*Server, error) {
@@ -39,7 +39,6 @@ func OpenServer(wg *sync.WaitGroup, addr string, qlen int) (*Server, error) {
 	}
 	s.conn = conn
 
-	s.q = make(map[uint16]chan []byte)
 	s.qlen = qlen
 
 	wg.Add(1)
@@ -56,12 +55,22 @@ func (s *Server) Close() {
 	}
 }
 
-func (s *Server) Handle(handler report.Handler) {
-	s.handler = handler
+func (s *Server) Handle(seid uint64, handler report.Handler) {
+	sess := OpenSess(handler, s.qlen)
+	s.sess.Store(seid, sess)
 }
 
-func (s *Server) HandleFunc(f func(report.Report)) {
-	s.handler = report.HandlerFunc(f)
+func (s *Server) HandleFunc(seid uint64, f func(report.Report)) {
+	sess := OpenSess(report.HandlerFunc(f), s.qlen)
+	s.sess.Store(seid, sess)
+}
+
+func (s *Server) Drop(seid uint64) {
+	v, ok := s.sess.LoadAndDelete(seid)
+	if ok {
+		sess := v.(*Sess)
+		sess.Close()
+	}
 }
 
 func (s *Server) Serve(wg *sync.WaitGroup) {
@@ -76,42 +85,53 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if err != nil {
 			break
 		}
-		if n < 4 {
+		seid, pdrid, action, pkt, err := s.decode(b[:n])
+		if err != nil {
 			continue
 		}
-		pdrid := *(*uint16)(unsafe.Pointer(&b[0]))
-		action := *(*uint16)(unsafe.Pointer(&b[2]))
 		if action&BUFF == 0 {
 			continue
 		}
-		pkt := make([]byte, n-4)
-		copy(pkt, b[4:n])
-		q, ok := s.q[pdrid]
+		v, ok := s.sess.Load(seid)
 		if !ok {
-			s.q[pdrid] = make(chan []byte, s.qlen)
-			q = s.q[pdrid]
+			continue
 		}
-		q <- pkt
-		if action&NOCP != 0 && len(q) == 1 {
-			if s.handler != nil {
-				s.handler.ServeReport(report.DLDReport{PDRID: pdrid})
+		sess := v.(*Sess)
+		sess.Push(pdrid, pkt)
+		if action&NOCP != 0 && sess.Len(pdrid) == 1 {
+			rep := report.DLDReport{
+				PDRID: pdrid,
 			}
+			sess.handler.ServeReport(rep)
 		}
 	}
-	for _, q := range s.q {
-		close(q)
-	}
+	s.sess.Range(func(k, v interface{}) bool {
+		sess := v.(*Sess)
+		sess.Close()
+		return true
+	})
 }
 
-func (s *Server) Pop(pdrid uint16) ([]byte, bool) {
-	q, ok := s.q[pdrid]
+func (s *Server) decode(b []byte) (uint64, uint16, uint16, []byte, error) {
+	n := len(b)
+	if n < 12 {
+		return 0, 0, 0, nil, io.ErrUnexpectedEOF
+	}
+	var off int
+	seid := *(*uint64)(unsafe.Pointer(&b[off]))
+	off += 8
+	pdrid := *(*uint16)(unsafe.Pointer(&b[off]))
+	off += 2
+	action := *(*uint16)(unsafe.Pointer(&b[off]))
+	off += 2
+	return seid, pdrid, action, b[off:], nil
+}
+
+func (s *Server) Pop(seid uint64, pdrid uint16) ([]byte, bool) {
+	v, ok := s.sess.Load(seid)
 	if !ok {
 		return nil, ok
 	}
-	select {
-	case pkt := <-q:
-		return pkt, true
-	default:
-		return nil, false
-	}
+	sess := v.(*Sess)
+	return sess.Pop(pdrid)
 }

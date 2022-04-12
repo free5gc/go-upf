@@ -2,11 +2,13 @@ package pfcp
 
 import (
 	"testing"
+
+	"github.com/free5gc/go-upf/internal/forwarder"
 )
 
 func TestNode(t *testing.T) {
 	s := NewPfcpServer("", nil)
-	n := s.NewNode("upf", nil)
+	n := s.NewNode("upf", forwarder.Empty{})
 	t.Run("delete 0 no effect", func(t *testing.T) {
 		n.DeleteSess(0)
 	})
