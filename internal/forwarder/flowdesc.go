@@ -160,23 +160,21 @@ func ParseFlowDescPorts(s string) ([]uint32, error) {
 		digit := strings.SplitN(port, "-", 2)
 		switch len(digit) {
 		case 1:
-			v, err := strconv.ParseUint(digit[0], 10, 32)
+			v, err := strconv.ParseUint(digit[0], 10, 16)
 			if err != nil {
 				return nil, err
 			}
-			vals = append(vals, uint32(v))
+			vals = append(vals, uint32(v<<16|v))
 		case 2:
-			start, err := strconv.ParseUint(digit[0], 10, 32)
+			start, err := strconv.ParseUint(digit[0], 10, 16)
 			if err != nil {
 				return nil, err
 			}
-			end, err := strconv.ParseUint(digit[1], 10, 32)
+			end, err := strconv.ParseUint(digit[1], 10, 16)
 			if err != nil {
 				return nil, err
 			}
-			for v := start; v <= end; v++ {
-				vals = append(vals, uint32(v))
-			}
+			vals = append(vals, uint32(start<<16|end))
 		default:
 			return nil, fmt.Errorf("invalid port: %q", port)
 		}

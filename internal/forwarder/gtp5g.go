@@ -1,6 +1,7 @@
 package forwarder
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"sync"
@@ -147,19 +148,25 @@ func (g *Gtp5g) newFlowDesc(s string) (nl.AttrList, error) {
 		Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_MASK,
 		Value: nl.AttrBytes(fd.Dst.Mask),
 	})
-	for _, p := range fd.SrcPorts {
-		attrs = append(attrs, nl.Attr{
-			Type:  gtp5gnl.FLOW_DESCRIPTION_SRC_PORT,
-			Value: nl.AttrU32(p),
-		})
-	}
-	for _, p := range fd.DstPorts {
-		attrs = append(attrs, nl.Attr{
-			Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_PORT,
-			Value: nl.AttrU32(p),
-		})
-	}
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.FLOW_DESCRIPTION_SRC_PORT,
+		Value: nl.AttrBytes(convertSlice(fd.SrcPorts)),
+	})
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_PORT,
+		Value: nl.AttrBytes(convertSlice(fd.DstPorts)),
+	})
 	return attrs, nil
+}
+
+func convertSlice(u32s []uint32) []byte {
+	var byteSlice []byte
+	for _, p := range u32s {
+		bs := make([]byte, 4)
+		binary.LittleEndian.PutUint32(bs, p)
+		byteSlice = append(byteSlice, bs...)
+	}
+	return byteSlice
 }
 
 func (g *Gtp5g) newSdfFilter(i *ie.IE) (nl.AttrList, error) {
