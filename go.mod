@@ -6,7 +6,7 @@ require (
 	github.com/antonfisher/nested-logrus-formatter v1.3.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/free5gc/util v1.0.1
-	github.com/khirono/go-gtp5gnl v1.0.0
+	github.com/khirono/go-gtp5gnl v1.2.0
 	github.com/khirono/go-nl v1.0.1
 	github.com/khirono/go-rtnllink v1.0.0
 	github.com/khirono/go-rtnlroute v1.0.0

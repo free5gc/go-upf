@@ -32,7 +32,8 @@ func TestServer(t *testing.T) {
 		}
 	}()
 
-	s.HandleFunc(func(r report.Report) {
+	seid := uint64(6)
+	s.HandleFunc(seid, func(r report.Report) {
 		switch r.Type() {
 		case report.DLDR:
 			r := r.(report.DLDReport)
@@ -40,6 +41,7 @@ func TestServer(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 	})
+	defer s.Drop(seid)
 
 	laddr, err := net.ResolveUnixAddr("unixgram", addr)
 	if err != nil {
@@ -58,6 +60,8 @@ func TestServer(t *testing.T) {
 	}()
 
 	pkt := []byte{
+		0x06, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
 		0x03, 0x00,
 		0x0c, 0x00,
 		0xee, 0xbb,
@@ -76,7 +80,7 @@ func TestServer(t *testing.T) {
 			t.Errorf("want %v; but got %v\n", 3, pdrid)
 		}
 
-		pkt, ok := s.Pop(pdrid)
+		pkt, ok := s.Pop(seid, pdrid)
 		if !ok {
 			t.Fatal("not found")
 		}
@@ -86,7 +90,7 @@ func TestServer(t *testing.T) {
 			t.Errorf("want %x; but got %x\n", want, pkt)
 		}
 
-		_, ok = s.Pop(pdrid)
+		_, ok = s.Pop(seid, pdrid)
 		if ok {
 			t.Fatal("found")
 		}

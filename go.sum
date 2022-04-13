@@ -66,8 +66,8 @@ github.com/karrick/godirwalk v1.8.0/go.mod h1:H5KPZjojv4lE+QYImBI8xVtrBRgYrIVsaR
 github.com/karrick/godirwalk v1.10.3/go.mod h1:RoGL9dQei4vP9ilrpETWE8CLOZ1kiN0LhBygSwrAsHA=
 github.com/khirono/go-genl v1.0.0 h1:o1U5mxKce5VaBooGEgD5fTct19Oo/amqJalw0UOdwpA=
 github.com/khirono/go-genl v1.0.0/go.mod h1:TenVrVyXS8d/UOBCDNAdeLOMxsPiodOVfQma4z+Uv6A=
-github.com/khirono/go-gtp5gnl v1.0.0 h1:cuJO8tzd5/z1YnKD1Kgu/KTs4zwkyL545ebE7CbRJpA=
-github.com/khirono/go-gtp5gnl v1.0.0/go.mod h1:Vj6g6sZWjzl2stCW7+W3AFhzRLcpy7ffRMvYxYXahvg=
+github.com/khirono/go-gtp5gnl v1.2.0 h1:pjYilemYQptgPW/9VVwof8tc+pgrx0F3i5uDAyAVNRs=
+github.com/khirono/go-gtp5gnl v1.2.0/go.mod h1:HsNvjnhaF2DfsAiva7FPUiJDanhp/1MzJmEc+LCzhl0=
 github.com/khirono/go-nl v1.0.0/go.mod h1:PzYeSjD38fzV7mX5DuaCZvnwx2kD/o7XgHyzuJxoi7U=
 github.com/khirono/go-nl v1.0.1 h1:Md8Y1h2STw/UxuBBIofdXyY0JPxIKIe/jqpEsD+rQpA=
 github.com/khirono/go-nl v1.0.1/go.mod h1:PzYeSjD38fzV7mX5DuaCZvnwx2kD/o7XgHyzuJxoi7U=
