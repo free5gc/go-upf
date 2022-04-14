@@ -27,8 +27,8 @@ type FlowDesc struct {
 	Proto    uint8
 	Src      *net.IPNet
 	Dst      *net.IPNet
-	SrcPorts []uint32
-	DstPorts []uint32
+	SrcPorts [][]uint16
+	DstPorts [][]uint16
 }
 
 func ParseFlowDesc(s string) (*FlowDesc, error) {
@@ -154,8 +154,8 @@ func ParseFlowDescIPNet(s string) (*net.IPNet, error) {
 	}, nil
 }
 
-func ParseFlowDescPorts(s string) ([]uint32, error) {
-	var vals []uint32
+func ParseFlowDescPorts(s string) ([][]uint16, error) {
+	var vals [][]uint16
 	for _, port := range strings.Split(s, ",") {
 		digit := strings.SplitN(port, "-", 2)
 		switch len(digit) {
@@ -164,7 +164,7 @@ func ParseFlowDescPorts(s string) ([]uint32, error) {
 			if err != nil {
 				return nil, err
 			}
-			vals = append(vals, uint32(v<<16|v))
+			vals = append(vals, []uint16{uint16(v)})
 		case 2:
 			start, err := strconv.ParseUint(digit[0], 10, 16)
 			if err != nil {
@@ -174,7 +174,7 @@ func ParseFlowDescPorts(s string) ([]uint32, error) {
 			if err != nil {
 				return nil, err
 			}
-			vals = append(vals, uint32(start<<16|end))
+			vals = append(vals, []uint16{uint16(start), uint16(end)})
 		default:
 			return nil, fmt.Errorf("invalid port: %q", port)
 		}

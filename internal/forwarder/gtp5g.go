@@ -1,11 +1,11 @@
 package forwarder
 
 import (
-	"encoding/binary"
 	"fmt"
 	"net"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"github.com/khirono/go-gtp5gnl"
 	"github.com/khirono/go-nl"
@@ -159,14 +159,20 @@ func (g *Gtp5g) newFlowDesc(s string) (nl.AttrList, error) {
 	return attrs, nil
 }
 
-func convertSlice(u32s []uint32) []byte {
-	var byteSlice []byte
-	for _, p := range u32s {
-		bs := make([]byte, 4)
-		binary.LittleEndian.PutUint32(bs, p)
-		byteSlice = append(byteSlice, bs...)
+func convertSlice(ports [][]uint16) []byte {
+	b := make([]byte, len(ports)*4)
+	off := 0
+	for _, p := range ports {
+		x := (*uint32)(unsafe.Pointer(&p[off]))
+		switch len(p) {
+		case 1:
+			*x = uint32(p[0])<<16 | uint32(p[0])
+		case 2:
+			*x = uint32(p[0])<<16 | uint32(p[1])
+		}
+		off += 4
 	}
-	return byteSlice
+	return b
 }
 
 func (g *Gtp5g) newSdfFilter(i *ie.IE) (nl.AttrList, error) {

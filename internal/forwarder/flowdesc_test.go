@@ -80,10 +80,18 @@ func TestParseFlowDesc(t *testing.T) {
 					IP:   net.IPv4(50, 60, 0, 0).To4(),
 					Mask: net.CIDRMask(16, 32),
 				},
-				SrcPorts: []uint32{
-					0x01590159,
-					0x03150318,
-					0x03ff0402,
+				SrcPorts: [][]uint16{
+					{
+						345,
+					},
+					{
+						789,
+						792,
+					},
+					{
+						1023,
+						1026,
+					},
 				},
 			},
 		},
@@ -102,10 +110,18 @@ func TestParseFlowDesc(t *testing.T) {
 					IP:   net.IPv4(50, 60, 0, 0).To4(),
 					Mask: net.CIDRMask(16, 32),
 				},
-				DstPorts: []uint32{
-					0x01590159,
-					0x03150318,
-					0x03ff0402,
+				DstPorts: [][]uint16{
+					{
+						345,
+					},
+					{
+						789,
+						792,
+					},
+					{
+						1023,
+						1026,
+					},
 				},
 			},
 		},
