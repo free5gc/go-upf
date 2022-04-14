@@ -15,16 +15,16 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 		s.log.Errorln("not found NodeID")
 		return
 	}
-	nodeid, err := req.NodeID.NodeID()
+	rnodeid, err := req.NodeID.NodeID()
 	if err != nil {
 		s.log.Errorln(err)
 		return
 	}
-	s.log.Debugf("nodeid: %v\n", nodeid)
+	s.log.Debugf("remote nodeid: %v\n", rnodeid)
 
-	node, ok := s.nodes[nodeid]
+	node, ok := s.rnodes[rnodeid]
 	if !ok {
-		s.log.Errorf("not found NodeID %v\n", nodeid)
+		s.log.Errorf("not found NodeID %v\n", rnodeid)
 		return
 	}
 
@@ -69,19 +69,13 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	var v4 net.IP
 	var v6 net.IP
 
-	var pfcpaddr string
-	if addr, ok := s.conn.LocalAddr().(*net.UDPAddr); ok {
-		v4 = addr.IP
-		pfcpaddr = v4.String()
-	}
-
 	rsp := message.NewSessionEstablishmentResponse(
 		0,             // mp
 		0,             // fo
 		sess.RemoteID, // seid
 		req.Header.SequenceNumber,
 		0, // pri
-		ie.NewNodeID(pfcpaddr, "", ""),
+		newIeNodeID(s.nodeID),
 		ie.NewCause(ie.CauseRequestAccepted),
 		ie.NewFSEID(sess.LocalID, v4, v6),
 	)
@@ -109,7 +103,7 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 	}
 	s.log.Debugf("nodeid: %v\n", nodeid)
 
-	node, ok := s.nodes[nodeid]
+	node, ok := s.rnodes[nodeid]
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
@@ -216,7 +210,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 	}
 	s.log.Debugf("nodeid: %v\n", nodeid)
 
-	node, ok := s.nodes[nodeid]
+	node, ok := s.rnodes[nodeid]
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return
@@ -261,7 +255,7 @@ func (s *PfcpServer) handleSessionReportResponse(rsp *message.SessionReportRespo
 	}
 	s.log.Debugf("nodeid: %v\n", nodeid)
 
-	node, ok := s.nodes[nodeid]
+	node, ok := s.rnodes[nodeid]
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", nodeid)
 		return

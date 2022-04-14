@@ -1,9 +1,10 @@
-version: 1.0.1
+version: 1.0.2
 description: UPF initial local configuration
 
-# The IP list of the N4 interface on this UPF (Can't set to 0.0.0.0)
+# The listen IP and nodeID of the N4 interface on this UPF (Can't set to 0.0.0.0)
 pfcp:
-  - addr: 127.0.0.8
+  addr: 127.0.0.8   # IP addr for listening
+  nodeID: 127.0.0.8 # External IP or FQDN can be reached
 
 gtpu:
   forwarder: gtp5g

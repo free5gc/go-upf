@@ -81,11 +81,10 @@ func (u *UPF) Run() error {
 		return err
 	}
 
-	for _, cfgPfcp := range u.cfg.Pfcp {
-		pfcpServer := pfcp.NewPfcpServer(cfgPfcp.Addr, u.driver)
-		pfcpServer.Start(&u.wg)
-		u.pfcpServers = append(u.pfcpServers, pfcpServer)
-	}
+	cfgPfcp := u.cfg.Pfcp
+	pfcpServer := pfcp.NewPfcpServer(cfgPfcp.Addr, cfgPfcp.NodeID, u.driver)
+	pfcpServer.Start(&u.wg)
+	u.pfcpServers = append(u.pfcpServers, pfcpServer)
 
 	logger.InitLog.Infoln("UPF started")
 

@@ -8,7 +8,7 @@ import (
 
 const (
 	UpfDefaultConfigPath     = "./config/upfcfg.yaml"
-	UpfExpectedConfigVersion = "1.0.1"
+	UpfExpectedConfigVersion = "1.0.2"
 	UpfDefaultIPv4           = "127.0.0.8"
 	UpfPfcpDefaultPort       = 8805
 	UpfGtpDefaultPort        = 2152
@@ -17,7 +17,7 @@ const (
 type Config struct {
 	Version      string    `yaml:"version,omitempty"`
 	Description  string    `yaml:"description,omitempty"`
-	Pfcp         []Pfcp    `yaml:"pfcp"`
+	Pfcp         *Pfcp     `yaml:"pfcp"`
 	Gtpu         *Gtpu     `yaml:"gtpu"`
 	DnnList      []DnnList `yaml:"dnnList"`
 	DebugLevel   string    `yaml:"debugLevel"`
@@ -25,7 +25,8 @@ type Config struct {
 }
 
 type Pfcp struct {
-	Addr string `yaml:"addr"`
+	Addr   string `yaml:"addr"`
+	NodeID string `yaml:"nodeID"`
 }
 
 type Gtpu struct {

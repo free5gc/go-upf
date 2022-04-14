@@ -17,20 +17,22 @@ import (
 
 type PfcpServer struct {
 	listen       string
+	nodeID       string
 	conn         *net.UDPConn
 	recoveryTime time.Time
 	driver       forwarder.Driver
-	nodes        map[string]*Node
+	rnodes       map[string]*Node
 	log          *logrus.Entry
 }
 
-func NewPfcpServer(listen string, driver forwarder.Driver) *PfcpServer {
+func NewPfcpServer(listen, nodeID string, driver forwarder.Driver) *PfcpServer {
 	listen = fmt.Sprintf("%s:%d", listen, factory.UpfPfcpDefaultPort)
 	return &PfcpServer{
 		listen:       listen,
+		nodeID:       nodeID,
 		recoveryTime: time.Now(),
 		driver:       driver,
-		nodes:        make(map[string]*Node),
+		rnodes:       make(map[string]*Node),
 		log:          logger.PfcpLog.WithField(logger.FieldListenAddr, listen),
 	}
 }

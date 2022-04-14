@@ -7,7 +7,7 @@ import (
 )
 
 func TestNode(t *testing.T) {
-	s := NewPfcpServer("", nil)
+	s := NewPfcpServer("", "", nil)
 	n := s.NewNode("upf", forwarder.Empty{})
 	t.Run("delete 0 no effect", func(t *testing.T) {
 		n.DeleteSess(0)

@@ -15,10 +15,9 @@ func TestWaitRoutineStopped(t *testing.T) {
 	}
 
 	cfg := &factory.Config{
-		Pfcp: []factory.Pfcp{
-			{
-				Addr: "127.0.0.1",
-			},
+		Pfcp: &factory.Pfcp{
+			Addr:   "127.0.0.1",
+			NodeID: "127.0.0.1",
 		},
 		Gtpu: &factory.Gtpu{
 			Forwarder: "gtp5g",
