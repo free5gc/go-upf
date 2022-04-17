@@ -21,7 +21,8 @@ type PfcpServer struct {
 	conn         *net.UDPConn
 	recoveryTime time.Time
 	driver       forwarder.Driver
-	rnodes       map[string]*Node
+	lnode        LocalNode
+	rnodes       map[string]*RemoteNode
 	log          *logrus.Entry
 }
 
@@ -32,7 +33,7 @@ func NewPfcpServer(listen, nodeID string, driver forwarder.Driver) *PfcpServer {
 		nodeID:       nodeID,
 		recoveryTime: time.Now(),
 		driver:       driver,
-		rnodes:       make(map[string]*Node),
+		rnodes:       make(map[string]*RemoteNode),
 		log:          logger.PfcpLog.WithField(logger.FieldListenAddr, listen),
 	}
 }
@@ -94,12 +95,13 @@ func (s *PfcpServer) Stop() {
 	}
 }
 
-func (s *PfcpServer) NewNode(id string, driver forwarder.Driver) *Node {
-	n := &Node{
-		ID:     id,
-		driver: driver,
-		log:    s.log.WithField(logger.FieldNodeID, "NodeID:"+id),
-	}
+func (s *PfcpServer) NewNode(id string, driver forwarder.Driver) *RemoteNode {
+	n := NewRemoteNode(
+		id,
+		&s.lnode,
+		driver,
+		s.log.WithField(logger.FieldNodeID, "NodeID:"+id),
+	)
 	n.log.Infoln("New node")
 	return n
 }

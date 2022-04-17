@@ -15,7 +15,7 @@ import (
 )
 
 type Sess struct {
-	node     *Node
+	node     *RemoteNode
 	LocalID  uint64
 	RemoteID uint64
 	PDRIDs   map[uint16]struct{}
@@ -168,15 +168,66 @@ func (s *Sess) ServeReport(r report.Report) {
 	s.handler(laddr, s.RemoteID, r)
 }
 
-type Node struct {
+type RemoteNode struct {
 	ID     string
-	sess   []*Sess
-	free   []uint64
+	local  *LocalNode
+	sess   map[uint64]struct{}
 	driver forwarder.Driver
 	log    *logrus.Entry
 }
 
-func (n *Node) Reset() {
+func NewRemoteNode(id string, local *LocalNode, driver forwarder.Driver, log *logrus.Entry) *RemoteNode {
+	n := new(RemoteNode)
+	n.ID = id
+	n.local = local
+	n.sess = make(map[uint64]struct{})
+	n.driver = driver
+	n.log = log
+	return n
+}
+
+func (n *RemoteNode) Reset() {
+	for id := range n.sess {
+		n.DeleteSess(id)
+	}
+	n.sess = make(map[uint64]struct{})
+}
+
+func (n *RemoteNode) Sess(lSeid uint64) (*Sess, error) {
+	_, ok := n.sess[lSeid]
+	if !ok {
+		return nil, errors.Errorf("Sess: sess not found (lSeid:0x%x)", lSeid)
+	}
+	return n.local.Sess(lSeid)
+}
+
+func (n *RemoteNode) NewSess(rSeid uint64) *Sess {
+	s := n.local.NewSess(rSeid)
+	n.sess[s.LocalID] = struct{}{}
+	s.node = n
+	s.log = n.log.WithField(logger.FieldSessionID, fmt.Sprintf("SEID:L(0x%x),R(0x%x)", s.LocalID, rSeid))
+	s.log.Infoln("New session")
+	return s
+}
+
+func (n *RemoteNode) DeleteSess(lSeid uint64) {
+	_, ok := n.sess[lSeid]
+	if !ok {
+		return
+	}
+	delete(n.sess, lSeid)
+	err := n.local.DeleteSess(lSeid)
+	if err != nil {
+		n.log.Warnln(err)
+	}
+}
+
+type LocalNode struct {
+	sess []*Sess
+	free []uint64
+}
+
+func (n *LocalNode) Reset() {
 	for _, sess := range n.sess {
 		if sess != nil {
 			sess.Close()
@@ -186,7 +237,7 @@ func (n *Node) Reset() {
 	n.free = []uint64{}
 }
 
-func (n *Node) Sess(lSeid uint64) (*Sess, error) {
+func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 	if lSeid == 0 {
 		return nil, errors.New("Sess: invalid lSeid:0")
 	}
@@ -201,9 +252,8 @@ func (n *Node) Sess(lSeid uint64) (*Sess, error) {
 	return sess, nil
 }
 
-func (n *Node) NewSess(rSeid uint64) *Sess {
+func (n *LocalNode) NewSess(rSeid uint64) *Sess {
 	s := &Sess{
-		node:     n,
 		RemoteID: rSeid,
 		PDRIDs:   make(map[uint16]struct{}),
 		FARIDs:   make(map[uint32]struct{}),
@@ -218,27 +268,23 @@ func (n *Node) NewSess(rSeid uint64) *Sess {
 		n.sess = append(n.sess, s)
 		s.LocalID = uint64(len(n.sess))
 	}
-	s.log = n.log.WithField(logger.FieldSessionID, fmt.Sprintf("SEID:L(0x%x),R(0x%x)", s.LocalID, rSeid))
-	s.log.Infoln("New session")
 	return s
 }
 
-func (n *Node) DeleteSess(lSeid uint64) {
+func (n *LocalNode) DeleteSess(lSeid uint64) error {
 	if lSeid == 0 {
-		n.log.Warnln("DeleteSess: invalid lSeid:0")
-		return
+		return errors.New("DeleteSess: invalid lSeid:0")
 	}
 	i := int(lSeid) - 1
 	if i >= len(n.sess) {
-		n.log.Warnf("DeleteSess: sess not found (lSeid:0x%x)", lSeid)
-		return
+		return errors.Errorf("DeleteSess: sess not found (lSeid:0x%x)", lSeid)
 	}
 	if n.sess[i] == nil {
-		n.log.Warnf("DeleteSess: sess not found (lSeid:0x%x)", lSeid)
-		return
+		return errors.Errorf("DeleteSess: sess not found (lSeid:0x%x)", lSeid)
 	}
 	n.sess[i].log.Infoln("sess deleted")
 	n.sess[i].Close()
 	n.sess[i] = nil
 	n.free = append(n.free, lSeid)
+	return nil
 }
