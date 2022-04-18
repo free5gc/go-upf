@@ -15,7 +15,7 @@ import (
 )
 
 type Sess struct {
-	node     *RemoteNode
+	rnode    *RemoteNode
 	LocalID  uint64
 	RemoteID uint64
 	PDRIDs   map[uint16]struct{}
@@ -51,7 +51,7 @@ func (s *Sess) Close() {
 }
 
 func (s *Sess) CreatePDR(req *ie.IE) error {
-	err := s.node.driver.CreatePDR(s.LocalID, req)
+	err := s.rnode.driver.CreatePDR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -65,11 +65,11 @@ func (s *Sess) CreatePDR(req *ie.IE) error {
 }
 
 func (s *Sess) UpdatePDR(req *ie.IE) error {
-	return s.node.driver.UpdatePDR(s.LocalID, req)
+	return s.rnode.driver.UpdatePDR(s.LocalID, req)
 }
 
 func (s *Sess) RemovePDR(req *ie.IE) error {
-	err := s.node.driver.RemovePDR(s.LocalID, req)
+	err := s.rnode.driver.RemovePDR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (s *Sess) RemovePDR(req *ie.IE) error {
 }
 
 func (s *Sess) CreateFAR(req *ie.IE) error {
-	err := s.node.driver.CreateFAR(s.LocalID, req)
+	err := s.rnode.driver.CreateFAR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -97,11 +97,11 @@ func (s *Sess) CreateFAR(req *ie.IE) error {
 }
 
 func (s *Sess) UpdateFAR(req *ie.IE) error {
-	return s.node.driver.UpdateFAR(s.LocalID, req)
+	return s.rnode.driver.UpdateFAR(s.LocalID, req)
 }
 
 func (s *Sess) RemoveFAR(req *ie.IE) error {
-	err := s.node.driver.RemoveFAR(s.LocalID, req)
+	err := s.rnode.driver.RemoveFAR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func (s *Sess) RemoveFAR(req *ie.IE) error {
 }
 
 func (s *Sess) CreateQER(req *ie.IE) error {
-	err := s.node.driver.CreateQER(s.LocalID, req)
+	err := s.rnode.driver.CreateQER(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -129,11 +129,11 @@ func (s *Sess) CreateQER(req *ie.IE) error {
 }
 
 func (s *Sess) UpdateQER(req *ie.IE) error {
-	return s.node.driver.UpdateQER(s.LocalID, req)
+	return s.rnode.driver.UpdateQER(s.LocalID, req)
 }
 
 func (s *Sess) RemoveQER(req *ie.IE) error {
-	err := s.node.driver.RemoveQER(s.LocalID, req)
+	err := s.rnode.driver.RemoveQER(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -148,11 +148,11 @@ func (s *Sess) RemoveQER(req *ie.IE) error {
 
 func (s *Sess) HandleReport(handler func(net.Addr, uint64, report.Report)) {
 	s.handler = handler
-	s.node.driver.HandleReport(s.LocalID, s)
+	s.rnode.driver.HandleReport(s.LocalID, s)
 }
 
 func (s *Sess) DropReport() {
-	s.node.driver.DropReport(s.LocalID)
+	s.rnode.driver.DropReport(s.LocalID)
 	s.handler = nil
 }
 
@@ -160,7 +160,7 @@ func (s *Sess) ServeReport(r report.Report) {
 	if s.handler == nil {
 		return
 	}
-	addr := fmt.Sprintf("%s:%d", s.node.ID, factory.UpfPfcpDefaultPort)
+	addr := fmt.Sprintf("%s:%d", s.rnode.ID, factory.UpfPfcpDefaultPort)
 	laddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return
@@ -204,7 +204,7 @@ func (n *RemoteNode) Sess(lSeid uint64) (*Sess, error) {
 func (n *RemoteNode) NewSess(rSeid uint64) *Sess {
 	s := n.local.NewSess(rSeid)
 	n.sess[s.LocalID] = struct{}{}
-	s.node = n
+	s.rnode = n
 	s.log = n.log.WithField(logger.FieldSessionID, fmt.Sprintf("SEID:L(0x%x),R(0x%x)", s.LocalID, rSeid))
 	s.log.Infoln("New session")
 	return s

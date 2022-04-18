@@ -22,7 +22,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	}
 	s.log.Debugf("remote nodeid: %v\n", rnodeid)
 
-	node, ok := s.rnodes[rnodeid]
+	rnode, ok := s.rnodes[rnodeid]
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", rnodeid)
 		return
@@ -40,7 +40,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	s.log.Debugf("seid: %v\n", fseid.SEID)
 
 	// allocate a session
-	sess := node.NewSess(fseid.SEID)
+	sess := rnode.NewSess(fseid.SEID)
 
 	sess.HandleReport(s.ServeReport)
 
@@ -97,22 +97,25 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 	// TODO: error response
 	s.log.Infoln("handleSessionModificationRequest")
 
-	var nodeid string
-	if raddr, ok := addr.(*net.UDPAddr); ok {
-		nodeid = raddr.IP.String()
-	}
-	s.log.Debugf("nodeid: %v\n", nodeid)
-
-	node, ok := s.rnodes[nodeid]
-	if !ok {
-		s.log.Errorf("not found NodeID %v\n", nodeid)
-		return
-	}
-
-	sess, err := node.Sess(req.Header.SEID)
+	sess, err := s.lnode.Sess(req.Header.SEID)
 	if err != nil {
-		node.log.Errorln(err)
+		s.log.Errorln(err)
 		return
+	}
+
+	if req.NodeID != nil {
+		// TS 29.244 7.5.4:
+		// This IE shall be present if a new SMF in an SMF Set,
+		// with one PFCP association per SMF and UPF (see clause 5.22.3),
+		// takes over the control of the PFCP session.
+		// When present, it shall contain the unique identifier of the new SMF.
+		rnodeid, err1 := req.NodeID.NodeID()
+		if err1 != nil {
+			s.log.Errorln(err)
+			return
+		}
+		s.log.Debugf("new remote nodeid: %v\n", rnodeid)
+		s.UpdateNodeID(sess.rnode, rnodeid)
 	}
 
 	for _, i := range req.CreateFAR {
@@ -204,25 +207,13 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 	// TODO: error response
 	s.log.Infoln("handleSessionDeletionRequest")
 
-	var nodeid string
-	if raddr, ok := addr.(*net.UDPAddr); ok {
-		nodeid = raddr.IP.String()
-	}
-	s.log.Debugf("nodeid: %v\n", nodeid)
-
-	node, ok := s.rnodes[nodeid]
-	if !ok {
-		s.log.Errorf("not found NodeID %v\n", nodeid)
-		return
-	}
-
-	sess, err := node.Sess(req.Header.SEID)
+	sess, err := s.lnode.Sess(req.Header.SEID)
 	if err != nil {
-		node.log.Errorln(err)
+		s.log.Errorln(err)
 		return
 	}
 
-	node.DeleteSess(req.Header.SEID)
+	sess.rnode.DeleteSess(req.Header.SEID)
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -249,23 +240,11 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 func (s *PfcpServer) handleSessionReportResponse(rsp *message.SessionReportResponse, addr net.Addr) {
 	s.log.Infoln("handleSessionReportResponse")
 
-	var nodeid string
-	if raddr, ok := addr.(*net.UDPAddr); ok {
-		nodeid = raddr.IP.String()
-	}
-	s.log.Debugf("nodeid: %v\n", nodeid)
-
-	node, ok := s.rnodes[nodeid]
-	if !ok {
-		s.log.Errorf("not found NodeID %v\n", nodeid)
-		return
-	}
-
 	s.log.Debugf("seid: %v\n", rsp.Header.SEID)
 
-	sess, err := node.Sess(rsp.Header.SEID)
+	sess, err := s.lnode.Sess(rsp.Header.SEID)
 	if err != nil {
-		node.log.Errorln(err)
+		s.log.Errorln(err)
 		return
 	}
 
