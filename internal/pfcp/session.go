@@ -67,6 +67,11 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	}
 
 	var v4 net.IP
+	addrv4, err := net.ResolveIPAddr("ip4", s.nodeID)
+	if err == nil {
+		v4 = addrv4.IP.To4()
+	}
+	// TODO: support v6
 	var v6 net.IP
 
 	rsp := message.NewSessionEstablishmentResponse(
