@@ -1,22 +1,44 @@
 package pfcp
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
+	"github.com/free5gc/go-upf/internal/buff"
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/pkg/factory"
 )
 
-func (s *PfcpServer) ServeReport(addr net.Addr, seid uint64, r report.Report) {
-	s.log.Infoln("ServeReport")
-	switch r.Type() {
-	case report.DLDR:
-		r := r.(report.DLDReport)
-		err := s.ServeDLDReport(addr, seid, r.PDRID)
+func (s *PfcpServer) ServeReport(r *report.SessReport) {
+	sess, err := s.lnode.Sess(r.SEID)
+	if err != nil {
+		s.log.Errorln(err)
+		return
+	}
+
+	if r.Action&buff.BUFF != 0 && len(r.BufPkt) > 0 {
+		dldr, ok := r.Report.(report.DLDReport)
+		if ok {
+			sess.Push(dldr.PDRID, r.BufPkt)
+		}
+	}
+	if r.Action&buff.NOCP != 0 {
+		addr := fmt.Sprintf("%s:%d", sess.rnode.ID, factory.UpfPfcpDefaultPort)
+		laddr, err := net.ResolveUDPAddr("udp", addr)
 		if err != nil {
-			s.log.Errorln(err)
+			return
+		}
+
+		switch r.Report.Type() {
+		case report.DLDR:
+			dldr := r.Report.(report.DLDReport)
+			err := s.ServeDLDReport(laddr, r.SEID, dldr.PDRID)
+			if err != nil {
+				s.log.Errorln(err)
+			}
 		}
 	}
 }

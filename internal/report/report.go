@@ -21,3 +21,15 @@ type DLDReport struct {
 func (r DLDReport) Type() int {
 	return DLDR
 }
+
+type SessReport struct {
+	SEID   uint64
+	Report Report
+	Action uint16
+	BufPkt []byte
+}
+
+type BufInfo struct {
+	SEID  uint64
+	PDRID uint16
+}

@@ -21,7 +21,6 @@ import (
 
 const (
 	SOCKPATH = "/tmp/free5gc_unix_sock"
-	BUFFLEN  = 512
 )
 
 type Gtp5g struct {
@@ -70,10 +69,10 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string) (*Gtp5g, error) {
 	}
 	g.client = c
 
-	bs, err := buff.OpenServer(wg, SOCKPATH, BUFFLEN)
+	bs, err := buff.OpenServer(wg, SOCKPATH)
 	if err != nil {
 		g.Close()
-		return nil, errors.Wrap(err, "oopen buff server")
+		return nil, errors.Wrap(err, "open buff server")
 	}
 	g.bs = bs
 
@@ -893,12 +892,8 @@ func (g *Gtp5g) RemoveQER(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.RemoveQEROID(g.client, g.link.link, oid)
 }
 
-func (g *Gtp5g) HandleReport(lSeid uint64, handler report.Handler) {
-	g.bs.Handle(lSeid, handler)
-}
-
-func (g *Gtp5g) DropReport(lSeid uint64) {
-	g.bs.Drop(lSeid)
+func (g *Gtp5g) HandleReport(handler report.Handler) {
+	g.bs.Handle(handler)
 }
 
 const (
@@ -910,6 +905,7 @@ const (
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 	far, err := gtp5gnl.GetFAR(g.client, g.link.link, farid)
 	if err != nil {
+		logger.Gtp5gLog.Errorf("applyAction err: %+v", err)
 		return
 	}
 	if far.Action&BUFF == 0 {
@@ -932,6 +928,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 			oid := gtp5gnl.OID{lSeid, uint64(pdrid)}
 			pdr, err := gtp5gnl.GetPDROID(g.client, g.link.link, oid)
 			if err != nil {
+				logger.Gtp5gLog.Errorf("applyAction GetPDROID err: %+v", err)
 				continue
 			}
 			var qer *gtp5gnl.QER
@@ -939,6 +936,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 				oid := gtp5gnl.OID{lSeid, uint64(*pdr.QERID)}
 				q, err := gtp5gnl.GetQEROID(g.client, g.link.link, oid)
 				if err != nil {
+					logger.Gtp5gLog.Errorf("applyAction GetQEROID err: %+v", err)
 					continue
 				}
 				qer = q
@@ -950,6 +948,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 				}
 				err := g.WritePacket(far, qer, pkt)
 				if err != nil {
+					logger.Gtp5gLog.Errorf("applyAction WritePacket err: %+v", err)
 					continue
 				}
 			}

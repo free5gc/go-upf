@@ -11,17 +11,68 @@ import (
 	"github.com/free5gc/go-upf/internal/report"
 )
 
+type testHandler struct {
+	q map[uint64]map[uint16]chan []byte
+}
+
+func NewTestHandler() *testHandler {
+	return &testHandler{q: make(map[uint64]map[uint16]chan []byte)}
+}
+
+func (h *testHandler) Close() {
+	for _, s := range h.q {
+		for _, q := range s {
+			close(q)
+		}
+	}
+}
+
+func (h *testHandler) NotifySessReport(sr report.SessReport) {
+	s, ok := h.q[sr.SEID]
+	if !ok {
+		return
+	}
+	if sr.Action&BUFF != 0 && len(sr.BufPkt) > 0 {
+		dldr, ok := sr.Report.(report.DLDReport)
+		if ok {
+			q, ok := s[dldr.PDRID]
+			if !ok {
+				qlen := 10
+				s[dldr.PDRID] = make(chan []byte, qlen)
+				q = s[dldr.PDRID]
+			}
+			q <- sr.BufPkt
+		}
+	}
+}
+
+func (h *testHandler) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
+	s, ok := h.q[seid]
+	if !ok {
+		return nil, false
+	}
+	q, ok := s[pdrid]
+	if !ok {
+		return nil, false
+	}
+	select {
+	case pkt := <-q:
+		return pkt, true
+	default:
+		return nil, false
+	}
+}
+
 func TestServer(t *testing.T) {
-	done := make(chan uint16)
-	defer close(done)
 	addr := "test.unsock"
-	qlen := 10
 	var wg sync.WaitGroup
-	s, err := OpenServer(&wg, addr, qlen)
+	s, err := OpenServer(&wg, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
+	h := NewTestHandler()
 	defer func() {
+		h.Close()
 		s.Close()
 		wg.Wait()
 	}()
@@ -33,15 +84,8 @@ func TestServer(t *testing.T) {
 	}()
 
 	seid := uint64(6)
-	s.HandleFunc(seid, func(r report.Report) {
-		switch r.Type() {
-		case report.DLDR:
-			r := r.(report.DLDReport)
-			done <- r.PDRID
-			time.Sleep(100 * time.Millisecond)
-		}
-	})
-	defer s.Drop(seid)
+	h.q[seid] = make(map[uint16]chan []byte)
+	s.Handle(h)
 
 	laddr, err := net.ResolveUnixAddr("unixgram", addr)
 	if err != nil {
@@ -74,12 +118,9 @@ func TestServer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		pdrid := <-done
+		time.Sleep(100 * time.Millisecond)
 
-		if pdrid != 3 {
-			t.Errorf("want %v; but got %v\n", 3, pdrid)
-		}
-
+		pdrid := uint16(3)
 		pkt, ok := s.Pop(seid, pdrid)
 		if !ok {
 			t.Fatal("not found")

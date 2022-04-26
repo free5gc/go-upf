@@ -12,12 +12,26 @@ import (
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
+
+const (
+	RECEIVE_CHANNEL_LEN = 512
+	REPORT_CHANNEL_LEN  = 64
+	MAX_PFCP_MSG_LEN    = 1500
+)
+
+type ReceiveMessage struct {
+	RemoteAddr net.Addr
+	Msg        []byte
+}
 
 type PfcpServer struct {
 	listen       string
 	nodeID       string
+	rcvCh        chan ReceiveMessage
+	srCh         chan report.SessReport
 	conn         *net.UDPConn
 	recoveryTime time.Time
 	driver       forwarder.Driver
@@ -31,6 +45,8 @@ func NewPfcpServer(listen, nodeID string, driver forwarder.Driver) *PfcpServer {
 	return &PfcpServer{
 		listen:       listen,
 		nodeID:       nodeID,
+		rcvCh:        make(chan ReceiveMessage, RECEIVE_CHANNEL_LEN),
+		srCh:         make(chan report.SessReport, REPORT_CHANNEL_LEN),
 		recoveryTime: time.Now(),
 		driver:       driver,
 		rnodes:       make(map[string]*RemoteNode),
@@ -46,6 +62,8 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		}
 
 		s.log.Infoln("pfcp server stopped")
+		close(s.rcvCh)
+		close(s.srCh)
 		wg.Done()
 	}()
 
@@ -63,17 +81,49 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	}
 	s.conn = conn
 
-	buf := make([]byte, 1500)
+	wg.Add(1)
+	go s.receiver(wg)
+
+	for {
+		select {
+		case sr := <-s.srCh:
+			s.ServeReport(&sr)
+		case rcvMsg := <-s.rcvCh:
+			if len(rcvMsg.Msg) == 0 {
+				// receiver closed
+				return
+			}
+			err = s.dispacher(rcvMsg.Msg, rcvMsg.RemoteAddr)
+			if err != nil {
+				s.log.Errorln(err)
+				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvMsg.Msg))
+			}
+		}
+	}
+}
+
+func (s *PfcpServer) receiver(wg *sync.WaitGroup) {
+	defer func() {
+		if p := recover(); p != nil {
+			// Print stack for panic to log. Fatalf() will let program exit.
+			s.log.Fatalf("panic: %v\n%s", p, string(debug.Stack()))
+		}
+
+		s.log.Infoln("pfcp reciver stopped")
+		wg.Done()
+	}()
+
+	buf := make([]byte, MAX_PFCP_MSG_LEN)
 	for {
 		n, addr, err := s.conn.ReadFrom(buf)
 		if err != nil {
 			s.log.Errorf("%+v", err)
+			s.rcvCh <- ReceiveMessage{}
 			break
 		}
-		err = s.dispacher(buf[:n], addr)
-		if err != nil {
-			s.log.Errorln(err)
-			s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(buf))
+		s.rcvCh <- ReceiveMessage{
+			RemoteAddr: addr,
+			Msg:        buf[:n],
 		}
 	}
 }
@@ -112,4 +162,17 @@ func (s *PfcpServer) UpdateNodeID(n *RemoteNode, newId string) {
 	n.ID = newId
 	n.log = s.log.WithField(logger.FieldNodeID, "NodeID:"+newId)
 	s.rnodes[newId] = n
+}
+
+func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
+	s.srCh <- sr
+}
+
+func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
+	sess, err := s.lnode.Sess(seid)
+	if err != nil {
+		s.log.Errorln(err)
+		return nil, false
+	}
+	return sess.Pop(pdrid)
 }

@@ -28,8 +28,7 @@ type Driver interface {
 	UpdateQER(uint64, *ie.IE) error
 	RemoveQER(uint64, *ie.IE) error
 
-	HandleReport(uint64, report.Handler)
-	DropReport(uint64)
+	HandleReport(report.Handler)
 }
 
 func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {

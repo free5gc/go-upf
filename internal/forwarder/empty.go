@@ -47,8 +47,5 @@ func (Empty) RemoveQER(uint64, *ie.IE) error {
 	return nil
 }
 
-func (Empty) HandleReport(uint64, report.Handler) {
-}
-
-func (e Empty) DropReport(uint64) {
+func (Empty) HandleReport(report.Handler) {
 }

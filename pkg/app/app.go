@@ -17,17 +17,16 @@ import (
 )
 
 type UPF struct {
-	ctx         context.Context
-	wg          sync.WaitGroup
-	cfg         *factory.Config
-	driver      forwarder.Driver
-	pfcpServers []*pfcp.PfcpServer
+	ctx        context.Context
+	wg         sync.WaitGroup
+	cfg        *factory.Config
+	driver     forwarder.Driver
+	pfcpServer *pfcp.PfcpServer
 }
 
 func NewUpf(cfg *factory.Config) (*UPF, error) {
 	upf := &UPF{
-		cfg:         cfg,
-		pfcpServers: make([]*pfcp.PfcpServer, 0),
+		cfg: cfg,
 	}
 
 	setLoggerLogLevel("UPF", cfg.DebugLevel, cfg.ReportCaller,
@@ -82,9 +81,9 @@ func (u *UPF) Run() error {
 	}
 
 	cfgPfcp := u.cfg.Pfcp
-	pfcpServer := pfcp.NewPfcpServer(cfgPfcp.Addr, cfgPfcp.NodeID, u.driver)
-	pfcpServer.Start(&u.wg)
-	u.pfcpServers = append(u.pfcpServers, pfcpServer)
+	u.pfcpServer = pfcp.NewPfcpServer(cfgPfcp.Addr, cfgPfcp.NodeID, u.driver)
+	u.driver.HandleReport(u.pfcpServer)
+	u.pfcpServer.Start(&u.wg)
 
 	logger.InitLog.Infoln("UPF started")
 
@@ -113,9 +112,7 @@ func (u *UPF) listenShutdownEvent() {
 	}()
 
 	<-u.ctx.Done()
-	for _, pfcpServer := range u.pfcpServers {
-		pfcpServer.Stop()
-	}
+	u.pfcpServer.Stop()
 	u.driver.Close()
 }
 

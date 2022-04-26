@@ -17,12 +17,11 @@ const (
 )
 
 type Server struct {
-	conn *net.UnixConn
-	sess sync.Map
-	qlen int
+	conn    *net.UnixConn
+	handler report.Handler
 }
 
-func OpenServer(wg *sync.WaitGroup, addr string, qlen int) (*Server, error) {
+func OpenServer(wg *sync.WaitGroup, addr string) (*Server, error) {
 	s := new(Server)
 
 	err := os.Remove(addr)
@@ -39,8 +38,6 @@ func OpenServer(wg *sync.WaitGroup, addr string, qlen int) (*Server, error) {
 	}
 	s.conn = conn
 
-	s.qlen = qlen
-
 	wg.Add(1)
 	go s.Serve(wg)
 	logger.BuffLog.Infof("buff server started")
@@ -55,23 +52,8 @@ func (s *Server) Close() {
 	}
 }
 
-func (s *Server) Handle(seid uint64, handler report.Handler) {
-	sess := OpenSess(handler, s.qlen)
-	s.sess.Store(seid, sess)
-}
-
-func (s *Server) HandleFunc(seid uint64, f func(report.Report)) {
-	sess := OpenSess(report.HandlerFunc(f), s.qlen)
-	s.sess.Store(seid, sess)
-}
-
-func (s *Server) Drop(seid uint64) {
-	v, ok := s.sess.Load(seid)
-	if ok {
-		s.sess.Delete(seid)
-		sess := v.(*Sess)
-		sess.Close()
-	}
+func (s *Server) Handle(handler report.Handler) {
+	s.handler = handler
 }
 
 func (s *Server) Serve(wg *sync.WaitGroup) {
@@ -90,27 +72,21 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if err != nil {
 			continue
 		}
-		if action&BUFF == 0 {
+
+		if s.handler == nil {
 			continue
 		}
-		v, ok := s.sess.Load(seid)
-		if !ok {
-			continue
-		}
-		sess := v.(*Sess)
-		sess.Push(pdrid, pkt)
-		if action&NOCP != 0 && sess.Len(pdrid) == 1 {
-			rep := report.DLDReport{
-				PDRID: pdrid,
-			}
-			sess.handler.ServeReport(rep)
-		}
+		s.handler.NotifySessReport(
+			report.SessReport{
+				SEID: seid,
+				Report: report.DLDReport{
+					PDRID: pdrid,
+				},
+				Action: action,
+				BufPkt: pkt,
+			},
+		)
 	}
-	s.sess.Range(func(k, v interface{}) bool {
-		sess := v.(*Sess)
-		sess.Close()
-		return true
-	})
 }
 
 func (s *Server) decode(b []byte) (uint64, uint16, uint16, []byte, error) {
@@ -129,10 +105,5 @@ func (s *Server) decode(b []byte) (uint64, uint16, uint16, []byte, error) {
 }
 
 func (s *Server) Pop(seid uint64, pdrid uint16) ([]byte, bool) {
-	v, ok := s.sess.Load(seid)
-	if !ok {
-		return nil, ok
-	}
-	sess := v.(*Sess)
-	return sess.Pop(pdrid)
+	return s.handler.PopBufPkt(seid, pdrid)
 }

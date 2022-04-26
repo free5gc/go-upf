@@ -2,7 +2,6 @@ package pfcp
 
 import (
 	"fmt"
-	"net"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -10,8 +9,10 @@ import (
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
-	"github.com/free5gc/go-upf/internal/report"
-	"github.com/free5gc/go-upf/pkg/factory"
+)
+
+const (
+	BUFFQ_LEN = 512
 )
 
 type Sess struct {
@@ -21,7 +22,8 @@ type Sess struct {
 	PDRIDs   map[uint16]struct{}
 	FARIDs   map[uint32]struct{}
 	QERIDs   map[uint32]struct{}
-	handler  func(net.Addr, uint64, report.Report)
+	q        map[uint16]chan []byte // key: PDR_ID
+	qlen     int
 	log      *logrus.Entry
 }
 
@@ -47,7 +49,9 @@ func (s *Sess) Close() {
 			s.log.Errorf("remove PDR err: %+v", err)
 		}
 	}
-	s.DropReport()
+	for _, q := range s.q {
+		close(q)
+	}
 }
 
 func (s *Sess) CreatePDR(req *ie.IE) error {
@@ -146,26 +150,38 @@ func (s *Sess) RemoveQER(req *ie.IE) error {
 	return nil
 }
 
-func (s *Sess) HandleReport(handler func(net.Addr, uint64, report.Report)) {
-	s.handler = handler
-	s.rnode.driver.HandleReport(s.LocalID, s)
+func (s *Sess) Push(pdrid uint16, p []byte) {
+	pkt := make([]byte, len(p))
+	copy(pkt, p)
+	q, ok := s.q[pdrid]
+	if !ok {
+		s.q[pdrid] = make(chan []byte, s.qlen)
+		q = s.q[pdrid]
+	}
+	q <- pkt
+	s.log.Debugf("Push bufPkt to q[%d](len:%d)", pdrid, len(q))
 }
 
-func (s *Sess) DropReport() {
-	s.rnode.driver.DropReport(s.LocalID)
-	s.handler = nil
+func (s *Sess) Len(pdrid uint16) int {
+	q, ok := s.q[pdrid]
+	if !ok {
+		return 0
+	}
+	return len(q)
 }
 
-func (s *Sess) ServeReport(r report.Report) {
-	if s.handler == nil {
-		return
+func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
+	q, ok := s.q[pdrid]
+	if !ok {
+		return nil, ok
 	}
-	addr := fmt.Sprintf("%s:%d", s.rnode.ID, factory.UpfPfcpDefaultPort)
-	laddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return
+	select {
+	case pkt := <-q:
+		s.log.Debugf("Pop bufPkt from q[%d](len:%d)", pdrid, len(q))
+		return pkt, true
+	default:
+		return nil, false
 	}
-	s.handler(laddr, s.RemoteID, r)
 }
 
 type RemoteNode struct {
@@ -202,7 +218,7 @@ func (n *RemoteNode) Sess(lSeid uint64) (*Sess, error) {
 }
 
 func (n *RemoteNode) NewSess(rSeid uint64) *Sess {
-	s := n.local.NewSess(rSeid)
+	s := n.local.NewSess(rSeid, BUFFQ_LEN)
 	n.sess[s.LocalID] = struct{}{}
 	s.rnode = n
 	s.log = n.log.WithField(logger.FieldSessionID, fmt.Sprintf("SEID:L(0x%x),R(0x%x)", s.LocalID, rSeid))
@@ -252,12 +268,14 @@ func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 	return sess, nil
 }
 
-func (n *LocalNode) NewSess(rSeid uint64) *Sess {
+func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 	s := &Sess{
 		RemoteID: rSeid,
 		PDRIDs:   make(map[uint16]struct{}),
 		FARIDs:   make(map[uint32]struct{}),
 		QERIDs:   make(map[uint32]struct{}),
+		q:        make(map[uint16]chan []byte),
+		qlen:     qlen,
 	}
 	last := len(n.free) - 1
 	if last >= 0 {

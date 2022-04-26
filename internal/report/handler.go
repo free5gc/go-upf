@@ -1,11 +1,6 @@
 package report
 
 type Handler interface {
-	ServeReport(Report)
-}
-
-type HandlerFunc func(Report)
-
-func (f HandlerFunc) ServeReport(r Report) {
-	f(r)
+	NotifySessReport(SessReport)
+	PopBufPkt(uint64, uint16) ([]byte, bool)
 }
