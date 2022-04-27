@@ -907,7 +907,8 @@ const (
 )
 
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
-	far, err := gtp5gnl.GetFAR(g.client, g.link.link, farid)
+	oid := gtp5gnl.OID{lSeid, uint64(farid)}
+	far, err := gtp5gnl.GetFAROID(g.client, g.link.link, oid)
 	if err != nil {
 		g.log.Errorf("applyAction err: %+v", err)
 		return
