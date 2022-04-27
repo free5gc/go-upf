@@ -10,6 +10,7 @@ import (
 	"github.com/khirono/go-gtp5gnl"
 	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/buff"
@@ -29,10 +30,13 @@ type Gtp5g struct {
 	conn   *nl.Conn
 	client *gtp5gnl.Client
 	bs     *buff.Server
+	log    *logrus.Entry
 }
 
 func OpenGtp5g(wg *sync.WaitGroup, addr string) (*Gtp5g, error) {
-	g := new(Gtp5g)
+	g := &Gtp5g{
+		log: logger.FwderLog.WithField(logger.FieldCategory, "Gtp5g"),
+	}
 
 	mux, err := nl.NewMux()
 	if err != nil {
@@ -43,12 +47,12 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string) (*Gtp5g, error) {
 		defer wg.Done()
 		err = mux.Serve()
 		if err != nil {
-			logger.Gtp5gLog.Warnf("mux Serve err: %+v", err)
+			g.log.Warnf("mux Serve err: %+v", err)
 		}
 	}()
 	g.mux = mux
 
-	link, err := OpenGtp5gLink(mux, addr)
+	link, err := OpenGtp5gLink(mux, addr, g.log)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "open link")
@@ -905,7 +909,7 @@ const (
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 	far, err := gtp5gnl.GetFAR(g.client, g.link.link, farid)
 	if err != nil {
-		logger.Gtp5gLog.Errorf("applyAction err: %+v", err)
+		g.log.Errorf("applyAction err: %+v", err)
 		return
 	}
 	if far.Action&BUFF == 0 {
@@ -928,7 +932,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 			oid := gtp5gnl.OID{lSeid, uint64(pdrid)}
 			pdr, err := gtp5gnl.GetPDROID(g.client, g.link.link, oid)
 			if err != nil {
-				logger.Gtp5gLog.Errorf("applyAction GetPDROID err: %+v", err)
+				g.log.Warnf("applyAction GetPDROID err: %+v", err)
 				continue
 			}
 			var qer *gtp5gnl.QER
@@ -936,7 +940,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 				oid := gtp5gnl.OID{lSeid, uint64(*pdr.QERID)}
 				q, err := gtp5gnl.GetQEROID(g.client, g.link.link, oid)
 				if err != nil {
-					logger.Gtp5gLog.Errorf("applyAction GetQEROID err: %+v", err)
+					g.log.Warnf("applyAction GetQEROID err: %+v", err)
 					continue
 				}
 				qer = q
@@ -948,7 +952,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 				}
 				err := g.WritePacket(far, qer, pkt)
 				if err != nil {
-					logger.Gtp5gLog.Errorf("applyAction WritePacket err: %+v", err)
+					g.log.Warnf("applyAction WritePacket err: %+v", err)
 					continue
 				}
 			}

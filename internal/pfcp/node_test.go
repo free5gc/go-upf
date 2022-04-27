@@ -12,7 +12,7 @@ func TestNode(t *testing.T) {
 		"smf1",
 		&LocalNode{},
 		forwarder.Empty{},
-		logger.PfcpLog.WithField(logger.FieldNodeID, "NodeID:smf1"),
+		logger.PfcpLog.WithField(logger.FieldRemoteNodeID, "rNodeID:smf1"),
 	)
 	t.Run("delete 0 no effect", func(t *testing.T) {
 		n.DeleteSess(0)
@@ -145,13 +145,13 @@ func TestNode_multipleSMF(t *testing.T) {
 		"smf1",
 		&lnode,
 		forwarder.Empty{},
-		logger.PfcpLog.WithField(logger.FieldNodeID, "NodeID:smf1"),
+		logger.PfcpLog.WithField(logger.FieldRemoteNodeID, "rNodeID:smf1"),
 	)
 	n2 := NewRemoteNode(
 		"smf2",
 		&lnode,
 		forwarder.Empty{},
-		logger.PfcpLog.WithField(logger.FieldNodeID, "NodeID:smf2"),
+		logger.PfcpLog.WithField(logger.FieldRemoteNodeID, "rNodeID:smf2"),
 	)
 	t.Run("new smf1 r-SEID=10", func(t *testing.T) {
 		sess := n1.NewSess(10)

@@ -10,8 +10,7 @@ import (
 	"github.com/khirono/go-rtnllink"
 	"github.com/khirono/go-rtnlroute"
 	"github.com/pkg/errors"
-
-	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/sirupsen/logrus"
 )
 
 type Gtp5gLink struct {
@@ -21,10 +20,13 @@ type Gtp5gLink struct {
 	link   *gtp5gnl.Link
 	conn   *net.UDPConn
 	f      *os.File
+	log    *logrus.Entry
 }
 
-func OpenGtp5gLink(mux *nl.Mux, addr string) (*Gtp5gLink, error) {
-	g := new(Gtp5gLink)
+func OpenGtp5gLink(mux *nl.Mux, addr string, log *logrus.Entry) (*Gtp5gLink, error) {
+	g := &Gtp5gLink{
+		log: log,
+	}
 
 	g.mux = mux
 
@@ -100,19 +102,19 @@ func (g *Gtp5gLink) Close() {
 	if g.f != nil {
 		err := g.f.Close()
 		if err != nil {
-			logger.Gtp5gLog.Warnf("file close err: %+v", err)
+			g.log.Warnf("file close err: %+v", err)
 		}
 	}
 	if g.conn != nil {
 		err := g.conn.Close()
 		if err != nil {
-			logger.Gtp5gLog.Warnf("conn close err: %+v", err)
+			g.log.Warnf("conn close err: %+v", err)
 		}
 	}
 	if g.link != nil {
 		err := rtnllink.Remove(g.client, "upfgtp")
 		if err != nil {
-			logger.Gtp5gLog.Warnf("rtnllink remove err: %+v", err)
+			g.log.Warnf("rtnllink remove err: %+v", err)
 		}
 	}
 	if g.rtconn != nil {

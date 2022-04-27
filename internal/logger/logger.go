@@ -16,15 +16,15 @@ var (
 	InitLog  *logrus.Entry
 	CfgLog   *logrus.Entry
 	PfcpLog  *logrus.Entry
-	CtxLog   *logrus.Entry
 	BuffLog  *logrus.Entry
-	Gtp5gLog *logrus.Entry
+	FwderLog *logrus.Entry
 )
 
 const (
-	FieldListenAddr string = "listen_addr"
-	FieldNodeID     string = "node_id"
-	FieldSessionID  string = "session_id"
+	FieldCategory     string = "category"
+	FieldListenAddr   string = "listen_addr"
+	FieldRemoteNodeID string = "rnode_id"
+	FieldSessionID    string = "session_id"
 )
 
 func init() {
@@ -36,16 +36,15 @@ func init() {
 		TrimMessages:    true,
 		NoFieldsSpace:   true,
 		HideKeys:        true,
-		FieldsOrder:     []string{"component", "category", FieldListenAddr, FieldNodeID, FieldSessionID},
+		FieldsOrder:     []string{"component", "category", FieldListenAddr, FieldRemoteNodeID, FieldSessionID},
 	}
 
-	MainLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Main"})
-	InitLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Init"})
-	CfgLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Cfg"})
-	PfcpLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Pfcp"})
-	CtxLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Ctx"})
-	BuffLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Buff"})
-	Gtp5gLog = log.WithFields(logrus.Fields{"component": "UPF", "category": "Gtp5g"})
+	MainLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Main"})
+	InitLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Init"})
+	CfgLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Cfg"})
+	PfcpLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Pfcp"})
+	BuffLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Buff"})
+	FwderLog = log.WithFields(logrus.Fields{"component": "UPF"})
 }
 
 func LogFileHook(logNfPath string, log5gcPath string) error {

@@ -150,7 +150,7 @@ func (s *PfcpServer) NewNode(id string, driver forwarder.Driver) *RemoteNode {
 		id,
 		&s.lnode,
 		driver,
-		s.log.WithField(logger.FieldNodeID, "NodeID:"+id),
+		s.log.WithField(logger.FieldRemoteNodeID, "rNodeID:"+id),
 	)
 	n.log.Infoln("New node")
 	return n
@@ -160,7 +160,7 @@ func (s *PfcpServer) UpdateNodeID(n *RemoteNode, newId string) {
 	s.log.Infof("Update nodeId %q to %q", n.ID, newId)
 	delete(s.rnodes, n.ID)
 	n.ID = newId
-	n.log = s.log.WithField(logger.FieldNodeID, "NodeID:"+newId)
+	n.log = s.log.WithField(logger.FieldRemoteNodeID, "rNodeID:"+newId)
 	s.rnodes[newId] = n
 }
 
