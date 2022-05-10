@@ -896,6 +896,36 @@ func (g *Gtp5g) RemoveQER(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.RemoveQEROID(g.client, g.link.link, oid)
 }
 
+func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
+	// TODO:
+	return nil
+}
+
+func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
+	// TODO:
+	return nil
+}
+
+func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) error {
+	// TODO:
+	return nil
+}
+
+func (g *Gtp5g) CreateBAR(lSeid uint64, req *ie.IE) error {
+	// TODO:
+	return nil
+}
+
+func (g *Gtp5g) UpdateBAR(lSeid uint64, req *ie.IE) error {
+	// TODO:
+	return nil
+}
+
+func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
+	// TODO:
+	return nil
+}
+
 func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bs.Handle(handler)
 }

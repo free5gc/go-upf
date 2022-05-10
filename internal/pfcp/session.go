@@ -57,6 +57,18 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 		}
 	}
 
+	for _, i := range req.CreateURR {
+		err = sess.CreateURR(i)
+		if err != nil {
+			sess.log.Errorln(err)
+		}
+	}
+
+	err = sess.CreateBAR(req.CreateBAR)
+	if err != nil {
+		sess.log.Errorln(err)
+	}
+
 	for _, i := range req.CreatePDR {
 		err = sess.CreatePDR(i)
 		if err != nil {
@@ -135,6 +147,18 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 		}
 	}
 
+	for _, i := range req.CreateURR {
+		err = sess.CreateURR(i)
+		if err != nil {
+			sess.log.Errorln(err)
+		}
+	}
+
+	err = sess.CreateBAR(req.CreateBAR)
+	if err != nil {
+		sess.log.Errorln(err)
+	}
+
 	for _, i := range req.CreatePDR {
 		err = sess.CreatePDR(i)
 		if err != nil {
@@ -156,6 +180,18 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 		}
 	}
 
+	for _, i := range req.RemoveURR {
+		err = sess.RemoveURR(i)
+		if err != nil {
+			sess.log.Errorln(err)
+		}
+	}
+
+	err = sess.RemoveBAR(req.RemoveBAR)
+	if err != nil {
+		sess.log.Errorln(err)
+	}
+
 	for _, i := range req.RemovePDR {
 		err = sess.RemovePDR(i)
 		if err != nil {
@@ -175,6 +211,18 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 		if err != nil {
 			sess.log.Errorln(err)
 		}
+	}
+
+	for _, i := range req.UpdateURR {
+		err = sess.UpdateURR(i)
+		if err != nil {
+			sess.log.Errorln(err)
+		}
+	}
+
+	err = sess.UpdateBAR(req.UpdateBAR)
+	if err != nil {
+		sess.log.Errorln(err)
 	}
 
 	for _, i := range req.UpdatePDR {

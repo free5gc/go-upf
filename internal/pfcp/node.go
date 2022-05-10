@@ -22,6 +22,8 @@ type Sess struct {
 	PDRIDs   map[uint16]struct{}
 	FARIDs   map[uint32]struct{}
 	QERIDs   map[uint32]struct{}
+	URRIDs   map[uint32]struct{}
+	BARIDs   map[uint8]struct{}
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
 	log      *logrus.Entry
@@ -40,6 +42,20 @@ func (s *Sess) Close() {
 		err := s.RemoveQER(i)
 		if err != nil {
 			s.log.Errorf("Remove QER err: %+v", err)
+		}
+	}
+	for id := range s.URRIDs {
+		i := ie.NewRemoveURR(ie.NewURRID(id))
+		err := s.RemoveURR(i)
+		if err != nil {
+			s.log.Errorf("Remove URR err: %+v", err)
+		}
+	}
+	for id := range s.BARIDs {
+		i := ie.NewRemoveBAR(ie.NewBARID(id))
+		err := s.RemoveBAR(i)
+		if err != nil {
+			s.log.Errorf("Remove BAR err: %+v", err)
 		}
 	}
 	for id := range s.PDRIDs {
@@ -147,6 +163,70 @@ func (s *Sess) RemoveQER(req *ie.IE) error {
 		return err
 	}
 	delete(s.QERIDs, id)
+	return nil
+}
+
+func (s *Sess) CreateURR(req *ie.IE) error {
+	err := s.rnode.driver.CreateURR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
+
+	id, err := req.URRID()
+	if err != nil {
+		return err
+	}
+	s.URRIDs[id] = struct{}{}
+	return nil
+}
+
+func (s *Sess) UpdateURR(req *ie.IE) error {
+	return s.rnode.driver.UpdateURR(s.LocalID, req)
+}
+
+func (s *Sess) RemoveURR(req *ie.IE) error {
+	err := s.rnode.driver.RemoveURR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
+
+	id, err := req.URRID()
+	if err != nil {
+		return err
+	}
+	delete(s.URRIDs, id)
+	return nil
+}
+
+func (s *Sess) CreateBAR(req *ie.IE) error {
+	err := s.rnode.driver.CreateBAR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
+
+	id, err := req.BARID()
+	if err != nil {
+		return err
+	}
+	s.BARIDs[id] = struct{}{}
+	return nil
+}
+
+func (s *Sess) UpdateBAR(req *ie.IE) error {
+	return s.rnode.driver.UpdateBAR(s.LocalID, req)
+}
+
+func (s *Sess) RemoveBAR(req *ie.IE) error {
+	err := s.rnode.driver.RemoveBAR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
+
+	id, err := req.BARID()
+	if err != nil {
+		return err
+	}
+	delete(s.BARIDs, id)
 	return nil
 }
 

@@ -28,6 +28,14 @@ type Driver interface {
 	UpdateQER(uint64, *ie.IE) error
 	RemoveQER(uint64, *ie.IE) error
 
+	CreateURR(uint64, *ie.IE) error
+	UpdateURR(uint64, *ie.IE) error
+	RemoveURR(uint64, *ie.IE) error
+
+	CreateBAR(uint64, *ie.IE) error
+	UpdateBAR(uint64, *ie.IE) error
+	RemoveBAR(uint64, *ie.IE) error
+
 	HandleReport(report.Handler)
 }
 

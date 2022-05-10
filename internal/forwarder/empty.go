@@ -47,5 +47,29 @@ func (Empty) RemoveQER(uint64, *ie.IE) error {
 	return nil
 }
 
+func (Empty) CreateURR(uint64, *ie.IE) error {
+	return nil
+}
+
+func (Empty) UpdateURR(uint64, *ie.IE) error {
+	return nil
+}
+
+func (Empty) RemoveURR(uint64, *ie.IE) error {
+	return nil
+}
+
+func (Empty) CreateBAR(uint64, *ie.IE) error {
+	return nil
+}
+
+func (Empty) UpdateBAR(uint64, *ie.IE) error {
+	return nil
+}
+
+func (Empty) RemoveBAR(uint64, *ie.IE) error {
+	return nil
+}
+
 func (Empty) HandleReport(report.Handler) {
 }
