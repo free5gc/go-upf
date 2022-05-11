@@ -38,8 +38,8 @@ github.com/json-iterator/go v1.1.9/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/u
 github.com/jtolds/gls v4.20.0+incompatible/go.mod h1:QJZ7F/aHp+rZTRtaJ1ow/lLfFfVYBRgL+9YlvaHOwJU=
 github.com/khirono/go-genl v1.0.0 h1:o1U5mxKce5VaBooGEgD5fTct19Oo/amqJalw0UOdwpA=
 github.com/khirono/go-genl v1.0.0/go.mod h1:TenVrVyXS8d/UOBCDNAdeLOMxsPiodOVfQma4z+Uv6A=
-github.com/khirono/go-gtp5gnl v1.2.0 h1:pjYilemYQptgPW/9VVwof8tc+pgrx0F3i5uDAyAVNRs=
-github.com/khirono/go-gtp5gnl v1.2.0/go.mod h1:HsNvjnhaF2DfsAiva7FPUiJDanhp/1MzJmEc+LCzhl0=
+github.com/khirono/go-gtp5gnl v1.3.0 h1:hYD3pxpHdX7IoCJwqnqQxdPGymJhIzjhyJpdyKrg8PA=
+github.com/khirono/go-gtp5gnl v1.3.0/go.mod h1:HsNvjnhaF2DfsAiva7FPUiJDanhp/1MzJmEc+LCzhl0=
 github.com/khirono/go-nl v1.0.0/go.mod h1:PzYeSjD38fzV7mX5DuaCZvnwx2kD/o7XgHyzuJxoi7U=
 github.com/khirono/go-nl v1.0.1 h1:Md8Y1h2STw/UxuBBIofdXyY0JPxIKIe/jqpEsD+rQpA=
 github.com/khirono/go-nl v1.0.1/go.mod h1:PzYeSjD38fzV7mX5DuaCZvnwx2kD/o7XgHyzuJxoi7U=
