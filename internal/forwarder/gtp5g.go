@@ -352,6 +352,15 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 				Type:  gtp5gnl.PDR_QER_ID,
 				Value: nl.AttrU32(v),
 			})
+		case ie.URRID:
+			v, err := i.URRID()
+			if err != nil {
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_URR_ID,
+				Value: nl.AttrU32(v),
+			})
 		}
 	}
 
@@ -435,6 +444,15 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_QER_ID,
+				Value: nl.AttrU32(v),
+			})
+		case ie.URRID:
+			v, err := i.URRID()
+			if err != nil {
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_URR_ID,
 				Value: nl.AttrU32(v),
 			})
 		}
@@ -551,6 +569,15 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 					Value: v,
 				})
 			}
+		case ie.BARID:
+			v, err := i.BARID()
+			if err != nil {
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.FAR_BAR_ID,
+				Value: nl.AttrU8(v),
+			})
 		}
 	}
 
@@ -599,6 +626,15 @@ func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 					Value: v,
 				})
 			}
+		case ie.BARID:
+			v, err := i.BARID()
+			if err != nil {
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.FAR_BAR_ID,
+				Value: nl.AttrU8(v),
+			})
 		}
 	}
 
@@ -897,33 +933,227 @@ func (g *Gtp5g) RemoveQER(lSeid uint64, req *ie.IE) error {
 }
 
 func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
-	// TODO:
-	return nil
+	var urrid uint64
+	var attrs []nl.Attr
+
+	ies, err := req.CreateURR()
+	if err != nil {
+		return err
+	}
+	for _, i := range ies {
+		switch i.Type {
+		case ie.URRID:
+			v, err := i.URRID()
+			if err != nil {
+				return err
+			}
+			urrid = uint64(v)
+		case ie.MeasurementMethod:
+			v, err := i.MeasurementMethod()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_MEASUREMENT_METHOD,
+				Value: nl.AttrU64(v),
+			})
+		case ie.ReportingTriggers:
+			v, err := i.ReportingTriggers()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
+				Value: nl.AttrU64(v),
+			})
+		case ie.MeasurementPeriod:
+			v, err := i.MeasurementPeriod()
+			if err != nil {
+				return err
+			}
+			// TODO: convert time.Duration -> ?
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_MEASUREMENT_PERIOD,
+				Value: nl.AttrU64(v),
+			})
+		case ie.MeasurementInformation:
+			v, err := i.MeasurementInformation()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_MEASUREMENT_INFO,
+				Value: nl.AttrU64(v),
+			})
+			// TODO: URR_SEQ
+		}
+	}
+
+	oid := gtp5gnl.OID{lSeid, urrid}
+	return gtp5gnl.CreateURROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
-	// TODO:
-	return nil
+	var urrid uint64
+	var attrs []nl.Attr
+
+	ies, err := req.UpdateURR()
+	if err != nil {
+		return err
+	}
+	for _, i := range ies {
+		switch i.Type {
+		case ie.URRID:
+			v, err := i.URRID()
+			if err != nil {
+				return err
+			}
+			urrid = uint64(v)
+		case ie.MeasurementMethod:
+			v, err := i.MeasurementMethod()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_MEASUREMENT_METHOD,
+				Value: nl.AttrU64(v),
+			})
+		case ie.ReportingTriggers:
+			v, err := i.ReportingTriggers()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
+				Value: nl.AttrU64(v),
+			})
+		case ie.MeasurementPeriod:
+			v, err := i.MeasurementPeriod()
+			if err != nil {
+				return err
+			}
+			// TODO: convert time.Duration -> ?
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_MEASUREMENT_PERIOD,
+				Value: nl.AttrU64(v),
+			})
+		case ie.MeasurementInformation:
+			v, err := i.MeasurementInformation()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_MEASUREMENT_INFO,
+				Value: nl.AttrU64(v),
+			})
+			// TODO: URR_SEQ
+		}
+	}
+
+	oid := gtp5gnl.OID{lSeid, urrid}
+	return gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) error {
-	// TODO:
-	return nil
+	v, err := req.URRID()
+	if err != nil {
+		return errors.New("not found URRID")
+	}
+	oid := gtp5gnl.OID{lSeid, uint64(v)}
+	return gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
 }
 
 func (g *Gtp5g) CreateBAR(lSeid uint64, req *ie.IE) error {
-	// TODO:
-	return nil
+	var barid uint64
+	var attrs []nl.Attr
+
+	ies, err := req.CreateBAR()
+	if err != nil {
+		return err
+	}
+	for _, i := range ies {
+		switch i.Type {
+		case ie.BARID:
+			v, err := i.BARID()
+			if err != nil {
+				return err
+			}
+			barid = uint64(v)
+		case ie.DownlinkDataNotificationDelay:
+			v, err := i.DownlinkDataNotificationDelay()
+			if err != nil {
+				return err
+			}
+			// TODO: convert time.Duration -> ?
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.BAR_DOWNLINK_DATA_NOTIFICATION_DELAY,
+				Value: nl.AttrU8(v),
+			})
+		case ie.SuggestedBufferingPacketsCount:
+			v, err := i.SuggestedBufferingPacketsCount()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.BAR_BUFFERING_PACKETS_COUNT,
+				Value: nl.AttrU16(v),
+			})
+		}
+	}
+
+	oid := gtp5gnl.OID{lSeid, barid}
+	return gtp5gnl.CreateBAROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) UpdateBAR(lSeid uint64, req *ie.IE) error {
-	// TODO:
-	return nil
+	var barid uint64
+	var attrs []nl.Attr
+
+	ies, err := req.UpdateBAR()
+	if err != nil {
+		return err
+	}
+	for _, i := range ies {
+		switch i.Type {
+		case ie.BARID:
+			v, err := i.BARID()
+			if err != nil {
+				return err
+			}
+			barid = uint64(v)
+		case ie.DownlinkDataNotificationDelay:
+			v, err := i.DownlinkDataNotificationDelay()
+			if err != nil {
+				return err
+			}
+			// TODO: convert time.Duration -> ?
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.BAR_DOWNLINK_DATA_NOTIFICATION_DELAY,
+				Value: nl.AttrU8(v),
+			})
+		case ie.SuggestedBufferingPacketsCount:
+			v, err := i.SuggestedBufferingPacketsCount()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.BAR_BUFFERING_PACKETS_COUNT,
+				Value: nl.AttrU16(v),
+			})
+		}
+	}
+
+	oid := gtp5gnl.OID{lSeid, barid}
+	return gtp5gnl.UpdateBAROID(g.client, g.link.link, oid, attrs)
 }
 
 func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
-	// TODO:
-	return nil
+	v, err := req.BARID()
+	if err != nil {
+		return errors.New("not found BARID")
+	}
+	oid := gtp5gnl.OID{lSeid, uint64(v)}
+	return gtp5gnl.RemoveBAROID(g.client, g.link.link, oid)
 }
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {
