@@ -238,8 +238,13 @@ func (s *Sess) Push(pdrid uint16, p []byte) {
 		s.q[pdrid] = make(chan []byte, s.qlen)
 		q = s.q[pdrid]
 	}
-	q <- pkt
-	s.log.Debugf("Push bufPkt to q[%d](len:%d)", pdrid, len(q))
+
+	select {
+	case q <- pkt:
+		s.log.Debugf("Push bufPkt to q[%d](len:%d)", pdrid, len(q))
+	default:
+		s.log.Debugf("q[%d](len:%d) is full, drop it", pdrid, len(q))
+	}
 }
 
 func (s *Sess) Len(pdrid uint16) int {
