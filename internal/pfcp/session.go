@@ -95,13 +95,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 		ie.NewFSEID(sess.LocalID, v4, v6),
 	)
 
-	b, err := rsp.Marshal()
-	if err != nil {
-		s.log.Errorln(err)
-		return
-	}
-
-	_, err = s.conn.WriteTo(b, addr)
+	err = s.sendMsgTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)
 		return
@@ -241,13 +235,7 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 
-	b, err := rsp.Marshal()
-	if err != nil {
-		s.log.Errorln(err)
-		return
-	}
-
-	_, err = s.conn.WriteTo(b, addr)
+	err = s.sendMsgTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)
 		return
@@ -275,13 +263,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 
-	b, err := rsp.Marshal()
-	if err != nil {
-		s.log.Errorln(err)
-		return
-	}
-
-	_, err = s.conn.WriteTo(b, addr)
+	err = s.sendMsgTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)
 		return

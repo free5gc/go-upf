@@ -7,11 +7,7 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 )
 
-func (s *PfcpServer) dispacher(buf []byte, addr net.Addr) error {
-	msgtmp, err := message.Parse(buf)
-	if err != nil {
-		return errors.Wrap(err, "pfcp dispacher parse")
-	}
+func (s *PfcpServer) dispacher(msgtmp message.Message, addr net.Addr) error {
 	switch msg := msgtmp.(type) {
 	case *message.HeartbeatRequest:
 		s.handleHeartbeatRequest(msg, addr)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
@@ -93,7 +94,16 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 				// receiver closed
 				return
 			}
-			err = s.dispacher(rcvMsg.Msg, rcvMsg.RemoteAddr)
+			msg, err := message.Parse(rcvMsg.Msg)
+			if err != nil {
+				s.log.Errorln(err)
+				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvMsg.Msg))
+				continue
+			}
+
+			// TODO: rx transaction
+
+			err = s.dispacher(msg, rcvMsg.RemoteAddr)
 			if err != nil {
 				s.log.Errorln(err)
 				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvMsg.Msg))
@@ -175,4 +185,21 @@ func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
 		return nil, false
 	}
 	return sess.Pop(pdrid)
+}
+
+func (s *PfcpServer) sendMsgTo(msg message.Message, addr net.Addr) error {
+	// TODO: tx transaction
+
+	b := make([]byte, msg.MarshalLen())
+	err := msg.MarshalTo(b)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.conn.WriteTo(b, addr)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

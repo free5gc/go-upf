@@ -67,11 +67,6 @@ func (s *PfcpServer) ServeDLDReport(addr net.Addr, seid uint64, pdrid uint16) er
 		),
 	)
 
-	b, err := msg.Marshal()
-	if err != nil {
-		return err
-	}
-
-	_, err = s.conn.WriteTo(b, addr)
+	err := s.sendMsgTo(msg, addr)
 	return err
 }

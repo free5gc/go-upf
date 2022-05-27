@@ -42,13 +42,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 		// ie.NewUPFunctionFeatures(),
 	)
 
-	b, err := rsp.Marshal()
-	if err != nil {
-		s.log.Errorln(err)
-		return
-	}
-
-	_, err = s.conn.WriteTo(b, addr)
+	err = s.sendMsgTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)
 		return
@@ -56,11 +50,11 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 }
 
 func (s *PfcpServer) handleAssociationUpdateRequest(msg *message.AssociationUpdateRequest, addr net.Addr) {
-	s.log.Infoln("handleAssociationUpdateRequest")
+	s.log.Infoln("handleAssociationUpdateRequest not supported")
 }
 
 func (s *PfcpServer) handleAssociationReleaseRequest(msg *message.AssociationReleaseRequest, addr net.Addr) {
-	s.log.Infoln("handleAssociationReleaseRequest")
+	s.log.Infoln("handleAssociationReleaseRequest not supported")
 }
 
 func newIeNodeID(nodeID string) *ie.IE {
