@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/message"
 
@@ -38,6 +39,7 @@ type PfcpServer struct {
 	driver       forwarder.Driver
 	lnode        LocalNode
 	rnodes       map[string]*RemoteNode
+	trans        map[string]*Transaction // key: RemoteAddr
 	log          *logrus.Entry
 }
 
@@ -51,6 +53,7 @@ func NewPfcpServer(listen, nodeID string, driver forwarder.Driver) *PfcpServer {
 		recoveryTime: time.Now(),
 		driver:       driver,
 		rnodes:       make(map[string]*RemoteNode),
+		trans:        make(map[string]*Transaction),
 		log:          logger.PfcpLog.WithField(logger.FieldListenAddr, listen),
 	}
 }
@@ -101,7 +104,29 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 				continue
 			}
 
-			// TODO: rx transaction
+			// find transaction
+			addrStr := rcvMsg.RemoteAddr.String()
+			tr, ok := s.trans[addrStr]
+			if !ok {
+				tr = NewTransaction(addrStr, s.log)
+				s.trans[addrStr] = tr
+			}
+
+			if isRequest(msg) {
+				needDispatch, err1 := tr.rxRecv(s.conn, msg, rcvMsg.RemoteAddr)
+				if err1 != nil {
+					s.log.Errorf("tr[%s]: %v", tr.raddr, err1)
+					continue
+				} else if !needDispatch {
+					continue
+				}
+			} else if isResponse(msg) {
+				err1 := tr.txRecv(s.conn, msg, rcvMsg.RemoteAddr)
+				if err1 != nil {
+					s.log.Errorf("tr[%s]: %v", tr.raddr, err1)
+					continue
+				}
+			}
 
 			err = s.dispacher(msg, rcvMsg.RemoteAddr)
 			if err != nil {
@@ -188,18 +213,76 @@ func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
 }
 
 func (s *PfcpServer) sendMsgTo(msg message.Message, addr net.Addr) error {
-	// TODO: tx transaction
-
-	b := make([]byte, msg.MarshalLen())
-	err := msg.MarshalTo(b)
-	if err != nil {
-		return err
+	// find transaction
+	addrStr := addr.String()
+	tr, ok := s.trans[addrStr]
+	if !ok {
+		tr = NewTransaction(addrStr, s.log)
+		s.trans[addrStr] = tr
 	}
 
-	_, err = s.conn.WriteTo(b, addr)
-	if err != nil {
-		return err
+	if isRequest(msg) {
+		return tr.txSend(s.conn, msg, addr)
+	} else if isResponse(msg) {
+		return tr.rxSend(s.conn, msg, addr)
 	}
+	return errors.Errorf("invalid msg type")
+}
 
-	return nil
+func isRequest(msg message.Message) bool {
+	switch msg.MessageType() {
+	case message.MsgTypeHeartbeatRequest:
+		return true
+	case message.MsgTypePFDManagementRequest:
+		return true
+	case message.MsgTypeAssociationSetupRequest:
+		return true
+	case message.MsgTypeAssociationUpdateRequest:
+		return true
+	case message.MsgTypeAssociationReleaseRequest:
+		return true
+	case message.MsgTypeNodeReportRequest:
+		return true
+	case message.MsgTypeSessionSetDeletionRequest:
+		return true
+	case message.MsgTypeSessionEstablishmentRequest:
+		return true
+	case message.MsgTypeSessionModificationRequest:
+		return true
+	case message.MsgTypeSessionDeletionRequest:
+		return true
+	case message.MsgTypeSessionReportRequest:
+		return true
+	default:
+	}
+	return false
+}
+
+func isResponse(msg message.Message) bool {
+	switch msg.MessageType() {
+	case message.MsgTypeHeartbeatResponse:
+		return true
+	case message.MsgTypePFDManagementResponse:
+		return true
+	case message.MsgTypeAssociationSetupResponse:
+		return true
+	case message.MsgTypeAssociationUpdateResponse:
+		return true
+	case message.MsgTypeAssociationReleaseResponse:
+		return true
+	case message.MsgTypeNodeReportResponse:
+		return true
+	case message.MsgTypeSessionSetDeletionResponse:
+		return true
+	case message.MsgTypeSessionEstablishmentResponse:
+		return true
+	case message.MsgTypeSessionModificationResponse:
+		return true
+	case message.MsgTypeSessionDeletionResponse:
+		return true
+	case message.MsgTypeSessionReportResponse:
+		return true
+	default:
+	}
+	return false
 }

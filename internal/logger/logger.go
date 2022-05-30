@@ -25,6 +25,7 @@ const (
 	FieldListenAddr   string = "listen_addr"
 	FieldRemoteNodeID string = "rnode_id"
 	FieldSessionID    string = "session_id"
+	FieldTransction   string = "transaction"
 )
 
 func init() {
@@ -36,7 +37,14 @@ func init() {
 		TrimMessages:    true,
 		NoFieldsSpace:   true,
 		HideKeys:        true,
-		FieldsOrder:     []string{"component", "category", FieldListenAddr, FieldRemoteNodeID, FieldSessionID},
+		FieldsOrder: []string{
+			"component",
+			"category",
+			FieldListenAddr,
+			FieldRemoteNodeID,
+			FieldSessionID,
+			FieldTransction,
+		},
 	}
 
 	MainLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Main"})
