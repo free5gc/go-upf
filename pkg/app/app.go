@@ -29,7 +29,7 @@ func NewUpf(cfg *factory.Config) (*UPF, error) {
 		cfg: cfg,
 	}
 
-	setLoggerLogLevel("UPF", cfg.DebugLevel, cfg.ReportCaller,
+	setLoggerLogLevel("UPF", cfg.Logger.Level, cfg.Logger.ReportCaller,
 		logger.SetLogLevel, logger.SetReportCaller)
 	return upf, nil
 }

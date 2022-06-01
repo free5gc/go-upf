@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"github.com/asaskevich/govalidator"
 	"gopkg.in/yaml.v2"
 
 	"github.com/free5gc/go-upf/internal/logger"
@@ -28,23 +29,19 @@ func InitConfigFactory(f string, cfg *Config) error {
 	return nil
 }
 
-func CheckConfigVersion(cfg *Config) error {
-	currentVersion := cfg.GetVersion()
-	if currentVersion != UpfExpectedConfigVersion {
-		return fmt.Errorf("config version is [%s], but expected is [%s].",
-			currentVersion, UpfExpectedConfigVersion)
-	}
-	logger.CfgLog.Infof("config version [%s]", currentVersion)
-
-	return nil
-}
-
 func ReadConfig(cfgPath string) (*Config, error) {
 	cfg := &Config{}
-	if err := InitConfigFactory(cfgPath, cfg); err != nil {
+	err := InitConfigFactory(cfgPath, cfg)
+	if err != nil {
 		return nil, fmt.Errorf("ReadConfig [%s] Error: %+v", cfgPath, err)
 	}
-	if err := CheckConfigVersion(cfg); err != nil {
+
+	govalidator.TagMap["cidr"] = govalidator.Validator(func(str string) bool {
+		return govalidator.IsCIDR(str)
+	})
+	_, err = govalidator.ValidateStruct(cfg)
+	if err != nil {
+		logger.CfgLog.Errorf("[-- PLEASE REFER TO SAMPLE CONFIG FILE COMMENTS --]")
 		return nil, err
 	}
 
