@@ -45,12 +45,12 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 		return nil, errors.Errorf("no Gtpu config")
 	}
 
-	logger.InitLog.Infof("starting Gtpu Forwarder [%s]", cfgGtpu.Forwarder)
+	logger.MainLog.Infof("starting Gtpu Forwarder [%s]", cfgGtpu.Forwarder)
 	if cfgGtpu.Forwarder == "gtp5g" {
 		var gtpuAddr string
 		for _, ifInfo := range cfgGtpu.IfList {
 			gtpuAddr = fmt.Sprintf("%s:%d", ifInfo.Addr, factory.UpfGtpDefaultPort)
-			logger.InitLog.Infof("GTP Address: %q", gtpuAddr)
+			logger.MainLog.Infof("GTP Address: %q", gtpuAddr)
 			break
 		}
 		if gtpuAddr == "" {
@@ -65,7 +65,7 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 		for _, dnn := range cfg.DnnList {
 			_, dst, err := net.ParseCIDR(dnn.Cidr)
 			if err != nil {
-				logger.InitLog.Errorln(err)
+				logger.MainLog.Errorln(err)
 				continue
 			}
 			err = link.RouteAdd(dst)

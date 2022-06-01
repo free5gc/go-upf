@@ -28,9 +28,7 @@ func NewUpf(cfg *factory.Config) (*UPF, error) {
 	upf := &UPF{
 		cfg: cfg,
 	}
-
-	setLoggerLogLevel("UPF", cfg.Logger.Level, cfg.Logger.ReportCaller,
-		logger.SetLogLevel, logger.SetReportCaller)
+	upf.SetLogLevel(cfg.Logger.Level, cfg.Logger.ReportCaller)
 	return upf, nil
 }
 
@@ -39,29 +37,17 @@ func (u *UPF) Config() *factory.Config {
 }
 
 func (u *UPF) SetLogLevel(lvl string, caller bool) {
-	setLoggerLogLevel("UPF", lvl, caller,
-		logger.SetLogLevel, logger.SetReportCaller)
-}
-
-func setLoggerLogLevel(
-	loggerName, debugLevel string, reportCaller bool,
-	logLevelFn func(l logrus.Level),
-	reportCallerFn func(b bool),
-) {
-	if debugLevel != "" {
-		if level, err := logrus.ParseLevel(debugLevel); err != nil {
-			logger.InitLog.Warnf("%s Log level [%s] is invalid, set to [info] level",
-				loggerName, debugLevel)
-			logLevelFn(logrus.InfoLevel)
-		} else {
-			logger.InitLog.Infof("%s Log level is set to [%s] level", loggerName, level)
-			logLevelFn(level)
+	level := logrus.InfoLevel
+	if lvl != "" {
+		var err error
+		level, err = logrus.ParseLevel(lvl)
+		if err != nil {
+			logger.MainLog.Warnln(err)
 		}
-	} else {
-		logger.InitLog.Infof("%s Log level is default set to [info] level", loggerName)
-		logLevelFn(logrus.InfoLevel)
 	}
-	reportCallerFn(reportCaller)
+	logger.MainLog.Infof("Log level is set to [%s] level", level)
+	logger.SetLogLevel(level)
+	logger.SetReportCaller(caller)
 }
 
 func (u *UPF) Run() error {
@@ -84,7 +70,7 @@ func (u *UPF) Run() error {
 	u.driver.HandleReport(u.pfcpServer)
 	u.pfcpServer.Start(&u.wg)
 
-	logger.InitLog.Infoln("UPF started")
+	logger.MainLog.Infoln("UPF started")
 
 	// Wait for interrupt signal to gracefully shutdown
 	sigCh := make(chan os.Signal, 1)
@@ -104,7 +90,7 @@ func (u *UPF) listenShutdownEvent() {
 	defer func() {
 		if p := recover(); p != nil {
 			// Print stack for panic to log. Fatalf() will let program exit.
-			logger.InitLog.Fatalf("panic: %v\n%s", p, string(debug.Stack()))
+			logger.MainLog.Fatalf("panic: %v\n%s", p, string(debug.Stack()))
 		}
 
 		u.wg.Done()
@@ -122,7 +108,7 @@ func (u *UPF) WaitRoutineStopped() {
 
 func (u *UPF) Start() {
 	if err := u.Run(); err != nil {
-		logger.InitLog.Errorf("UPF Run err: %v", err)
+		logger.MainLog.Errorf("UPF Run err: %v", err)
 	}
 }
 

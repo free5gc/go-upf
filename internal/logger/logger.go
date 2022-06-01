@@ -13,7 +13,6 @@ import (
 var (
 	log      *logrus.Logger
 	MainLog  *logrus.Entry
-	InitLog  *logrus.Entry
 	CfgLog   *logrus.Entry
 	PfcpLog  *logrus.Entry
 	BuffLog  *logrus.Entry
@@ -48,7 +47,6 @@ func init() {
 	}
 
 	MainLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Main"})
-	InitLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Init"})
 	CfgLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Cfg"})
 	PfcpLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Pfcp"})
 	BuffLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Buff"})
