@@ -35,7 +35,7 @@ func NewTransaction(server *PfcpServer, raddr net.Addr) *Transaction {
 	return &Transaction{
 		server:         server,
 		raddr:          raddr,
-		txSeq:          1,
+		txSeq:          0,
 		retransTimeout: server.cfg.Pfcp.RetransTimeout,
 		maxRetrans:     server.cfg.Pfcp.MaxRetrans,
 		tx:             make(map[uint32]*Element),
@@ -50,7 +50,7 @@ func (tr *Transaction) txSend(msg message.Message, rspCh chan<- Response) error 
 		rspCh: rspCh,
 	}
 	tr.tx[tr.txSeq] = e
-	// msg.SetSequence(t.txSeq)
+	// msg.SetSequenceNumber(t.txSeq)
 	tr.txSeq++
 	tr.log.Debugf("tx[%d] send req", e.seq)
 
@@ -77,10 +77,11 @@ func (tr *Transaction) txRecv(msg message.Message) error {
 	if !ok {
 		return errors.Errorf("No tx found for msg seq(%d)", msg.Sequence())
 	}
-	tr.log.Debugf("tx[%d] recv rsp", msg.Sequence())
+	tr.log.Debugf("tx[%d] recv rsp, delete tx", msg.Sequence())
 
 	// notify sender rsp received
 	if e.rspCh != nil {
+		tr.log.Debugf("tx[%d] notify app rsp", msg.Sequence())
 		e.rspCh <- Response{
 			RemoteAddr: tr.raddr,
 			Msg:        msg,
@@ -161,11 +162,15 @@ func (tr *Transaction) handleTxTimeout(seq uint32) {
 			tr.log.Errorf("tx[%d] retransmit[%d] error: %v", seq, e.retransCount, err)
 		}
 		e.timer = tr.startTxTimer(e.seq)
-	} else if e.rspCh != nil {
-		tr.log.Debugf("tx[%d] max retransmission reached, notify app", seq)
-		e.rspCh <- Response{
-			RemoteAddr: tr.raddr,
-			Msg:        nil,
+	} else {
+		tr.log.Debugf("tx[%d] max retransmission reached", seq)
+		delete(tr.tx, seq)
+		if e.rspCh != nil {
+			tr.log.Debugf("tx[%d] notify app timeout", seq)
+			e.rspCh <- Response{
+				RemoteAddr: tr.raddr,
+				Msg:        nil,
+			}
 		}
 	}
 }
