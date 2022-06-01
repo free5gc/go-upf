@@ -19,21 +19,41 @@ import (
 )
 
 const (
-	RECEIVE_CHANNEL_LEN = 512
-	REPORT_CHANNEL_LEN  = 64
-	MAX_PFCP_MSG_LEN    = 1500
+	RECEIVE_CHANNEL_LEN       = 512
+	REPORT_CHANNEL_LEN        = 64
+	TRANS_TIMEOUT_CHANNEL_LEN = 64
+	MAX_PFCP_MSG_LEN          = 1500
 )
 
-type ReceiveMessage struct {
+type ReceivePacket struct {
 	RemoteAddr net.Addr
-	Msg        []byte
+	Buf        []byte
+}
+
+type TransType int
+
+const (
+	TX TransType = iota
+	RX
+)
+
+type TransactionTimeout struct {
+	TransType TransType
+	TransID   string
+	Seq       uint32
+}
+
+type Response struct {
+	RemoteAddr net.Addr
+	Msg        message.Message
 }
 
 type PfcpServer struct {
 	listen       string
 	nodeID       string
-	rcvCh        chan ReceiveMessage
+	rcvCh        chan ReceivePacket
 	srCh         chan report.SessReport
+	trToCh       chan TransactionTimeout
 	conn         *net.UDPConn
 	recoveryTime time.Time
 	driver       forwarder.Driver
@@ -48,8 +68,9 @@ func NewPfcpServer(listen, nodeID string, driver forwarder.Driver) *PfcpServer {
 	return &PfcpServer{
 		listen:       listen,
 		nodeID:       nodeID,
-		rcvCh:        make(chan ReceiveMessage, RECEIVE_CHANNEL_LEN),
+		rcvCh:        make(chan ReceivePacket, RECEIVE_CHANNEL_LEN),
 		srCh:         make(chan report.SessReport, REPORT_CHANNEL_LEN),
+		trToCh:       make(chan TransactionTimeout, TRANS_TIMEOUT_CHANNEL_LEN),
 		recoveryTime: time.Now(),
 		driver:       driver,
 		rnodes:       make(map[string]*RemoteNode),
@@ -66,8 +87,12 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		}
 
 		s.log.Infoln("pfcp server stopped")
+		for _, tr := range s.trans {
+			tr.stopAllTimers()
+		}
 		close(s.rcvCh)
 		close(s.srCh)
+		close(s.trToCh)
 		wg.Done()
 	}()
 
@@ -92,46 +117,60 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		select {
 		case sr := <-s.srCh:
 			s.ServeReport(&sr)
-		case rcvMsg := <-s.rcvCh:
-			if len(rcvMsg.Msg) == 0 {
+		case rcvPkt := <-s.rcvCh:
+			if len(rcvPkt.Buf) == 0 {
 				// receiver closed
 				return
 			}
-			msg, err := message.Parse(rcvMsg.Msg)
+			msg, err := message.Parse(rcvPkt.Buf)
 			if err != nil {
 				s.log.Errorln(err)
-				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvMsg.Msg))
+				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
 				continue
 			}
 
 			// find transaction
-			addrStr := rcvMsg.RemoteAddr.String()
+			addrStr := rcvPkt.RemoteAddr.String()
 			tr, ok := s.trans[addrStr]
 			if !ok {
-				tr = NewTransaction(addrStr, s.log)
+				tr = NewTransaction(s, rcvPkt.RemoteAddr)
 				s.trans[addrStr] = tr
 			}
 
 			if isRequest(msg) {
-				needDispatch, err1 := tr.rxRecv(s.conn, msg, rcvMsg.RemoteAddr)
+				needDispatch, err1 := tr.rxRecv(msg)
 				if err1 != nil {
-					s.log.Errorf("tr[%s]: %v", tr.raddr, err1)
+					s.log.Warnf("rcvCh: tr[%s]: %v", tr.raddr, err1)
 					continue
 				} else if !needDispatch {
+					s.log.Debugf("rcvCh: no need to dispatch")
 					continue
 				}
 			} else if isResponse(msg) {
-				err1 := tr.txRecv(s.conn, msg, rcvMsg.RemoteAddr)
+				err1 := tr.txRecv(msg)
 				if err1 != nil {
-					s.log.Errorf("tr[%s]: %v", tr.raddr, err1)
+					s.log.Warnf("rcvCh: tr[%s]: %v", tr.raddr, err1)
 					continue
 				}
 			}
 
-			err = s.dispacher(msg, rcvMsg.RemoteAddr)
+			err = s.dispacher(msg, rcvPkt.RemoteAddr)
 			if err != nil {
 				s.log.Errorln(err)
-				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvMsg.Msg))
+				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
+			}
+		case trTo := <-s.trToCh:
+			// find transaction
+			tr, ok := s.trans[trTo.TransID]
+			if !ok {
+				s.log.Warnf("trToCh: tr[%s] not found", trTo.TransID)
+				continue
+			}
+
+			if trTo.TransType == TX {
+				tr.handleTxTimeout(trTo.Seq)
+			} else { // RX
+				tr.handleRxTimeout(trTo.Seq)
 			}
 		}
 	}
@@ -153,12 +192,12 @@ func (s *PfcpServer) receiver(wg *sync.WaitGroup) {
 		n, addr, err := s.conn.ReadFrom(buf)
 		if err != nil {
 			s.log.Errorf("%+v", err)
-			s.rcvCh <- ReceiveMessage{}
+			s.rcvCh <- ReceivePacket{}
 			break
 		}
-		s.rcvCh <- ReceiveMessage{
+		s.rcvCh <- ReceivePacket{
 			RemoteAddr: addr,
-			Msg:        buf[:n],
+			Buf:        buf[:n],
 		}
 	}
 }
@@ -203,6 +242,10 @@ func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
 	s.srCh <- sr
 }
 
+func (s *PfcpServer) NotifyTransTimeout(transType TransType, transID string, seq uint32) {
+	s.trToCh <- TransactionTimeout{TransType: transType, TransID: transID, Seq: seq}
+}
+
 func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
 	sess, err := s.lnode.Sess(seid)
 	if err != nil {
@@ -212,21 +255,36 @@ func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
 	return sess.Pop(pdrid)
 }
 
-func (s *PfcpServer) sendMsgTo(msg message.Message, addr net.Addr) error {
+func (s *PfcpServer) sendReqTo(msg message.Message, addr net.Addr, rspCh chan<- Response) error {
+	if !isRequest(msg) {
+		return errors.Errorf("invalid req type(%d)", msg.MessageType())
+	}
+
 	// find transaction
 	addrStr := addr.String()
 	tr, ok := s.trans[addrStr]
 	if !ok {
-		tr = NewTransaction(addrStr, s.log)
+		tr = NewTransaction(s, addr)
 		s.trans[addrStr] = tr
 	}
 
-	if isRequest(msg) {
-		return tr.txSend(s.conn, msg, addr)
-	} else if isResponse(msg) {
-		return tr.rxSend(s.conn, msg, addr)
+	return tr.txSend(msg, rspCh)
+}
+
+func (s *PfcpServer) sendRspTo(msg message.Message, addr net.Addr) error {
+	if !isResponse(msg) {
+		return errors.Errorf("invalid rsp type(%d)", msg.MessageType())
 	}
-	return errors.Errorf("invalid msg type")
+
+	// find transaction
+	addrStr := addr.String()
+	tr, ok := s.trans[addrStr]
+	if !ok {
+		tr = NewTransaction(s, addr)
+		s.trans[addrStr] = tr
+	}
+
+	return tr.rxSend(msg)
 }
 
 func isRequest(msg message.Message) bool {

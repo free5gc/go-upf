@@ -13,6 +13,7 @@ import (
 )
 
 func (s *PfcpServer) ServeReport(r *report.SessReport) {
+	s.log.Debugln("ServeReport")
 	sess, err := s.lnode.Sess(r.SEID)
 	if err != nil {
 		s.log.Errorln(err)
@@ -46,12 +47,11 @@ func (s *PfcpServer) ServeReport(r *report.SessReport) {
 func (s *PfcpServer) ServeDLDReport(addr net.Addr, seid uint64, pdrid uint16) error {
 	s.log.Infoln("ServeDLDReport")
 
-	seq := uint32(1)
-	msg := message.NewSessionReportRequest(
+	req := message.NewSessionReportRequest(
 		0,
 		0,
 		seid,
-		seq,
+		0,
 		0,
 		ie.NewReportType(0, 0, 0, 1),
 		ie.NewDownlinkDataReport(
@@ -67,6 +67,6 @@ func (s *PfcpServer) ServeDLDReport(addr net.Addr, seid uint64, pdrid uint16) er
 		),
 	)
 
-	err := s.sendMsgTo(msg, addr)
+	err := s.sendReqTo(req, addr, nil) // No waiting for rsp
 	return err
 }

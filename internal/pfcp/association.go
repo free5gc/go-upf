@@ -42,7 +42,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 		// ie.NewUPFunctionFeatures(),
 	)
 
-	err = s.sendMsgTo(rsp, addr)
+	err = s.sendRspTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)
 		return

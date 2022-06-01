@@ -15,7 +15,7 @@ func (s *PfcpServer) handleHeartbeatRequest(req *message.HeartbeatRequest, addr 
 		ie.NewRecoveryTimeStamp(s.recoveryTime),
 	)
 
-	err := s.sendMsgTo(rsp, addr)
+	err := s.sendRspTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)
 		return
