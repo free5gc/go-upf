@@ -64,9 +64,11 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 		}
 	}
 
-	err = sess.CreateBAR(req.CreateBAR)
-	if err != nil {
-		sess.log.Errorln(err)
+	if req.CreateBAR != nil {
+		err = sess.CreateBAR(req.CreateBAR)
+		if err != nil {
+			sess.log.Errorln(err)
+		}
 	}
 
 	for _, i := range req.CreatePDR {
@@ -148,9 +150,11 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 		}
 	}
 
-	err = sess.CreateBAR(req.CreateBAR)
-	if err != nil {
-		sess.log.Errorln(err)
+	if req.CreateBAR != nil {
+		err = sess.CreateBAR(req.CreateBAR)
+		if err != nil {
+			sess.log.Errorln(err)
+		}
 	}
 
 	for _, i := range req.CreatePDR {
@@ -181,9 +185,11 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 		}
 	}
 
-	err = sess.RemoveBAR(req.RemoveBAR)
-	if err != nil {
-		sess.log.Errorln(err)
+	if req.RemoveBAR != nil {
+		err = sess.RemoveBAR(req.RemoveBAR)
+		if err != nil {
+			sess.log.Errorln(err)
+		}
 	}
 
 	for _, i := range req.RemovePDR {
@@ -214,9 +220,11 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 		}
 	}
 
-	err = sess.UpdateBAR(req.UpdateBAR)
-	if err != nil {
-		sess.log.Errorln(err)
+	if req.UpdateBAR != nil {
+		err = sess.UpdateBAR(req.UpdateBAR)
+		if err != nil {
+			sess.log.Errorln(err)
+		}
 	}
 
 	for _, i := range req.UpdatePDR {
