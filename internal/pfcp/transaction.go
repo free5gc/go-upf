@@ -17,7 +17,7 @@ type Transaction struct {
 	raddr          net.Addr
 	txSeq          uint32
 	retransTimeout time.Duration
-	maxRetrans     uint32
+	maxRetrans     uint8
 	tx             map[uint32]*Element // key: seq
 	rx             map[uint32]*Element // key: seq
 	log            *logrus.Entry
@@ -27,7 +27,7 @@ type Element struct {
 	msgBuf       []byte
 	seq          uint32
 	timer        *time.Timer
-	retransCount uint32
+	retransCount uint8
 	rspCh        chan<- Response
 }
 
@@ -36,8 +36,8 @@ func NewTransaction(server *PfcpServer, raddr net.Addr) *Transaction {
 		server:         server,
 		raddr:          raddr,
 		txSeq:          1,
-		retransTimeout: 1,
-		maxRetrans:     3,
+		retransTimeout: server.cfg.Pfcp.RetransTimeout,
+		maxRetrans:     server.cfg.Pfcp.MaxRetrans,
 		tx:             make(map[uint32]*Element),
 		rx:             make(map[uint32]*Element),
 		log:            server.log.WithField(logger.FieldTransction, fmt.Sprintf("Tr:%s", raddr)),

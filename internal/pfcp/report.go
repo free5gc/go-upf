@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
@@ -68,5 +69,5 @@ func (s *PfcpServer) ServeDLDReport(addr net.Addr, seid uint64, pdrid uint16) er
 	)
 
 	err := s.sendReqTo(req, addr, nil) // No waiting for rsp
-	return err
+	return errors.Wrap(err, "ServeDLDReport")
 }

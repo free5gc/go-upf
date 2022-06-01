@@ -80,8 +80,7 @@ func (u *UPF) Run() error {
 		return err
 	}
 
-	cfgPfcp := u.cfg.Pfcp
-	u.pfcpServer = pfcp.NewPfcpServer(cfgPfcp.Addr, cfgPfcp.NodeID, u.driver)
+	u.pfcpServer = pfcp.NewPfcpServer(u.cfg, u.driver)
 	u.driver.HandleReport(u.pfcpServer)
 	u.pfcpServer.Start(&u.wg)
 

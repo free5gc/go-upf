@@ -5,6 +5,8 @@ description: UPF initial local configuration
 pfcp:
   addr: 127.0.0.8   # IP addr for listening
   nodeID: 127.0.0.8 # External IP or FQDN can be reached
+  retransTimeout: 1s # retransmission timeout
+  maxRetrans: 3 # the max number of retransmission
 
 gtpu:
   forwarder: gtp5g

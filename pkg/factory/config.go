@@ -1,6 +1,8 @@
 package factory
 
 import (
+	"time"
+
 	"github.com/davecgh/go-spew/spew"
 
 	"github.com/free5gc/go-upf/internal/logger"
@@ -25,8 +27,10 @@ type Config struct {
 }
 
 type Pfcp struct {
-	Addr   string `yaml:"addr"`
-	NodeID string `yaml:"nodeID"`
+	Addr           string        `yaml:"addr"`
+	NodeID         string        `yaml:"nodeID"`
+	RetransTimeout time.Duration `yaml:"retransTimeout"`
+	MaxRetrans     uint8         `yaml:"maxRetrans"`
 }
 
 type Gtpu struct {

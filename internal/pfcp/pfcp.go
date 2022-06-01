@@ -49,6 +49,7 @@ type Response struct {
 }
 
 type PfcpServer struct {
+	cfg          *factory.Config
 	listen       string
 	nodeID       string
 	rcvCh        chan ReceivePacket
@@ -63,11 +64,12 @@ type PfcpServer struct {
 	log          *logrus.Entry
 }
 
-func NewPfcpServer(listen, nodeID string, driver forwarder.Driver) *PfcpServer {
-	listen = fmt.Sprintf("%s:%d", listen, factory.UpfPfcpDefaultPort)
+func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
+	listen := fmt.Sprintf("%s:%d", cfg.Pfcp.Addr, factory.UpfPfcpDefaultPort)
 	return &PfcpServer{
+		cfg:          cfg,
 		listen:       listen,
-		nodeID:       nodeID,
+		nodeID:       cfg.Pfcp.NodeID,
 		rcvCh:        make(chan ReceivePacket, RECEIVE_CHANNEL_LEN),
 		srCh:         make(chan report.SessReport, REPORT_CHANNEL_LEN),
 		trToCh:       make(chan TransactionTimeout, TRANS_TIMEOUT_CHANNEL_LEN),
@@ -257,7 +259,7 @@ func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
 
 func (s *PfcpServer) sendReqTo(msg message.Message, addr net.Addr, rspCh chan<- Response) error {
 	if !isRequest(msg) {
-		return errors.Errorf("invalid req type(%d)", msg.MessageType())
+		return errors.Errorf("sendReqTo: invalid req type(%d)", msg.MessageType())
 	}
 
 	// find transaction
@@ -273,15 +275,14 @@ func (s *PfcpServer) sendReqTo(msg message.Message, addr net.Addr, rspCh chan<- 
 
 func (s *PfcpServer) sendRspTo(msg message.Message, addr net.Addr) error {
 	if !isResponse(msg) {
-		return errors.Errorf("invalid rsp type(%d)", msg.MessageType())
+		return errors.Errorf("sendRspTo: invalid rsp type(%d)", msg.MessageType())
 	}
 
 	// find transaction
 	addrStr := addr.String()
 	tr, ok := s.trans[addrStr]
 	if !ok {
-		tr = NewTransaction(s, addr)
-		s.trans[addrStr] = tr
+		return errors.Errorf("sendRspTo: tr(%s) not found", addrStr)
 	}
 
 	return tr.rxSend(msg)
