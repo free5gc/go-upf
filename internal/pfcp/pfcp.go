@@ -38,9 +38,8 @@ const (
 )
 
 type TransactionTimeout struct {
-	TransType TransType
-	TransID   string
-	Seq       uint32
+	TrType TransType
+	TrID   string
 }
 
 type Response struct {
@@ -60,7 +59,9 @@ type PfcpServer struct {
 	driver       forwarder.Driver
 	lnode        LocalNode
 	rnodes       map[string]*RemoteNode
-	trans        map[string]*Transaction // key: RemoteAddr
+	txTrans      map[string]*TxTransaction // key: RemoteAddr-Sequence
+	rxTrans      map[string]*RxTransaction // key: RemoteAddr-Sequence
+	txSeq        uint32
 	log          *logrus.Entry
 }
 
@@ -76,7 +77,8 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		recoveryTime: time.Now(),
 		driver:       driver,
 		rnodes:       make(map[string]*RemoteNode),
-		trans:        make(map[string]*Transaction),
+		txTrans:      make(map[string]*TxTransaction),
+		rxTrans:      make(map[string]*RxTransaction),
 		log:          logger.PfcpLog.WithField(logger.FieldListenAddr, listen),
 	}
 }
@@ -89,9 +91,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		}
 
 		s.log.Infoln("pfcp server stopped")
-		for _, tr := range s.trans {
-			tr.stopAllTimers()
-		}
+		s.stopTrTimers()
 		close(s.rcvCh)
 		close(s.srCh)
 		close(s.trToCh)
@@ -131,29 +131,28 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 				continue
 			}
 
-			// find transaction
-			addrStr := rcvPkt.RemoteAddr.String()
-			tr, ok := s.trans[addrStr]
-			if !ok {
-				tr = NewTransaction(s, rcvPkt.RemoteAddr)
-				s.trans[addrStr] = tr
-			}
-
+			trID := fmt.Sprintf("%s-%d", rcvPkt.RemoteAddr, msg.Sequence())
 			if isRequest(msg) {
-				needDispatch, err1 := tr.rxRecv(msg)
+				rx, ok := s.rxTrans[trID]
+				if !ok {
+					rx = NewRxTransaction(s, rcvPkt.RemoteAddr, msg.Sequence())
+					s.rxTrans[trID] = rx
+				}
+				needDispatch, err1 := rx.recv(msg)
 				if err1 != nil {
-					s.log.Warnf("rcvCh: tr[%s]: %v", tr.raddr, err1)
+					s.log.Warnf("rcvCh: %v", err1)
 					continue
 				} else if !needDispatch {
-					s.log.Debugf("rcvCh: no need to dispatch")
+					s.log.Debugf("rcvCh: rxtr[%s] req no need to dispatch", trID)
 					continue
 				}
 			} else if isResponse(msg) {
-				err1 := tr.txRecv(msg)
-				if err1 != nil {
-					s.log.Warnf("rcvCh: tr[%s]: %v", tr.raddr, err1)
+				tx, ok := s.txTrans[trID]
+				if !ok {
+					s.log.Debugf("rcvCh: No txtr[%s] found for rsp", trID)
 					continue
 				}
+				tx.recv(msg)
 			}
 
 			err = s.dispacher(msg, rcvPkt.RemoteAddr)
@@ -162,17 +161,20 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
 			}
 		case trTo := <-s.trToCh:
-			// find transaction
-			tr, ok := s.trans[trTo.TransID]
-			if !ok {
-				s.log.Warnf("trToCh: tr[%s] not found", trTo.TransID)
-				continue
-			}
-
-			if trTo.TransType == TX {
-				tr.handleTxTimeout(trTo.Seq)
+			if trTo.TrType == TX {
+				tx, ok := s.txTrans[trTo.TrID]
+				if !ok {
+					s.log.Warnf("trToCh: txtr[%s] not found", trTo.TrID)
+					continue
+				}
+				tx.handleTimeout()
 			} else { // RX
-				tr.handleRxTimeout(trTo.Seq)
+				rx, ok := s.rxTrans[trTo.TrID]
+				if !ok {
+					s.log.Warnf("trToCh: rxtr[%s] not found", trTo.TrID)
+					continue
+				}
+				rx.handleTimeout()
 			}
 		}
 	}
@@ -244,8 +246,8 @@ func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
 	s.srCh <- sr
 }
 
-func (s *PfcpServer) NotifyTransTimeout(transType TransType, transID string, seq uint32) {
-	s.trToCh <- TransactionTimeout{TransType: transType, TransID: transID, Seq: seq}
+func (s *PfcpServer) NotifyTransTimeout(trType TransType, trID string) {
+	s.trToCh <- TransactionTimeout{TrType: trType, TrID: trID}
 }
 
 func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
@@ -262,15 +264,11 @@ func (s *PfcpServer) sendReqTo(msg message.Message, addr net.Addr, rspCh chan<- 
 		return errors.Errorf("sendReqTo: invalid req type(%d)", msg.MessageType())
 	}
 
-	// find transaction
-	addrStr := addr.String()
-	tr, ok := s.trans[addrStr]
-	if !ok {
-		tr = NewTransaction(s, addr)
-		s.trans[addrStr] = tr
-	}
+	txtr := NewTxTransaction(s, addr, s.txSeq, rspCh)
+	s.txSeq++
+	s.txTrans[txtr.id] = txtr
 
-	return tr.txSend(msg, rspCh)
+	return txtr.send(msg)
 }
 
 func (s *PfcpServer) sendRspTo(msg message.Message, addr net.Addr) error {
@@ -279,13 +277,30 @@ func (s *PfcpServer) sendRspTo(msg message.Message, addr net.Addr) error {
 	}
 
 	// find transaction
-	addrStr := addr.String()
-	tr, ok := s.trans[addrStr]
+	trID := fmt.Sprintf("%s-%d", addr, msg.Sequence())
+	rxtr, ok := s.rxTrans[trID]
 	if !ok {
-		return errors.Errorf("sendRspTo: tr(%s) not found", addrStr)
+		return errors.Errorf("sendRspTo: rxtr(%s) not found", trID)
 	}
 
-	return tr.rxSend(msg)
+	return rxtr.send(msg)
+}
+
+func (s *PfcpServer) stopTrTimers() {
+	for _, tx := range s.txTrans {
+		if tx.timer == nil {
+			continue
+		}
+		tx.timer.Stop()
+		tx.timer = nil
+	}
+	for _, rx := range s.rxTrans {
+		if rx.timer == nil {
+			continue
+		}
+		rx.timer.Stop()
+		rx.timer = nil
+	}
 }
 
 func isRequest(msg message.Message) bool {
@@ -344,4 +359,32 @@ func isResponse(msg message.Message) bool {
 	default:
 	}
 	return false
+}
+
+func setReqSeq(msgtmp message.Message, seq uint32) {
+	switch msg := msgtmp.(type) {
+	case *message.HeartbeatRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.PFDManagementRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.AssociationSetupRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.AssociationUpdateRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.AssociationReleaseRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.NodeReportRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.SessionSetDeletionRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.SessionEstablishmentRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.SessionModificationRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.SessionDeletionRequest:
+		msg.SetSequenceNumber(seq)
+	case *message.SessionReportRequest:
+		msg.SetSequenceNumber(seq)
+	default:
+	}
 }

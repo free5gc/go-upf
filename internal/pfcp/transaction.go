@@ -12,48 +12,53 @@ import (
 	"github.com/free5gc/go-upf/internal/logger"
 )
 
-type Transaction struct {
+type TxTransaction struct {
 	server         *PfcpServer
 	raddr          net.Addr
-	txSeq          uint32
+	seq            uint32
+	id             string
 	retransTimeout time.Duration
 	maxRetrans     uint8
-	tx             map[uint32]*Element // key: seq
-	rx             map[uint32]*Element // key: seq
+	msgBuf         []byte
+	timer          *time.Timer
+	retransCount   uint8
+	rspCh          chan<- Response
 	log            *logrus.Entry
 }
 
-type Element struct {
-	msgBuf       []byte
-	seq          uint32
-	timer        *time.Timer
-	retransCount uint8
-	rspCh        chan<- Response
+type RxTransaction struct {
+	server  *PfcpServer
+	raddr   net.Addr
+	seq     uint32
+	id      string
+	timeout time.Duration
+	msgBuf  []byte
+	timer   *time.Timer
+	log     *logrus.Entry
 }
 
-func NewTransaction(server *PfcpServer, raddr net.Addr) *Transaction {
-	return &Transaction{
+func NewTxTransaction(
+	server *PfcpServer,
+	raddr net.Addr,
+	seq uint32,
+	rspCh chan<- Response,
+) *TxTransaction {
+	return &TxTransaction{
 		server:         server,
 		raddr:          raddr,
-		txSeq:          0,
+		seq:            seq,
+		id:             fmt.Sprintf("%s-%d", raddr, seq),
 		retransTimeout: server.cfg.Pfcp.RetransTimeout,
 		maxRetrans:     server.cfg.Pfcp.MaxRetrans,
-		tx:             make(map[uint32]*Element),
-		rx:             make(map[uint32]*Element),
-		log:            server.log.WithField(logger.FieldTransction, fmt.Sprintf("Tr:%s", raddr)),
+		rspCh:          rspCh,
+		log:            server.log.WithField(logger.FieldTransction, fmt.Sprintf("TxTr:%s(%d)", raddr, seq)),
 	}
 }
 
-func (tr *Transaction) txSend(msg message.Message, rspCh chan<- Response) error {
-	e := &Element{
-		seq:   tr.txSeq,
-		rspCh: rspCh,
-	}
-	tr.tx[tr.txSeq] = e
-	// msg.SetSequenceNumber(t.txSeq)
-	tr.txSeq++
-	tr.log.Debugf("tx[%d] send req", e.seq)
+func (tx *TxTransaction) send(msg message.Message) error {
+	tx.log.Debugf("send req")
 
+	setReqSeq(msg, tx.seq)
 	b := make([]byte, msg.MarshalLen())
 	err := msg.MarshalTo(b)
 	if err != nil {
@@ -61,10 +66,10 @@ func (tr *Transaction) txSend(msg message.Message, rspCh chan<- Response) error 
 	}
 
 	// Start tx retransmission timer
-	e.msgBuf = b
-	e.timer = tr.startTxTimer(e.seq)
+	tx.msgBuf = b
+	tx.timer = tx.startTimer()
 
-	_, err = tr.server.conn.WriteTo(b, tr.raddr)
+	_, err = tx.server.conn.WriteTo(b, tx.raddr)
 	if err != nil {
 		return err
 	}
@@ -72,36 +77,76 @@ func (tr *Transaction) txSend(msg message.Message, rspCh chan<- Response) error 
 	return nil
 }
 
-func (tr *Transaction) txRecv(msg message.Message) error {
-	e, ok := tr.tx[msg.Sequence()]
-	if !ok {
-		return errors.Errorf("No tx found for msg seq(%d)", msg.Sequence())
-	}
-	tr.log.Debugf("tx[%d] recv rsp, delete tx", msg.Sequence())
+func (tx *TxTransaction) recv(msg message.Message) {
+	tx.log.Debugf("recv rsp, delete txtr")
 
 	// notify sender rsp received
-	if e.rspCh != nil {
-		tr.log.Debugf("tx[%d] notify app rsp", msg.Sequence())
-		e.rspCh <- Response{
-			RemoteAddr: tr.raddr,
+	if tx.rspCh != nil {
+		tx.log.Debugf("notify app rsp")
+		tx.rspCh <- Response{
+			RemoteAddr: tx.raddr,
 			Msg:        msg,
 		}
 	}
 
 	// Stop tx retransmission timer
-	e.timer.Stop()
-	e.timer = nil
+	tx.timer.Stop()
+	tx.timer = nil
 
-	delete(tr.tx, msg.Sequence())
-	return nil
+	delete(tx.server.txTrans, tx.id)
 }
 
-func (tr *Transaction) rxSend(msg message.Message) error {
-	e, ok := tr.rx[msg.Sequence()]
-	if !ok {
-		return errors.Errorf("No rx found for msg seq(%d)", msg.Sequence())
+func (tx *TxTransaction) handleTimeout() {
+	if tx.retransCount < tx.maxRetrans {
+		// Start tx retransmission timer
+		tx.retransCount++
+		tx.log.Debugf("timeout, retransCount(%d)", tx.retransCount)
+		_, err := tx.server.conn.WriteTo(tx.msgBuf, tx.raddr)
+		if err != nil {
+			tx.log.Errorf("retransmit[%d] error: %v", tx.retransCount, err)
+		}
+		tx.timer = tx.startTimer()
+	} else {
+		tx.log.Debugf("max retransmission reached - delete txtr")
+		delete(tx.server.txTrans, tx.id)
+		if tx.rspCh != nil {
+			tx.log.Debugf("notify app timeout")
+			tx.rspCh <- Response{
+				RemoteAddr: tx.raddr,
+				Msg:        nil,
+			}
+		}
 	}
-	tr.log.Debugf("rx[%d] send rsp", msg.Sequence())
+}
+
+func (tx *TxTransaction) startTimer() *time.Timer {
+	tx.log.Debugf("start timer(%s)", tx.retransTimeout)
+	t := time.AfterFunc(
+		tx.retransTimeout,
+		func() {
+			tx.server.NotifyTransTimeout(TX, tx.id)
+		},
+	)
+	return t
+}
+
+func NewRxTransaction(
+	server *PfcpServer,
+	raddr net.Addr,
+	seq uint32,
+) *RxTransaction {
+	return &RxTransaction{
+		server:  server,
+		raddr:   raddr,
+		seq:     seq,
+		id:      fmt.Sprintf("%s-%d", raddr, seq),
+		timeout: server.cfg.Pfcp.RetransTimeout * time.Duration(server.cfg.Pfcp.MaxRetrans+1),
+		log:     server.log.WithField(logger.FieldTransction, fmt.Sprintf("RxTr:%s(%d)", raddr, seq)),
+	}
+}
+
+func (rx *RxTransaction) send(msg message.Message) error {
+	rx.log.Debugf("send rsp")
 
 	b := make([]byte, msg.MarshalLen())
 	err := msg.MarshalTo(b)
@@ -110,10 +155,10 @@ func (tr *Transaction) rxSend(msg message.Message) error {
 	}
 
 	// Start rx timer to delete rx
-	e.msgBuf = b
-	e.timer = tr.startRxTimer(e.seq)
+	rx.msgBuf = b
+	rx.timer = rx.startTimer()
 
-	_, err = tr.server.conn.WriteTo(b, tr.raddr)
+	_, err = rx.server.conn.WriteTo(b, rx.raddr)
 	if err != nil {
 		return err
 	}
@@ -121,106 +166,34 @@ func (tr *Transaction) rxSend(msg message.Message) error {
 	return nil
 }
 
-// True - need to handle this req
+// True  - need to handle this req
 // False - req already handled
-func (tr *Transaction) rxRecv(msg message.Message) (bool, error) {
-	e, ok := tr.rx[msg.Sequence()]
-	if !ok {
-		e = &Element{
-			seq: msg.Sequence(),
-		}
-		tr.rx[e.seq] = e
-		tr.log.Debugf("rx[%d] recv req", msg.Sequence())
+func (rx *RxTransaction) recv(msg message.Message) (bool, error) {
+	rx.log.Debugf("recv req")
+	if len(rx.msgBuf) == 0 {
 		return true, nil
 	}
 
-	if len(e.msgBuf) == 0 {
-		return false, errors.Errorf("No rsp can be retransmitted")
-	}
-
-	tr.log.Debugf("rx[%d] recv req: retransmit rsp", msg.Sequence())
-	_, err := tr.server.conn.WriteTo(e.msgBuf, tr.raddr)
+	rx.log.Debugf("recv req: retransmit rsp")
+	_, err := rx.server.conn.WriteTo(rx.msgBuf, rx.raddr)
 	if err != nil {
-		return false, errors.Wrap(err, "rxRecieve")
+		return false, errors.Wrapf(err, "rxtr[%s] recv", rx.id)
 	}
 	return false, nil
 }
 
-func (tr *Transaction) handleTxTimeout(seq uint32) {
-	e, ok := tr.tx[seq]
-	if !ok {
-		tr.log.Debugf("tx[%d] not found, ignore tx timeout", seq)
-		return
-	}
-
-	// Start tx retransmission timer
-	if e.retransCount < tr.maxRetrans {
-		e.retransCount++
-		tr.log.Debugf("tx[%d] timeout, retransCount(%d)", seq, e.retransCount)
-		_, err := tr.server.conn.WriteTo(e.msgBuf, tr.raddr)
-		if err != nil {
-			tr.log.Errorf("tx[%d] retransmit[%d] error: %v", seq, e.retransCount, err)
-		}
-		e.timer = tr.startTxTimer(e.seq)
-	} else {
-		tr.log.Debugf("tx[%d] max retransmission reached", seq)
-		delete(tr.tx, seq)
-		if e.rspCh != nil {
-			tr.log.Debugf("tx[%d] notify app timeout", seq)
-			e.rspCh <- Response{
-				RemoteAddr: tr.raddr,
-				Msg:        nil,
-			}
-		}
-	}
+func (rx *RxTransaction) handleTimeout() {
+	rx.log.Debugf("timeout, delete rxtr")
+	delete(rx.server.rxTrans, rx.id)
 }
 
-func (tr *Transaction) handleRxTimeout(seq uint32) {
-	_, ok := tr.rx[seq]
-	if !ok {
-		tr.log.Debugf("rx[%d] not found, ignore rx timeout", seq)
-		return
-	}
-	tr.log.Debugf("rx[%d] timeout, delete it", seq)
-	delete(tr.rx, seq)
-}
-
-func (tr *Transaction) startTxTimer(seq uint32) *time.Timer {
-	tr.log.Debugf("tx[%d] start timer(%s)", seq, tr.retransTimeout.String())
+func (rx *RxTransaction) startTimer() *time.Timer {
+	rx.log.Debugf("start timer(%s)", rx.timeout)
 	t := time.AfterFunc(
-		tr.retransTimeout,
+		rx.timeout,
 		func() {
-			tr.server.NotifyTransTimeout(TX, tr.raddr.String(), seq)
+			rx.server.NotifyTransTimeout(RX, rx.id)
 		},
 	)
 	return t
-}
-
-func (tr *Transaction) startRxTimer(seq uint32) *time.Timer {
-	rxTo := tr.retransTimeout * time.Duration(tr.maxRetrans+1)
-	tr.log.Debugf("rx[%d] start timer(%s)", seq, rxTo.String())
-	t := time.AfterFunc(
-		rxTo,
-		func() {
-			tr.server.NotifyTransTimeout(RX, tr.raddr.String(), seq)
-		},
-	)
-	return t
-}
-
-func (tr *Transaction) stopAllTimers() {
-	for _, e := range tr.tx {
-		if e.timer == nil {
-			continue
-		}
-		e.timer.Stop()
-		e.timer = nil
-	}
-	for _, e := range tr.rx {
-		if e.timer == nil {
-			continue
-		}
-		e.timer.Stop()
-		e.timer = nil
-	}
 }
