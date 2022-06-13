@@ -8,7 +8,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/free5gc/util v1.0.3
 	github.com/khirono/go-gtp5gnl v1.3.0
-	github.com/khirono/go-nl v1.0.2
+	github.com/khirono/go-nl v1.0.3
 	github.com/khirono/go-rtnllink v1.0.0
 	github.com/khirono/go-rtnlroute v1.0.0
 	github.com/pkg/errors v0.9.1
