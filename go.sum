@@ -42,8 +42,8 @@ github.com/khirono/go-gtp5gnl v1.3.0 h1:hYD3pxpHdX7IoCJwqnqQxdPGymJhIzjhyJpdyKrg
 github.com/khirono/go-gtp5gnl v1.3.0/go.mod h1:HsNvjnhaF2DfsAiva7FPUiJDanhp/1MzJmEc+LCzhl0=
 github.com/khirono/go-nl v1.0.0/go.mod h1:PzYeSjD38fzV7mX5DuaCZvnwx2kD/o7XgHyzuJxoi7U=
 github.com/khirono/go-nl v1.0.1/go.mod h1:PzYeSjD38fzV7mX5DuaCZvnwx2kD/o7XgHyzuJxoi7U=
-github.com/khirono/go-nl v1.0.2 h1:tToYrrnw0sX1WBWdpd0q+oZem2N/wvFLKO5Y2ipFb+c=
-github.com/khirono/go-nl v1.0.2/go.mod h1:PzYeSjD38fzV7mX5DuaCZvnwx2kD/o7XgHyzuJxoi7U=
+github.com/khirono/go-nl v1.0.3 h1:rLHD/PgucQXyFHbgHNaHXGZM431GwFGi6O+nx+GU0p0=
+github.com/khirono/go-nl v1.0.3/go.mod h1:PzYeSjD38fzV7mX5DuaCZvnwx2kD/o7XgHyzuJxoi7U=
 github.com/khirono/go-rtnllink v1.0.0 h1:PXk/7Tv/S7hV46cFE44WDUAv7ESGk8N448bvA/v8O5I=
 github.com/khirono/go-rtnllink v1.0.0/go.mod h1:nyOYtyXltMI1dEWrcyv1z0qSDEoIEKg9HL67MZMzr+Q=
 github.com/khirono/go-rtnlroute v1.0.0 h1:pgdlVfDw+ztYF9nq2FResCiKEfhC7+iR0s2own8mBjc=
