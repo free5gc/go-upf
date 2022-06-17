@@ -13,7 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 
-	"github.com/free5gc/go-upf/internal/buff"
+	"github.com/free5gc/go-upf/internal/forwarder/buff"
 	"github.com/free5gc/go-upf/internal/gtpv1"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"

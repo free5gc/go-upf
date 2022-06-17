@@ -11,11 +11,6 @@ import (
 	"github.com/free5gc/go-upf/internal/report"
 )
 
-const (
-	BUFF = 1 << 2
-	NOCP = 1 << 3
-)
-
 type Server struct {
 	conn    *net.UnixConn
 	handler report.Handler

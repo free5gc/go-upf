@@ -56,6 +56,11 @@ func (r USAReport) Type() int {
 	return USAR
 }
 
+const (
+	BUFF = 1 << 2
+	NOCP = 1 << 3
+)
+
 type SessReport struct {
 	SEID   uint64
 	Report Report

@@ -32,7 +32,7 @@ func (h *testHandler) NotifySessReport(sr report.SessReport) {
 	if !ok {
 		return
 	}
-	if sr.Action&BUFF != 0 && len(sr.BufPkt) > 0 {
+	if sr.Action&report.BUFF != 0 && len(sr.BufPkt) > 0 {
 		dldr, ok := sr.Report.(report.DLDReport)
 		if ok {
 			q, ok := s[dldr.PDRID]

@@ -8,13 +8,12 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
-	"github.com/free5gc/go-upf/internal/buff"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
 func (s *PfcpServer) ServeReport(rp *report.SessReport) {
-	s.log.Debugln("ServeReport")
+	s.log.Debugf("ServeReport: %v", rp)
 	sess, err := s.lnode.Sess(rp.SEID)
 	if err != nil {
 		s.log.Errorln(err)
@@ -27,27 +26,29 @@ func (s *PfcpServer) ServeReport(rp *report.SessReport) {
 		return
 	}
 
-	if rp.Action&buff.BUFF != 0 && len(rp.BufPkt) > 0 {
+	if rp.Action&report.BUFF != 0 && len(rp.BufPkt) > 0 {
 		dldr, ok := rp.Report.(report.DLDReport)
 		if ok {
 			sess.Push(dldr.PDRID, rp.BufPkt)
 		}
 	}
-	if rp.Action&buff.NOCP != 0 && rp.Report.Type() == report.DLDR {
-		dldr := rp.Report.(report.DLDReport)
-		err := s.ServeDLDReport(laddr, rp.SEID, dldr.PDRID)
-		if err != nil {
-			s.log.Errorln(err)
-		}
-	}
 
-	switch rp.Report.Type() {
-	case report.USAR:
-		usar := rp.Report.(report.USAReport)
-		err := s.ServeUSAReport(laddr, rp.SEID, &usar)
+	switch r := rp.Report.(type) {
+	case report.DLDReport:
+		if rp.Action&report.NOCP == 0 {
+			return
+		}
+		err := s.ServeDLDReport(laddr, rp.SEID, r.PDRID)
 		if err != nil {
 			s.log.Errorln(err)
 		}
+	case report.USAReport:
+		err := s.ServeUSAReport(laddr, rp.SEID, &r)
+		if err != nil {
+			s.log.Errorln(err)
+		}
+	default:
+		s.log.Warnf("Unsupported Report(%d)", rp.Report.Type())
 	}
 }
 
