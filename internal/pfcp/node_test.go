@@ -10,6 +10,7 @@ import (
 func TestNode(t *testing.T) {
 	n := NewRemoteNode(
 		"smf1",
+		nil,
 		&LocalNode{},
 		forwarder.Empty{},
 		logger.PfcpLog.WithField(logger.FieldRemoteNodeID, "rNodeID:smf1"),
@@ -143,12 +144,14 @@ func TestNode_multipleSMF(t *testing.T) {
 	var lnode LocalNode
 	n1 := NewRemoteNode(
 		"smf1",
+		nil,
 		&lnode,
 		forwarder.Empty{},
 		logger.PfcpLog.WithField(logger.FieldRemoteNodeID, "rNodeID:smf1"),
 	)
 	n2 := NewRemoteNode(
 		"smf2",
+		nil,
 		&lnode,
 		forwarder.Empty{},
 		logger.PfcpLog.WithField(logger.FieldRemoteNodeID, "rNodeID:smf2"),

@@ -2,6 +2,7 @@ package pfcp
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -271,15 +272,23 @@ func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
 
 type RemoteNode struct {
 	ID     string
+	addr   net.Addr
 	local  *LocalNode
-	sess   map[uint64]struct{}
+	sess   map[uint64]struct{} // key: Local SEID
 	driver forwarder.Driver
 	log    *logrus.Entry
 }
 
-func NewRemoteNode(id string, local *LocalNode, driver forwarder.Driver, log *logrus.Entry) *RemoteNode {
+func NewRemoteNode(
+	id string,
+	addr net.Addr,
+	local *LocalNode,
+	driver forwarder.Driver,
+	log *logrus.Entry,
+) *RemoteNode {
 	n := new(RemoteNode)
 	n.ID = id
+	n.addr = addr
 	n.local = local
 	n.sess = make(map[uint64]struct{})
 	n.driver = driver
@@ -351,6 +360,15 @@ func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 		return nil, errors.Errorf("Sess: sess not found (lSeid:0x%x)", lSeid)
 	}
 	return sess, nil
+}
+
+func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
+	for _, s := range n.sess {
+		if s.RemoteID == rSeid && s.rnode.addr.String() == addr.String() {
+			return s, nil
+		}
+	}
+	return nil, errors.Errorf("RemoteSess: invalid rSeid:0x%x, addr:%s ", rSeid, addr)
 }
 
 func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {

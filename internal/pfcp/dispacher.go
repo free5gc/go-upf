@@ -7,26 +7,44 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 )
 
-func (s *PfcpServer) dispacher(msgtmp message.Message, addr net.Addr) error {
-	switch msg := msgtmp.(type) {
+func (s *PfcpServer) reqDispacher(msg message.Message, addr net.Addr) error {
+	switch req := msg.(type) {
 	case *message.HeartbeatRequest:
-		s.handleHeartbeatRequest(msg, addr)
+		s.handleHeartbeatRequest(req, addr)
 	case *message.AssociationSetupRequest:
-		s.handleAssociationSetupRequest(msg, addr)
+		s.handleAssociationSetupRequest(req, addr)
 	case *message.AssociationUpdateRequest:
-		s.handleAssociationUpdateRequest(msg, addr)
+		s.handleAssociationUpdateRequest(req, addr)
 	case *message.AssociationReleaseRequest:
-		s.handleAssociationReleaseRequest(msg, addr)
+		s.handleAssociationReleaseRequest(req, addr)
 	case *message.SessionEstablishmentRequest:
-		s.handleSessionEstablishmentRequest(msg, addr)
+		s.handleSessionEstablishmentRequest(req, addr)
 	case *message.SessionModificationRequest:
-		s.handleSessionModificationRequest(msg, addr)
+		s.handleSessionModificationRequest(req, addr)
 	case *message.SessionDeletionRequest:
-		s.handleSessionDeletionRequest(msg, addr)
-	case *message.SessionReportResponse:
-		s.handleSessionReportResponse(msg, addr)
+		s.handleSessionDeletionRequest(req, addr)
 	default:
-		return errors.Errorf("pfcp dispacher unknown msg type: %d", msgtmp.MessageType())
+		return errors.Errorf("pfcp reqDispacher unknown msg type: %d", msg.MessageType())
+	}
+	return nil
+}
+
+func (s *PfcpServer) rspDispacher(msg message.Message, addr net.Addr, req message.Message) error {
+	switch rsp := msg.(type) {
+	case *message.SessionReportResponse:
+		s.handleSessionReportResponse(rsp, addr, req)
+	default:
+		return errors.Errorf("pfcp rspDispacher unknown msg type: %d", msg.MessageType())
+	}
+	return nil
+}
+
+func (s *PfcpServer) txtoDispacher(msg message.Message, addr net.Addr) error {
+	switch req := msg.(type) {
+	case *message.SessionReportRequest:
+		s.handleSessionReportRequestTimeout(req, addr)
+	default:
+		return errors.Errorf("pfcp txtoDispacher unknown msg type: %d", msg.MessageType())
 	}
 	return nil
 }

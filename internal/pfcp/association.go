@@ -7,7 +7,10 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 )
 
-func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetupRequest, addr net.Addr) {
+func (s *PfcpServer) handleAssociationSetupRequest(
+	req *message.AssociationSetupRequest,
+	addr net.Addr,
+) {
 	s.log.Infoln("handleAssociationSetupRequest")
 
 	if req.NodeID == nil {
@@ -30,7 +33,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 		node.Reset()
 		delete(s.rnodes, rnodeid)
 	}
-	node := s.NewNode(rnodeid, s.driver)
+	node := s.NewNode(rnodeid, addr, s.driver)
 	s.rnodes[rnodeid] = node
 
 	rsp := message.NewAssociationSetupResponse(
@@ -49,11 +52,17 @@ func (s *PfcpServer) handleAssociationSetupRequest(req *message.AssociationSetup
 	}
 }
 
-func (s *PfcpServer) handleAssociationUpdateRequest(msg *message.AssociationUpdateRequest, addr net.Addr) {
+func (s *PfcpServer) handleAssociationUpdateRequest(
+	req *message.AssociationUpdateRequest,
+	addr net.Addr,
+) {
 	s.log.Infoln("handleAssociationUpdateRequest not supported")
 }
 
-func (s *PfcpServer) handleAssociationReleaseRequest(msg *message.AssociationReleaseRequest, addr net.Addr) {
+func (s *PfcpServer) handleAssociationReleaseRequest(
+	req *message.AssociationReleaseRequest,
+	addr net.Addr,
+) {
 	s.log.Infoln("handleAssociationReleaseRequest not supported")
 }
 

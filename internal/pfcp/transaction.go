@@ -19,10 +19,10 @@ type TxTransaction struct {
 	id             string
 	retransTimeout time.Duration
 	maxRetrans     uint8
+	req            message.Message
 	msgBuf         []byte
 	timer          *time.Timer
 	retransCount   uint8
-	rspCh          chan<- Response
 	log            *logrus.Entry
 }
 
@@ -41,7 +41,6 @@ func NewTxTransaction(
 	server *PfcpServer,
 	raddr net.Addr,
 	seq uint32,
-	rspCh chan<- Response,
 ) *TxTransaction {
 	return &TxTransaction{
 		server:         server,
@@ -50,22 +49,22 @@ func NewTxTransaction(
 		id:             fmt.Sprintf("%s-%d", raddr, seq),
 		retransTimeout: server.cfg.Pfcp.RetransTimeout,
 		maxRetrans:     server.cfg.Pfcp.MaxRetrans,
-		rspCh:          rspCh,
 		log:            server.log.WithField(logger.FieldTransction, fmt.Sprintf("TxTr:%s(%d)", raddr, seq)),
 	}
 }
 
-func (tx *TxTransaction) send(msg message.Message) error {
+func (tx *TxTransaction) send(req message.Message) error {
 	tx.log.Debugf("send req")
 
-	setReqSeq(msg, tx.seq)
-	b := make([]byte, msg.MarshalLen())
-	err := msg.MarshalTo(b)
+	setReqSeq(req, tx.seq)
+	b := make([]byte, req.MarshalLen())
+	err := req.MarshalTo(b)
 	if err != nil {
 		return err
 	}
 
 	// Start tx retransmission timer
+	tx.req = req
 	tx.msgBuf = b
 	tx.timer = tx.startTimer()
 
@@ -77,23 +76,15 @@ func (tx *TxTransaction) send(msg message.Message) error {
 	return nil
 }
 
-func (tx *TxTransaction) recv(msg message.Message) {
+func (tx *TxTransaction) recv(rsp message.Message) message.Message {
 	tx.log.Debugf("recv rsp, delete txtr")
-
-	// notify sender rsp received
-	if tx.rspCh != nil {
-		tx.log.Debugf("notify app rsp")
-		tx.rspCh <- Response{
-			RemoteAddr: tx.raddr,
-			Msg:        msg,
-		}
-	}
 
 	// Stop tx retransmission timer
 	tx.timer.Stop()
 	tx.timer = nil
 
 	delete(tx.server.txTrans, tx.id)
+	return tx.req
 }
 
 func (tx *TxTransaction) handleTimeout() {
@@ -109,12 +100,9 @@ func (tx *TxTransaction) handleTimeout() {
 	} else {
 		tx.log.Debugf("max retransmission reached - delete txtr")
 		delete(tx.server.txTrans, tx.id)
-		if tx.rspCh != nil {
-			tx.log.Debugf("notify app timeout")
-			tx.rspCh <- Response{
-				RemoteAddr: tx.raddr,
-				Msg:        nil,
-			}
+		err := tx.server.txtoDispacher(tx.req, tx.raddr)
+		if err != nil {
+			tx.log.Errorf("txtoDispacher: %v", err)
 		}
 	}
 }
@@ -145,11 +133,11 @@ func NewRxTransaction(
 	}
 }
 
-func (rx *RxTransaction) send(msg message.Message) error {
+func (rx *RxTransaction) send(rsp message.Message) error {
 	rx.log.Debugf("send rsp")
 
-	b := make([]byte, msg.MarshalLen())
-	err := msg.MarshalTo(b)
+	b := make([]byte, rsp.MarshalLen())
+	err := rsp.MarshalTo(b)
 	if err != nil {
 		return err
 	}
@@ -168,7 +156,7 @@ func (rx *RxTransaction) send(msg message.Message) error {
 
 // True  - need to handle this req
 // False - req already handled
-func (rx *RxTransaction) recv(msg message.Message) (bool, error) {
+func (rx *RxTransaction) recv(req message.Message) (bool, error) {
 	rx.log.Debugf("recv req")
 	if len(rx.msgBuf) == 0 {
 		return true, nil

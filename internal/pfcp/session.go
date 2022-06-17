@@ -7,7 +7,10 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 )
 
-func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstablishmentRequest, addr net.Addr) {
+func (s *PfcpServer) handleSessionEstablishmentRequest(
+	req *message.SessionEstablishmentRequest,
+	addr net.Addr,
+) {
 	// TODO: error response
 	s.log.Infoln("handleSessionEstablishmentRequest")
 
@@ -104,7 +107,10 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(req *message.SessionEstab
 	}
 }
 
-func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModificationRequest, addr net.Addr) {
+func (s *PfcpServer) handleSessionModificationRequest(
+	req *message.SessionModificationRequest,
+	addr net.Addr,
+) {
 	// TODO: error response
 	s.log.Infoln("handleSessionModificationRequest")
 
@@ -250,7 +256,10 @@ func (s *PfcpServer) handleSessionModificationRequest(req *message.SessionModifi
 	}
 }
 
-func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRequest, addr net.Addr) {
+func (s *PfcpServer) handleSessionDeletionRequest(
+	req *message.SessionDeletionRequest,
+	addr net.Addr,
+) {
 	// TODO: error response
 	s.log.Infoln("handleSessionDeletionRequest")
 
@@ -278,10 +287,24 @@ func (s *PfcpServer) handleSessionDeletionRequest(req *message.SessionDeletionRe
 	}
 }
 
-func (s *PfcpServer) handleSessionReportResponse(rsp *message.SessionReportResponse, addr net.Addr) {
+func (s *PfcpServer) handleSessionReportResponse(
+	rsp *message.SessionReportResponse,
+	addr net.Addr,
+	req message.Message,
+) {
 	s.log.Infoln("handleSessionReportResponse")
 
 	s.log.Debugf("seid: %v\n", rsp.Header.SEID)
+	if rsp.Header.SEID == 0 {
+		s.log.Warnf("rsp SEID is 0; no this session on remote; delete it on local")
+		sess, err := s.lnode.RemoteSess(req.SEID(), addr)
+		if err != nil {
+			s.log.Errorln(err)
+			return
+		}
+		sess.rnode.DeleteSess(sess.LocalID)
+		return
+	}
 
 	sess, err := s.lnode.Sess(rsp.Header.SEID)
 	if err != nil {
@@ -290,4 +313,12 @@ func (s *PfcpServer) handleSessionReportResponse(rsp *message.SessionReportRespo
 	}
 
 	s.log.Debugf("sess: %#+v\n", sess)
+}
+
+func (s *PfcpServer) handleSessionReportRequestTimeout(
+	req *message.SessionReportRequest,
+	addr net.Addr,
+) {
+	s.log.Warnln("handleSessionReportRequestTimeout")
+	// TODO?
 }

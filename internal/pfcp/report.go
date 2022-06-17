@@ -13,9 +13,9 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
-func (s *PfcpServer) ServeReport(r *report.SessReport) {
+func (s *PfcpServer) ServeReport(rp *report.SessReport) {
 	s.log.Debugln("ServeReport")
-	sess, err := s.lnode.Sess(r.SEID)
+	sess, err := s.lnode.Sess(rp.SEID)
 	if err != nil {
 		s.log.Errorln(err)
 		return
@@ -27,37 +27,42 @@ func (s *PfcpServer) ServeReport(r *report.SessReport) {
 		return
 	}
 
-	if r.Action&buff.BUFF != 0 && len(r.BufPkt) > 0 {
-		dldr, ok := r.Report.(report.DLDReport)
+	if rp.Action&buff.BUFF != 0 && len(rp.BufPkt) > 0 {
+		dldr, ok := rp.Report.(report.DLDReport)
 		if ok {
-			sess.Push(dldr.PDRID, r.BufPkt)
+			sess.Push(dldr.PDRID, rp.BufPkt)
 		}
 	}
-	if r.Action&buff.NOCP != 0 && r.Report.Type() == report.DLDR {
-		dldr := r.Report.(report.DLDReport)
-		err := s.ServeDLDReport(laddr, r.SEID, dldr.PDRID)
+	if rp.Action&buff.NOCP != 0 && rp.Report.Type() == report.DLDR {
+		dldr := rp.Report.(report.DLDReport)
+		err := s.ServeDLDReport(laddr, rp.SEID, dldr.PDRID)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 
-	switch r.Report.Type() {
+	switch rp.Report.Type() {
 	case report.USAR:
-		usar := r.Report.(report.USAReport)
-		err := s.ServeUSAReport(laddr, r.SEID, &usar)
+		usar := rp.Report.(report.USAReport)
+		err := s.ServeUSAReport(laddr, rp.SEID, &usar)
 		if err != nil {
 			s.log.Errorln(err)
 		}
 	}
 }
 
-func (s *PfcpServer) ServeDLDReport(addr net.Addr, seid uint64, pdrid uint16) error {
+func (s *PfcpServer) ServeDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) error {
 	s.log.Infoln("ServeDLDReport")
+
+	sess, err := s.lnode.Sess(lSeid)
+	if err != nil {
+		return errors.Wrap(err, "ServeDLDReport")
+	}
 
 	req := message.NewSessionReportRequest(
 		0,
 		0,
-		seid,
+		sess.RemoteID,
 		0,
 		0,
 		ie.NewReportType(0, 0, 0, 1),
@@ -74,18 +79,23 @@ func (s *PfcpServer) ServeDLDReport(addr net.Addr, seid uint64, pdrid uint16) er
 		),
 	)
 
-	err := s.sendReqTo(req, addr, nil) // No waiting for rsp
+	err = s.sendReqTo(req, addr)
 	return errors.Wrap(err, "ServeDLDReport")
 }
 
-func (s *PfcpServer) ServeUSAReport(addr net.Addr, seid uint64, usar *report.USAReport) error {
+func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.USAReport) error {
 	s.log.Infoln("ServeUSAReport")
+
+	sess, err := s.lnode.Sess(lSeid)
+	if err != nil {
+		return errors.Wrap(err, "ServeDLDReport")
+	}
 
 	tr := &usar.USARTrigger
 	req := message.NewSessionReportRequest(
 		0,
 		0,
-		seid,
+		sess.RemoteID,
 		0,
 		0,
 		ie.NewReportType(0, 0, 1, 0),
@@ -101,6 +111,6 @@ func (s *PfcpServer) ServeUSAReport(addr net.Addr, seid uint64, usar *report.USA
 		),
 	)
 
-	err := s.sendReqTo(req, addr, nil) // No waiting for rsp
+	err = s.sendReqTo(req, addr)
 	return errors.Wrap(err, "ServeUSAReport")
 }

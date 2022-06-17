@@ -42,11 +42,6 @@ type TransactionTimeout struct {
 	TrID   string
 }
 
-type Response struct {
-	RemoteAddr net.Addr
-	Msg        message.Message
-}
-
 type PfcpServer struct {
 	cfg          *factory.Config
 	listen       string
@@ -146,19 +141,23 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 					s.log.Debugf("rcvCh: rxtr[%s] req no need to dispatch", trID)
 					continue
 				}
+				err = s.reqDispacher(msg, rcvPkt.RemoteAddr)
+				if err != nil {
+					s.log.Errorln(err)
+					s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
+				}
 			} else if isResponse(msg) {
 				tx, ok := s.txTrans[trID]
 				if !ok {
 					s.log.Debugf("rcvCh: No txtr[%s] found for rsp", trID)
 					continue
 				}
-				tx.recv(msg)
-			}
-
-			err = s.dispacher(msg, rcvPkt.RemoteAddr)
-			if err != nil {
-				s.log.Errorln(err)
-				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
+				req := tx.recv(msg)
+				err = s.rspDispacher(msg, rcvPkt.RemoteAddr, req)
+				if err != nil {
+					s.log.Errorln(err)
+					s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
+				}
 			}
 		case trTo := <-s.trToCh:
 			if trTo.TrType == TX {
@@ -223,9 +222,10 @@ func (s *PfcpServer) Stop() {
 	}
 }
 
-func (s *PfcpServer) NewNode(id string, driver forwarder.Driver) *RemoteNode {
+func (s *PfcpServer) NewNode(id string, addr net.Addr, driver forwarder.Driver) *RemoteNode {
 	n := NewRemoteNode(
 		id,
+		addr,
 		&s.lnode,
 		driver,
 		s.log.WithField(logger.FieldRemoteNodeID, "rNodeID:"+id),
@@ -259,12 +259,12 @@ func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
 	return sess.Pop(pdrid)
 }
 
-func (s *PfcpServer) sendReqTo(msg message.Message, addr net.Addr, rspCh chan<- Response) error {
+func (s *PfcpServer) sendReqTo(msg message.Message, addr net.Addr) error {
 	if !isRequest(msg) {
 		return errors.Errorf("sendReqTo: invalid req type(%d)", msg.MessageType())
 	}
 
-	txtr := NewTxTransaction(s, addr, s.txSeq, rspCh)
+	txtr := NewTxTransaction(s, addr, s.txSeq)
 	s.txSeq++
 	s.txTrans[txtr.id] = txtr
 
