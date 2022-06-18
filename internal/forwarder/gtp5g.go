@@ -1160,12 +1160,6 @@ func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bs.Handle(handler)
 }
 
-const (
-	DROP = 1 << 0
-	FORW = 1 << 1
-	BUFF = 1 << 2
-)
-
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 	oid := gtp5gnl.OID{lSeid, uint64(farid)}
 	far, err := gtp5gnl.GetFAROID(g.client, g.link.link, oid)
@@ -1173,11 +1167,11 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 		g.log.Errorf("applyAction err: %+v", err)
 		return
 	}
-	if far.Action&BUFF == 0 {
+	if far.Action&report.BUFF == 0 {
 		return
 	}
 	switch {
-	case action&DROP != 0:
+	case action&report.DROP != 0:
 		// BUFF -> DROP
 		for _, pdrid := range far.PDRIDs {
 			for {
@@ -1187,7 +1181,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
 				}
 			}
 		}
-	case action&FORW != 0:
+	case action&report.FORW != 0:
 		// BUFF -> FORW
 		for _, pdrid := range far.PDRIDs {
 			oid := gtp5gnl.OID{lSeid, uint64(pdrid)}

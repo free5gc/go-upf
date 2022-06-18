@@ -57,6 +57,8 @@ func (r USAReport) Type() int {
 }
 
 const (
+	DROP = 1 << 0
+	FORW = 1 << 1
 	BUFF = 1 << 2
 	NOCP = 1 << 3
 )
