@@ -116,7 +116,21 @@ func (s *PfcpServer) handleSessionModificationRequest(
 
 	sess, err := s.lnode.Sess(req.Header.SEID)
 	if err != nil {
-		s.log.Errorln(err)
+		s.log.Errorf("handleSessionModificationRequest: %v", err)
+		rsp := message.NewSessionModificationResponse(
+			0, // mp
+			0, // fo
+			0, // seid
+			req.Header.SequenceNumber,
+			0, // pri
+			ie.NewCause(ie.CauseSessionContextNotFound),
+		)
+
+		err = s.sendRspTo(rsp, addr)
+		if err != nil {
+			s.log.Errorln(err)
+			return
+		}
 		return
 	}
 
@@ -265,7 +279,21 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 
 	sess, err := s.lnode.Sess(req.Header.SEID)
 	if err != nil {
-		s.log.Errorln(err)
+		s.log.Errorf("handleSessionDeletionRequest: %v", err)
+		rsp := message.NewSessionDeletionResponse(
+			0, // mp
+			0, // fo
+			0, // seid
+			req.Header.SequenceNumber,
+			0, // pri
+			ie.NewCause(ie.CauseSessionContextNotFound),
+		)
+
+		err = s.sendRspTo(rsp, addr)
+		if err != nil {
+			s.log.Errorln(err)
+			return
+		}
 		return
 	}
 
