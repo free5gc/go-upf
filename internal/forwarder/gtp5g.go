@@ -523,6 +523,15 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 				Type:  gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY,
 				Value: nl.AttrString(v),
 			})
+		case ie.PFCPSMReqFlags:
+			v, err := x.PFCPSMReqFlags()
+			if err != nil {
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.FORWARDING_PARAMETER_PFCPSM_REQ_FLAGS,
+				Value: nl.AttrU8(v),
+			})
 		}
 	}
 
