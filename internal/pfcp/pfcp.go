@@ -190,8 +190,8 @@ func (s *PfcpServer) receiver(wg *sync.WaitGroup) {
 		wg.Done()
 	}()
 
-	buf := make([]byte, MAX_PFCP_MSG_LEN)
 	for {
+		buf := make([]byte, MAX_PFCP_MSG_LEN)
 		n, addr, err := s.conn.ReadFrom(buf)
 		if err != nil {
 			s.log.Errorf("%+v", err)
