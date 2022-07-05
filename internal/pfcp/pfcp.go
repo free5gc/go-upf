@@ -64,7 +64,7 @@ type PfcpServer struct {
 func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 	var IPAddress string
 	re := regexp.MustCompile(`[a-z]`)
-	if (re.MatchString(cfg.Pfcp.Addr) == true) {
+	if re.MatchString(cfg.Pfcp.Addr) == true {
 		res, _ := net.ResolveIPAddr("ip4", cfg.Pfcp.Addr)
 		IPAddress = res.String()
 	} else {

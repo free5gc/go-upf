@@ -53,7 +53,7 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 		for _, ifInfo := range cfgGtpu.IfList {
 			re := regexp.MustCompile(`[a-z]`)
 			var addr string
-			if (re.MatchString(ifInfo.Addr) == true) {
+			if re.MatchString(ifInfo.Addr) == true {
 				res, _ := net.ResolveIPAddr("ip4", ifInfo.Addr)
 				addr = res.String()
 			} else {
