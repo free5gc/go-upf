@@ -3,6 +3,7 @@ package forwarder
 import (
 	"fmt"
 	"net"
+	"regexp"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -48,8 +49,17 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 	logger.MainLog.Infof("starting Gtpu Forwarder [%s]", cfgGtpu.Forwarder)
 	if cfgGtpu.Forwarder == "gtp5g" {
 		var gtpuAddr string
+
 		for _, ifInfo := range cfgGtpu.IfList {
-			gtpuAddr = fmt.Sprintf("%s:%d", ifInfo.Addr, factory.UpfGtpDefaultPort)
+			re := regexp.MustCompile(`[a-z]`)
+			var addr string
+			if (re.MatchString(ifInfo.Addr) == true) {
+				res, _ := net.ResolveIPAddr("ip4", ifInfo.Addr)
+				addr = res.String()
+			} else {
+				addr = ifInfo.Addr
+			}
+			gtpuAddr = fmt.Sprintf("%s:%d", addr, factory.UpfGtpDefaultPort)
 			logger.MainLog.Infof("GTP Address: %q", gtpuAddr)
 			break
 		}

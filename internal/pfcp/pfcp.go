@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"regexp"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -61,7 +62,15 @@ type PfcpServer struct {
 }
 
 func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
-	listen := fmt.Sprintf("%s:%d", cfg.Pfcp.Addr, factory.UpfPfcpDefaultPort)
+	var IPAddress string
+	re := regexp.MustCompile(`[a-z]`)
+	if (re.MatchString(cfg.Pfcp.Addr) == true) {
+		res, _ := net.ResolveIPAddr("ip4", cfg.Pfcp.Addr)
+		IPAddress = res.String()
+	} else {
+		IPAddress = cfg.Pfcp.Addr
+	}
+	listen := fmt.Sprintf("%s:%d", IPAddress, factory.UpfPfcpDefaultPort)
 	return &PfcpServer{
 		cfg:          cfg,
 		listen:       listen,
