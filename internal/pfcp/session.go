@@ -149,6 +149,8 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		s.UpdateNodeID(sess.rnode, rnodeid)
 	}
 
+	// TODO: reject a modification request which would relate to a rule not existing in the UP function;
+	// -- TS 29.244 7.3.3.3
 	for _, i := range req.CreateFAR {
 		err = sess.CreateFAR(i)
 		if err != nil {
