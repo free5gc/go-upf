@@ -7,12 +7,12 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/khirono/go-gtp5gnl"
 	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 
+	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder/buff"
 	"github.com/free5gc/go-upf/internal/gtpv1"
 	"github.com/free5gc/go-upf/internal/logger"

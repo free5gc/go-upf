@@ -5,12 +5,13 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/khirono/go-gtp5gnl"
 	"github.com/khirono/go-nl"
 	"github.com/khirono/go-rtnllink"
 	"github.com/khirono/go-rtnlroute"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	"github.com/free5gc/go-gtp5gnl"
 )
 
 type Gtp5gLink struct {
