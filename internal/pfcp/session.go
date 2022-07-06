@@ -149,8 +149,9 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		s.UpdateNodeID(sess.rnode, rnodeid)
 	}
 
-	// TODO: reject a modification request which would relate to a rule not existing in the UP function;
-	// -- TS 29.244 7.3.3.3
+	// TS 29.244 7.3.3.3:
+	// reject a modification request which would relate to a rule not existing in the UP function;
+	notExisting := false
 	for _, i := range req.CreateFAR {
 		err = sess.CreateFAR(i)
 		if err != nil {
@@ -190,6 +191,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.RemoveFAR(i)
 		if err != nil {
 			sess.log.Errorf("RemoveFAR error: %+v", err)
+			notExisting = true
 		}
 	}
 
@@ -197,6 +199,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.RemoveQER(i)
 		if err != nil {
 			sess.log.Errorf("RemoveQER error: %+v", err)
+			notExisting = true
 		}
 	}
 
@@ -204,6 +207,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.RemoveURR(i)
 		if err != nil {
 			sess.log.Errorf("RemoveURR error: %+v", err)
+			notExisting = true
 		}
 	}
 
@@ -211,6 +215,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.RemoveBAR(req.RemoveBAR)
 		if err != nil {
 			sess.log.Errorf("RemoveBAR error: %+v", err)
+			notExisting = true
 		}
 	}
 
@@ -218,6 +223,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.RemovePDR(i)
 		if err != nil {
 			sess.log.Errorf("RemovePDR error: %+v", err)
+			notExisting = true
 		}
 	}
 
@@ -225,6 +231,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.UpdateFAR(i)
 		if err != nil {
 			sess.log.Errorf("UpdateFAR error: %+v", err)
+			notExisting = true
 		}
 	}
 
@@ -232,6 +239,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.UpdateQER(i)
 		if err != nil {
 			sess.log.Errorf("UpdateQER error: %+v", err)
+			notExisting = true
 		}
 	}
 
@@ -239,6 +247,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.UpdateURR(i)
 		if err != nil {
 			sess.log.Errorf("UpdateURR error: %+v", err)
+			notExisting = true
 		}
 	}
 
@@ -246,6 +255,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.UpdateBAR(req.UpdateBAR)
 		if err != nil {
 			sess.log.Errorf("UpdateBAR error: %+v", err)
+			notExisting = true
 		}
 	}
 
@@ -253,7 +263,13 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		err = sess.UpdatePDR(i)
 		if err != nil {
 			sess.log.Errorf("UpdatePDR error: %+v", err)
+			notExisting = true
 		}
+	}
+
+	cause := ie.NewCause(ie.CauseRequestAccepted)
+	if notExisting {
+		cause = ie.NewCause(ie.CauseRequestRejected)
 	}
 
 	rsp := message.NewSessionModificationResponse(
@@ -262,7 +278,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		sess.RemoteID, // seid
 		req.Header.SequenceNumber,
 		0, // pri
-		ie.NewCause(ie.CauseRequestAccepted),
+		cause,
 	)
 
 	err = s.sendRspTo(rsp, addr)
