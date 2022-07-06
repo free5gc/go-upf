@@ -306,7 +306,7 @@ func (n *RemoteNode) Reset() {
 func (n *RemoteNode) Sess(lSeid uint64) (*Sess, error) {
 	_, ok := n.sess[lSeid]
 	if !ok {
-		return nil, errors.Errorf("Sess: sess not found (lSeid:0x%x)", lSeid)
+		return nil, errors.Errorf("Sess: sess not found (lSeid:%#x)", lSeid)
 	}
 	return n.local.Sess(lSeid)
 }
@@ -315,7 +315,7 @@ func (n *RemoteNode) NewSess(rSeid uint64) *Sess {
 	s := n.local.NewSess(rSeid, BUFFQ_LEN)
 	n.sess[s.LocalID] = struct{}{}
 	s.rnode = n
-	s.log = n.log.WithField(logger.FieldSessionID, fmt.Sprintf("SEID:L(0x%x),R(0x%x)", s.LocalID, rSeid))
+	s.log = n.log.WithField(logger.FieldSessionID, fmt.Sprintf("SEID:L(%#x),R(%#x)", s.LocalID, rSeid))
 	s.log.Infoln("New session")
 	return s
 }
@@ -353,11 +353,11 @@ func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 	}
 	i := int(lSeid) - 1
 	if i >= len(n.sess) {
-		return nil, errors.Errorf("Sess: sess not found (lSeid:0x%x)", lSeid)
+		return nil, errors.Errorf("Sess: sess not found (lSeid:%#x)", lSeid)
 	}
 	sess := n.sess[i]
 	if sess == nil {
-		return nil, errors.Errorf("Sess: sess not found (lSeid:0x%x)", lSeid)
+		return nil, errors.Errorf("Sess: sess not found (lSeid:%#x)", lSeid)
 	}
 	return sess, nil
 }
@@ -368,7 +368,7 @@ func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
 			return s, nil
 		}
 	}
-	return nil, errors.Errorf("RemoteSess: invalid rSeid:0x%x, addr:%s ", rSeid, addr)
+	return nil, errors.Errorf("RemoteSess: invalid rSeid:%#x, addr:%s ", rSeid, addr)
 }
 
 func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
@@ -398,10 +398,10 @@ func (n *LocalNode) DeleteSess(lSeid uint64) error {
 	}
 	i := int(lSeid) - 1
 	if i >= len(n.sess) {
-		return errors.Errorf("DeleteSess: sess not found (lSeid:0x%x)", lSeid)
+		return errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
 	}
 	if n.sess[i] == nil {
-		return errors.Errorf("DeleteSess: sess not found (lSeid:0x%x)", lSeid)
+		return errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
 	}
 	n.sess[i].log.Infoln("sess deleted")
 	n.sess[i].Close()
