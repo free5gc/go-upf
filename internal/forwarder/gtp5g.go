@@ -14,6 +14,8 @@ import (
 
 	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder/buff"
+	gtp_report "github.com/free5gc/go-upf/internal/forwarder/report"
+
 	"github.com/free5gc/go-upf/internal/gtpv1"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
@@ -21,7 +23,8 @@ import (
 )
 
 const (
-	SOCKPATH = "/tmp/free5gc_unix_sock"
+	SOCKPATH       = "/tmp/free5gc_unix_sock"
+	REPORTSOCKPATH = "/tmp/free5gc_report_unix_sock"
 )
 
 type Gtp5g struct {
@@ -30,6 +33,7 @@ type Gtp5g struct {
 	conn   *nl.Conn
 	client *gtp5gnl.Client
 	bs     *buff.Server
+	rs     *gtp_report.Server
 	log    *logrus.Entry
 }
 
@@ -80,6 +84,13 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string) (*Gtp5g, error) {
 	}
 	g.bs = bs
 
+	rs, err := gtp_report.OpenServer(wg, REPORTSOCKPATH)
+	if err != nil {
+		g.Close()
+		return nil, errors.Wrap(err, "open report server")
+	}
+	g.rs = rs
+
 	return g, nil
 }
 
@@ -95,6 +106,9 @@ func (g *Gtp5g) Close() {
 	}
 	if g.bs != nil {
 		g.bs.Close()
+	}
+	if g.rs != nil {
+		g.rs.Close()
 	}
 }
 
@@ -374,6 +388,12 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 	// Not in 3GPP spec, just used for buffering
 	attrs = append(attrs, nl.Attr{
 		Type:  gtp5gnl.PDR_UNIX_SOCKET_PATH,
+		Value: nl.AttrString(SOCKPATH),
+	})
+
+	// Not in 3GPP spec, just used for buffering
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.PDR_REPORT_UNIX_SOCKET_PATH,
 		Value: nl.AttrString(SOCKPATH),
 	})
 
@@ -941,6 +961,76 @@ func (g *Gtp5g) RemoveQER(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.RemoveQEROID(g.client, g.link.link, oid)
 }
 
+func (g *Gtp5g) newVolumeThreshold(i *ie.IE) (nl.AttrList, error) {
+	var attrs nl.AttrList
+	logger.PfcpLog.Info("newVolumeThreshold")
+
+	v, err := i.VolumeThreshold()
+	if err != nil {
+		return nil, err
+	}
+
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.URR_VOLUME_THRESHOLD_FLAG,
+		Value: nl.AttrU8(v.Flags),
+	})
+	if v.HasTOVOL() {
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_TOVOL,
+			Value: nl.AttrU64(v.TotalVolume),
+		})
+	}
+	if v.HasULVOL() {
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_UVOL,
+			Value: nl.AttrU64(v.UplinkVolume),
+		})
+	}
+	if v.HasDLVOL() {
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_DVOL,
+			Value: nl.AttrU64(v.DownlinkVolume),
+		})
+	}
+
+	return attrs, nil
+}
+
+func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
+	var attrs nl.AttrList
+
+	logger.PfcpLog.Info("newVolumeQuota")
+	v, err := i.VolumeQuota()
+	if err != nil {
+		return nil, err
+	}
+
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.URR_VOLUME_QUOTA_FLAG,
+		Value: nl.AttrU8(v.Flags),
+	})
+	if v.HasTOVOL() {
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.URR_VOLUME_QUOTA_TOVOL,
+			Value: nl.AttrU64(v.TotalVolume),
+		})
+	}
+	if v.HasULVOL() {
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.URR_VOLUME_QUOTA_UVOL,
+			Value: nl.AttrU64(v.UplinkVolume),
+		})
+	}
+	if v.HasDLVOL() {
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.URR_VOLUME_QUOTA_DVOL,
+			Value: nl.AttrU64(v.DownlinkVolume),
+		})
+	}
+
+	return attrs, nil
+}
+
 func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 	var urrid uint64
 	var attrs []nl.Attr
@@ -993,6 +1083,26 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_INFO,
 				Value: nl.AttrU64(v),
+			})
+
+		case ie.VolumeThreshold:
+			v, err := g.newVolumeThreshold(i)
+			if err != nil {
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_VOLUME_THRESHOLD,
+				Value: v,
+			})
+
+		case ie.VolumeQuota:
+			v, err := g.newVolumeQuota(i)
+			if err != nil {
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_VOLUME_QUOTA,
+				Value: v,
 			})
 			// TODO: URR_SEQ
 		}
@@ -1054,6 +1164,25 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_INFO,
 				Value: nl.AttrU64(v),
+			})
+		case ie.VolumeThreshold:
+			v, err := g.newVolumeThreshold(i)
+			if err != nil {
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_VOLUME_THRESHOLD,
+				Value: v,
+			})
+
+		case ie.VolumeQuota:
+			v, err := g.newVolumeQuota(i)
+			if err != nil {
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_VOLUME_QUOTA,
+				Value: v,
 			})
 			// TODO: URR_SEQ
 		}

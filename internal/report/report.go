@@ -23,9 +23,20 @@ func (r DLDReport) Type() int {
 }
 
 type USAReport struct {
-	URRID       uint32
-	URSEQN      uint32
-	USARTrigger UsageReportTrigger
+	URRID          uint32
+	URSEQN         uint32
+	USARTrigger    UsageReportTrigger
+	VolMeasurement VolumeMeasurement
+	QueryUrrRef    uint32
+}
+type VolumeMeasurement struct {
+	flag           uint8
+	totalVolume    uint64
+	uplinkVolume   uint64
+	downlinkVolume uint64
+	totalPktNum    uint64
+	uplinkPktNum   uint64
+	downlinkPktNum uint64
 }
 
 type UsageReportTrigger struct {
