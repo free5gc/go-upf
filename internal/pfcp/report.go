@@ -21,7 +21,7 @@ func (s *PfcpServer) ServeReport(rp *report.SessReport) {
 	}
 
 	addr := fmt.Sprintf("%s:%d", sess.rnode.ID, factory.UpfPfcpDefaultPort)
-	laddr, err := net.ResolveUDPAddr("udp", addr)
+	laddr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
 		return
 	}

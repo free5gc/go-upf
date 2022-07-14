@@ -22,12 +22,12 @@ func main() {
 	)
 	flag.Parse()
 
-	raddr, err := net.ResolveUDPAddr("udp", *server)
+	raddr, err := net.ResolveUDPAddr("udp4", *server)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	conn, err := net.DialUDP("udp", nil, raddr)
+	conn, err := net.DialUDP("udp4", nil, raddr)
 	if err != nil {
 		log.Fatal(err)
 	}

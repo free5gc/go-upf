@@ -94,13 +94,13 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	}()
 
 	var err error
-	laddr, err := net.ResolveUDPAddr("udp", s.listen)
+	laddr, err := net.ResolveUDPAddr("udp4", s.listen)
 	if err != nil {
 		s.log.Errorf("Resolve err: %+v", err)
 		return
 	}
 
-	conn, err := net.ListenUDP("udp", laddr)
+	conn, err := net.ListenUDP("udp4", laddr)
 	if err != nil {
 		s.log.Errorf("Listen err: %+v", err)
 		return
