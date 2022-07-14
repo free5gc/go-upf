@@ -391,10 +391,10 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 		Value: nl.AttrString(SOCKPATH),
 	})
 
-	// Not in 3GPP spec, just used for buffering
+	// Not in 3GPP spec, just used for reporting
 	attrs = append(attrs, nl.Attr{
 		Type:  gtp5gnl.PDR_REPORT_UNIX_SOCKET_PATH,
-		Value: nl.AttrString(SOCKPATH),
+		Value: nl.AttrString(REPORTSOCKPATH),
 	})
 
 	oid := gtp5gnl.OID{lSeid, pdrid}
@@ -963,7 +963,6 @@ func (g *Gtp5g) RemoveQER(lSeid uint64, req *ie.IE) error {
 
 func (g *Gtp5g) newVolumeThreshold(i *ie.IE) (nl.AttrList, error) {
 	var attrs nl.AttrList
-	logger.PfcpLog.Info("newVolumeThreshold")
 
 	v, err := i.VolumeThreshold()
 	if err != nil {
@@ -999,7 +998,6 @@ func (g *Gtp5g) newVolumeThreshold(i *ie.IE) (nl.AttrList, error) {
 func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 	var attrs nl.AttrList
 
-	logger.PfcpLog.Info("newVolumeQuota")
 	v, err := i.VolumeQuota()
 	if err != nil {
 		return nil, err
@@ -1296,6 +1294,7 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bs.Handle(handler)
+	g.rs.Handle(handler)
 }
 
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {

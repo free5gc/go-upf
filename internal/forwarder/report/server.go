@@ -35,7 +35,7 @@ func OpenServer(wg *sync.WaitGroup, addr string) (*Server, error) {
 
 	wg.Add(1)
 	go s.Serve(wg)
-	logger.ReportLog.Infof("buff server started")
+	logger.ReportLog.Infof("report server started")
 
 	return s, nil
 }
@@ -67,7 +67,6 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if err != nil {
 			continue
 		}
-
 		if s.handler == nil {
 			continue
 		}
@@ -87,13 +86,36 @@ func (s *Server) decode(b []byte) (uint64, uint16, report.USAReport, []byte, err
 	if n < 12 {
 		return 0, 0, report.USAReport{}, nil, io.ErrUnexpectedEOF
 	}
+	usar := report.USAReport{}
 	var off int
 	seid := *(*uint64)(unsafe.Pointer(&b[off]))
 	off += 8
 	action := *(*uint16)(unsafe.Pointer(&b[off]))
 	off += 2
-	usar := *(*report.USAReport)(unsafe.Pointer(&b[off]))
-	off += 82
+	// usar := *(*report.USAReport)(unsafe.Pointer(&b[off]))
+	usar.URRID = (*(*uint32)(unsafe.Pointer(&b[off])))
+	off += 4
+	usar.URSEQN = (*(*uint32)(unsafe.Pointer(&b[off])))
+	off += 4
+	usar.USARTrigger = (*(*report.UsageReportTrigger)(unsafe.Pointer(&b[off])))
+	off += 21
+	usar.VolMeasurement.Flag = (uint8)(*(*uint64)(unsafe.Pointer(&b[off])))
+	off += 8
+	usar.VolMeasurement.TotalVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
+	off += 8
+	usar.VolMeasurement.UplinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
+	off += 8
+	usar.VolMeasurement.DownlinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
+	off += 8
+	usar.VolMeasurement.TotalPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+	off += 8
+	usar.VolMeasurement.UplinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+	off += 8
+	usar.VolMeasurement.DownlinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+	off += 8
+	usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))
+	off += 4
+	logger.PfcpLog.Info(usar)
 	return seid, action, usar, b[off:], nil
 }
 

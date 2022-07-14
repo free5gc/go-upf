@@ -93,6 +93,8 @@ func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.US
 	}
 
 	tr := &usar.USARTrigger
+	vm := &usar.VolMeasurement
+
 	req := message.NewSessionReportRequest(
 		0,
 		0,
@@ -108,6 +110,8 @@ func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.US
 				tr.VOLQU|tr.TIMQU<<1|tr.LIUSA<<2|tr.TERMR<<3|tr.MONIT<<4|tr.ENVCL<<5|tr.MACAR<<6|tr.EVETH<<7,
 				tr.EVEQU|tr.TEBUR<<1|tr.IPMJL<<2|tr.QUVTI<<3|tr.EMRRE<<4,
 			),
+			ie.NewVolumeMeasurement(vm.Flag, vm.TotalVolume, vm.UplinkVolume, vm.DownlinkVolume,
+				vm.TotalPktNum, vm.UplinkPktNum, vm.DownlinkPktNum),
 			// TODO:
 		),
 	)

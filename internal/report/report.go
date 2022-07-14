@@ -30,13 +30,13 @@ type USAReport struct {
 	QueryUrrRef    uint32
 }
 type VolumeMeasurement struct {
-	flag           uint8
-	totalVolume    uint64
-	uplinkVolume   uint64
-	downlinkVolume uint64
-	totalPktNum    uint64
-	uplinkPktNum   uint64
-	downlinkPktNum uint64
+	Flag           uint8
+	TotalVolume    uint64
+	UplinkVolume   uint64
+	DownlinkVolume uint64
+	TotalPktNum    uint64
+	UplinkPktNum   uint64
+	DownlinkPktNum uint64
 }
 
 type UsageReportTrigger struct {

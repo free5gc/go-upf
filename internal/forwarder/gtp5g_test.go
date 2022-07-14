@@ -62,6 +62,20 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		urr := ie.NewCreateURR(
+			ie.NewURRID(1),
+			ie.NewMeasurementPeriod(10),
+			ie.NewMeasurementMethod(0, 1, 0),
+			ie.NewMeasurementInformation(4),
+			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
+			ie.NewVolumeQuota(7, 40000, 50000, 60000),
+		)
+
+		err = g.CreateURR(lSeid, urr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		pdr := ie.NewCreatePDR(
 			ie.NewPDRID(1),
 			ie.NewPrecedence(255),
@@ -86,6 +100,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewOuterHeaderRemoval(0, 0),
 			ie.NewFARID(2),
 			ie.NewQERID(1),
+			ie.NewURRID(1),
 		)
 
 		err = g.CreatePDR(lSeid, pdr)
@@ -109,6 +124,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			),
 			ie.NewFARID(4),
 			ie.NewQERID(1),
+			ie.NewURRID(1),
 		)
 
 		err = g.CreatePDR(lSeid, pdr)
