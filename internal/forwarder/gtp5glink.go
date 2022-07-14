@@ -38,12 +38,12 @@ func OpenGtp5gLink(mux *nl.Mux, addr string, log *logrus.Entry) (*Gtp5gLink, err
 	g.rtconn = rtconn
 	g.client = nl.NewClient(rtconn, mux)
 
-	laddr, err := net.ResolveUDPAddr("udp", addr)
+	laddr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "resolve addr")
 	}
-	conn, err := net.ListenUDP("udp", laddr)
+	conn, err := net.ListenUDP("udp4", laddr)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "listen")
