@@ -1,6 +1,7 @@
 package report
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -97,8 +98,33 @@ func (s *Server) decode(b []byte) (uint64, uint16, report.USAReport, []byte, err
 	off += 4
 	usar.URSEQN = (*(*uint32)(unsafe.Pointer(&b[off])))
 	off += 4
-	usar.USARTrigger = (*(*report.UsageReportTrigger)(unsafe.Pointer(&b[off])))
-	off += 21
+
+	trigger := (*(*uint64)(unsafe.Pointer(&b[off])))
+
+	usar.USARTrigger = report.UsageReportTrigger{
+		PERIO: uint8(trigger & 1),
+		VOLTH: uint8((trigger >> 1) & 1),
+		TIMTH: uint8((trigger >> 2) & 1),
+		QUHTI: uint8((trigger >> 3) & 1),
+		START: uint8((trigger >> 4) & 1),
+		STOPT: uint8((trigger >> 5) & 1),
+		DROTH: uint8((trigger >> 6) & 1),
+		IMMER: uint8((trigger >> 7) & 1),
+		VOLQU: uint8((trigger >> 8) & 1),
+		TIMQU: uint8((trigger >> 9) & 1),
+		LIUSA: uint8((trigger >> 10) & 1),
+		TERMR: uint8((trigger >> 11) & 1),
+		MONIT: uint8((trigger >> 12) & 1),
+		ENVCL: uint8((trigger >> 13) & 1),
+		MACAR: uint8((trigger >> 14) & 1),
+		EVETH: uint8((trigger >> 15) & 1),
+		EVEQU: uint8((trigger >> 16) & 1),
+		TEBUR: uint8((trigger >> 17) & 1),
+		IPMJL: uint8((trigger >> 18) & 1),
+		QUVTI: uint8((trigger >> 19) & 1),
+		EMRRE: uint8((trigger >> 20) & 1),
+	}
+	off += 8
 	usar.VolMeasurement.Flag = (uint8)(*(*uint64)(unsafe.Pointer(&b[off])))
 	off += 8
 	usar.VolMeasurement.TotalVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
@@ -113,6 +139,7 @@ func (s *Server) decode(b []byte) (uint64, uint16, report.USAReport, []byte, err
 	off += 8
 	usar.VolMeasurement.DownlinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 	off += 8
+	fmt.Printf("%v\n", usar.USARTrigger)
 	usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))
 	off += 4
 	logger.PfcpLog.Info(usar)

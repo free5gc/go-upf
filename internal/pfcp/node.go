@@ -10,6 +10,7 @@ import (
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 const (
@@ -165,6 +166,15 @@ func (s *Sess) RemoveQER(req *ie.IE) error {
 	}
 	delete(s.QERIDs, id)
 	return nil
+}
+
+func (s *Sess) GetReport(req *ie.IE) (*report.USAReport, error) {
+	report, err := s.rnode.driver.GetReport(s.LocalID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return report, err
 }
 
 func (s *Sess) CreateURR(req *ie.IE) error {

@@ -166,7 +166,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	for _, i := range req.CreateURR {
 		err = sess.CreateURR(i)
 		if err != nil {
-			sess.log.Errorf("Mod CreateURR error: %+v", err)
+			sess.log.Errorf("Mod CreateURR error:  %+v", err)
 		}
 	}
 
