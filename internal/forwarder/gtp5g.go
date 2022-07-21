@@ -16,6 +16,7 @@ import (
 
 	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder/buff"
+	"github.com/free5gc/go-upf/internal/forwarder/buffnetlink"
 	"github.com/free5gc/go-upf/internal/forwarder/perio"
 	"github.com/free5gc/go-upf/internal/gtpv1"
 	"github.com/free5gc/go-upf/internal/logger"
@@ -35,6 +36,7 @@ type Gtp5g struct {
 	conn   *nl.Conn
 	client *gtp5gnl.Client
 	bs     *buff.Server
+	bsnl   *buffnetlink.Server
 	ps     *perio.Server
 	log    *logrus.Entry
 }
@@ -91,6 +93,13 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	}
 	g.bs = bs
 
+	bsnl, err := buffnetlink.OpenServer(wg, c.Client, mux)
+	if err != nil {
+		g.Close()
+		return nil, errors.Wrap(err, "open buff(netlink) server")
+	}
+	g.bsnl = bsnl
+
 	ps, err := perio.OpenServer(wg)
 	if err != nil {
 		g.Close()
@@ -113,6 +122,9 @@ func (g *Gtp5g) Close() {
 	}
 	if g.bs != nil {
 		g.bs.Close()
+	}
+	if g.bsnl != nil {
+		g.bsnl.Close()
 	}
 	if g.ps != nil {
 		g.ps.Close()
@@ -424,7 +436,7 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 	// Not in 3GPP spec, just used for buffering
 	attrs = append(attrs, nl.Attr{
 		Type:  gtp5gnl.PDR_UNIX_SOCKET_PATH,
-		Value: nl.AttrString(SOCKPATH),
+		Value: nl.AttrString("/"),
 	})
 
 	oid := gtp5gnl.OID{lSeid, pdrid}
@@ -1448,6 +1460,7 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bs.Handle(handler)
+	g.bsnl.Handle(handler)
 	g.ps.Handle(handler, g.QueryURR)
 }
 
@@ -1466,7 +1479,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint16) {
 		// BUFF -> DROP
 		for _, pdrid := range far.PDRIDs {
 			for {
-				_, ok := g.bs.Pop(lSeid, pdrid)
+				_, ok := g.bsnl.Pop(lSeid, pdrid)
 				if !ok {
 					break
 				}
@@ -1495,7 +1508,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint16) {
 				}
 			}
 			for {
-				pkt, ok := g.bs.Pop(lSeid, pdrid)
+				pkt, ok := g.bsnl.Pop(lSeid, pdrid)
 				if !ok {
 					break
 				}

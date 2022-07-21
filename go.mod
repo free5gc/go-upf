@@ -9,6 +9,7 @@ require (
 	github.com/free5gc/go-gtp5gnl v1.4.3
 	github.com/free5gc/util v1.0.3
 	github.com/hashicorp/go-version v1.6.0
+	github.com/khirono/go-genl v1.0.1
 	github.com/khirono/go-nl v1.0.5
 	github.com/khirono/go-rtnllink v1.1.1
 	github.com/khirono/go-rtnlroute v1.0.1
