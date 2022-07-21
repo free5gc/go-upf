@@ -85,7 +85,6 @@ func (s *PfcpServer) ServeDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 }
 
 func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.USAReport) error {
-	s.log.Infoln("ServeUSAReport")
 
 	sess, err := s.lnode.Sess(lSeid)
 	if err != nil {

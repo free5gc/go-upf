@@ -1295,9 +1295,8 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 func (g *Gtp5g) GetReport(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	var urrid uint64
 	var tirggerreport report.USAReport
-	fmt.Printf("GetReport gtp5g\n\n")
 
-	ies, err := req.UpdateURR()
+	ies, err := req.CreateURR()
 	if err != nil {
 		return nil, err
 	}

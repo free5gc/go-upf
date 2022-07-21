@@ -1,7 +1,6 @@
 package report
 
 import (
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -93,7 +92,6 @@ func (s *Server) decode(b []byte) (uint64, uint16, report.USAReport, []byte, err
 	off += 8
 	action := *(*uint16)(unsafe.Pointer(&b[off]))
 	off += 2
-	// usar := *(*report.USAReport)(unsafe.Pointer(&b[off]))
 	usar.URRID = (*(*uint32)(unsafe.Pointer(&b[off])))
 	off += 4
 	usar.URSEQN = (*(*uint32)(unsafe.Pointer(&b[off])))
@@ -126,7 +124,7 @@ func (s *Server) decode(b []byte) (uint64, uint16, report.USAReport, []byte, err
 	}
 	off += 8
 	usar.VolMeasurement.Flag = (uint8)(*(*uint64)(unsafe.Pointer(&b[off])))
-	off += 8
+	off += 1
 	usar.VolMeasurement.TotalVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
 	off += 8
 	usar.VolMeasurement.UplinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
@@ -139,7 +137,6 @@ func (s *Server) decode(b []byte) (uint64, uint16, report.USAReport, []byte, err
 	off += 8
 	usar.VolMeasurement.DownlinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 	off += 8
-	fmt.Printf("%v\n", usar.USARTrigger)
 	usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))
 	off += 4
 	logger.PfcpLog.Info(usar)
