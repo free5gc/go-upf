@@ -1,12 +1,12 @@
 package forwarder
 
 import (
+	"bytes"
 	"net"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
-	"bytes"
 
 	"github.com/wmnsk/go-pfcp/ie"
 
