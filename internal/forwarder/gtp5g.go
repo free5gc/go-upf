@@ -166,7 +166,7 @@ func convertSlice(ports [][]uint16) []byte {
 	b := make([]byte, len(ports)*4)
 	off := 0
 	for _, p := range ports {
-		x := (*uint32)(unsafe.Pointer(&p[off]))
+		x := (*uint32)(unsafe.Pointer(&b[off]))
 		switch len(p) {
 		case 1:
 			*x = uint32(p[0])<<16 | uint32(p[0])
