@@ -28,6 +28,7 @@ type Sess struct {
 	BARIDs   map[uint8]struct{}
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
+	EndPERIO map[uint32]chan bool
 	log      *logrus.Entry
 }
 
@@ -197,6 +198,7 @@ func (s *Sess) UpdateURR(req *ie.IE) error {
 
 func (s *Sess) RemoveURR(req *ie.IE) error {
 	err := s.rnode.driver.RemoveURR(s.LocalID, req)
+
 	if err != nil {
 		return err
 	}
@@ -205,6 +207,9 @@ func (s *Sess) RemoveURR(req *ie.IE) error {
 	if err != nil {
 		return err
 	}
+
+	s.EndPERIO[id] <- true
+
 	delete(s.URRIDs, id)
 	return nil
 }
@@ -389,8 +394,9 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 		QERIDs:   make(map[uint32]struct{}),
 		URRIDs:   make(map[uint32]struct{}),
 
-		q:    make(map[uint16]chan []byte),
-		qlen: qlen,
+		q:        make(map[uint16]chan []byte),
+		qlen:     qlen,
+		EndPERIO: make(map[uint32]chan bool),
 	}
 	last := len(n.free) - 1
 	if last >= 0 {

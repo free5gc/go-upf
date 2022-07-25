@@ -139,7 +139,6 @@ func (s *Server) decode(b []byte) (uint64, uint16, report.USAReport, []byte, err
 	off += 8
 	usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))
 	off += 4
-	logger.PfcpLog.Info(usar)
 	return seid, action, usar, b[off:], nil
 }
 

@@ -3,14 +3,77 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
+	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
+
+func (s *PfcpServer) PeriodMeasurement(sess *Sess, ie *ie.IE) {
+
+	trigger, err := ie.ReportingTriggers()
+	logger.ReportLog.Info("trigger", trigger)
+
+	if err != nil {
+		return
+	}
+
+	period, err := ie.MeasurementPeriod()
+
+	if err != nil {
+		return
+	}
+
+	id, err := ie.URRID()
+	if err != nil {
+		return
+	}
+	sess.log.Errorf("IN perio report")
+	//check for perio flag
+	if trigger&256 == 256 && period > 0 {
+		logger.ReportLog.Info("Reporting Trigger PERIO")
+		perio, err := ie.MeasurementPeriod()
+
+		if err != nil {
+			sess.log.Errorf("Get period err: %+v", err)
+			return
+		}
+
+		timer := time.NewTicker(perio)
+
+		go func() {
+			for {
+				select {
+				case <-timer.C:
+					usar, err := sess.GetReport(ie)
+					sess.log.Errorf("usar", usar)
+					if err != nil {
+						sess.log.Errorf("Est GetReport error: %+v", err)
+						return
+					}
+					addr := fmt.Sprintf("%s:%d", sess.rnode.ID, factory.UpfPfcpDefaultPort)
+					laddr, err := net.ResolveUDPAddr("udp", addr)
+					if err != nil {
+						return
+					}
+
+					s.ServeUSAReport(laddr, sess.LocalID, usar)
+				case <-sess.EndPERIO[id]:
+					sess.log.Info("End PERIOD MEASUREMENT for urr(%+v)", id)
+					return
+
+				}
+			}
+		}()
+
+	}
+
+}
 
 func (s *PfcpServer) ServeReport(rp *report.SessReport) {
 	s.log.Debugf("ServeReport: %v", rp)

@@ -1,12 +1,8 @@
 package pfcp
 
 import (
-	"fmt"
 	"net"
-	"time"
 
-	"github.com/free5gc/go-upf/internal/logger"
-	"github.com/free5gc/go-upf/pkg/factory"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 )
@@ -66,54 +62,12 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 
 	for _, i := range req.CreateURR {
 		err = sess.CreateURR(i)
-		if err != nil {
-			sess.log.Errorf("Est CreateURR error: %+v", err)
-		}
-
-		trigger, err := i.ReportingTriggers()
-		logger.ReportLog.Info("trigger", trigger)
+		s.PeriodMeasurement(sess, i)
 
 		if err != nil {
 			sess.log.Errorf("Est CreateURR error: %+v", err)
 		}
 
-		if trigger == 256 {
-			logger.ReportLog.Info("trigger PERIO")
-
-			perio, err := i.MeasurementPeriod()
-
-			if err != nil {
-				sess.log.Errorf("Est CreateURR error: %+v", err)
-				return
-			}
-
-			timer := time.NewTicker(perio)
-
-			go func() {
-				for {
-					select {
-					case <-timer.C:
-						usar, err := sess.GetReport(i)
-						sess.log.Errorf("usar", usar)
-						if err != nil {
-							sess.log.Errorf("Est GetReport error: %+v", err)
-							return
-						}
-						addr := fmt.Sprintf("%s:%d", sess.rnode.ID, factory.UpfPfcpDefaultPort)
-						laddr, err := net.ResolveUDPAddr("udp", addr)
-						if err != nil {
-							return
-						}
-
-						s.ServeUSAReport(laddr, sess.LocalID, usar)
-					}
-				}
-			}()
-		}
-
-		if err != nil {
-			sess.log.Errorf("Est CreateURR error: %+v", err)
-		}
 	}
 
 	if req.CreateBAR != nil {
@@ -214,7 +168,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 
 	for _, i := range req.CreateURR {
 		err = sess.CreateURR(i)
-
+		s.PeriodMeasurement(sess, i)
 		if err != nil {
 			sess.log.Errorf("Mod CreateURR error:  %+v", err)
 		}

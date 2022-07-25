@@ -71,8 +71,8 @@ func (Empty) RemoveBAR(uint64, *ie.IE) error {
 	return nil
 }
 
-func (Empty) GetReport(uint64, *ie.IE) error {
-	return nil
+func (Empty) GetReport(uint64, *ie.IE) (*report.USAReport, error) {
+	return nil, nil
 }
 
 func (Empty) HandleReport(report.Handler) {
