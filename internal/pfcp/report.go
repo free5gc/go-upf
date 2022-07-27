@@ -17,7 +17,6 @@ import (
 func (s *PfcpServer) PeriodMeasurement(sess *Sess, ie *ie.IE) {
 
 	trigger, err := ie.ReportingTriggers()
-	logger.ReportLog.Info("trigger", trigger)
 
 	if err != nil {
 		return
@@ -33,10 +32,8 @@ func (s *PfcpServer) PeriodMeasurement(sess *Sess, ie *ie.IE) {
 	if err != nil {
 		return
 	}
-	sess.log.Errorf("IN perio report")
 	//check for perio flag
 	if trigger&256 == 256 && period > 0 {
-		logger.ReportLog.Info("Reporting Trigger PERIO")
 		perio, err := ie.MeasurementPeriod()
 
 		if err != nil {
@@ -51,7 +48,7 @@ func (s *PfcpServer) PeriodMeasurement(sess *Sess, ie *ie.IE) {
 				select {
 				case <-timer.C:
 					usar, err := sess.GetReport(ie)
-					sess.log.Errorf("usar", usar)
+					usar.USARTrigger.PERIO = 1
 					if err != nil {
 						sess.log.Errorf("Est GetReport error: %+v", err)
 						return
@@ -61,10 +58,10 @@ func (s *PfcpServer) PeriodMeasurement(sess *Sess, ie *ie.IE) {
 					if err != nil {
 						return
 					}
-
+					logger.ReportLog.Info("Send Period Report")
 					s.ServeUSAReport(laddr, sess.LocalID, usar)
 				case <-sess.EndPERIO[id]:
-					sess.log.Info("End PERIOD MEASUREMENT for urr(%+v)", id)
+					sess.log.Trace("End PERIOD MEASUREMENT for urr(%+v)", id)
 					return
 
 				}

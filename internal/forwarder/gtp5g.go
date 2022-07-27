@@ -1312,7 +1312,6 @@ func (g *Gtp5g) GetReport(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	}
 	oid := gtp5gnl.OID{lSeid, urrid}
 	tr, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
-	fmt.Printf("tr :%v\n\n", tr)
 	tirggerreport.URRID = tr.URRID
 	tirggerreport.URSEQN = tr.URSEQN
 	tirggerreport.QueryUrrRef = tr.QueryUrrRef

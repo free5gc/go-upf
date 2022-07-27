@@ -100,14 +100,14 @@ func (s *Server) decode(b []byte) (uint64, uint16, report.USAReport, []byte, err
 	trigger := (*(*uint64)(unsafe.Pointer(&b[off])))
 
 	usar.USARTrigger = report.UsageReportTrigger{
-		PERIO: uint8(trigger & 1),
-		VOLTH: uint8((trigger >> 1) & 1),
-		TIMTH: uint8((trigger >> 2) & 1),
-		QUHTI: uint8((trigger >> 3) & 1),
-		START: uint8((trigger >> 4) & 1),
-		STOPT: uint8((trigger >> 5) & 1),
-		DROTH: uint8((trigger >> 6) & 1),
-		IMMER: uint8((trigger >> 7) & 1),
+		PERIO: uint8((trigger >> 16) & 1),
+		VOLTH: uint8((trigger >> 17) & 1),
+		TIMTH: uint8((trigger >> 18) & 1),
+		QUHTI: uint8((trigger >> 19) & 1),
+		START: uint8((trigger >> 20) & 1),
+		STOPT: uint8((trigger >> 21) & 1),
+		DROTH: uint8((trigger >> 22) & 1),
+		IMMER: uint8((trigger >> 23) & 1),
 		VOLQU: uint8((trigger >> 8) & 1),
 		TIMQU: uint8((trigger >> 9) & 1),
 		LIUSA: uint8((trigger >> 10) & 1),
@@ -116,11 +116,11 @@ func (s *Server) decode(b []byte) (uint64, uint16, report.USAReport, []byte, err
 		ENVCL: uint8((trigger >> 13) & 1),
 		MACAR: uint8((trigger >> 14) & 1),
 		EVETH: uint8((trigger >> 15) & 1),
-		EVEQU: uint8((trigger >> 16) & 1),
-		TEBUR: uint8((trigger >> 17) & 1),
-		IPMJL: uint8((trigger >> 18) & 1),
-		QUVTI: uint8((trigger >> 19) & 1),
-		EMRRE: uint8((trigger >> 20) & 1),
+		EVEQU: uint8((trigger) & 1),
+		TEBUR: uint8((trigger >> 1) & 1),
+		IPMJL: uint8((trigger >> 2) & 1),
+		QUVTI: uint8((trigger >> 3) & 1),
+		EMRRE: uint8((trigger >> 4) & 1),
 	}
 	off += 8
 	usar.VolMeasurement.Flag = (uint8)(*(*uint64)(unsafe.Pointer(&b[off])))
