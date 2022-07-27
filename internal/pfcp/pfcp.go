@@ -113,8 +113,10 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	for {
 		select {
 		case sr := <-s.srCh:
+			s.log.Tracef("receive SessReport from srCh")
 			s.ServeReport(&sr)
 		case rcvPkt := <-s.rcvCh:
+			s.log.Tracef("receive buf(len=%d) from rcvCh", len(rcvPkt.Buf))
 			if len(rcvPkt.Buf) == 0 {
 				// receiver closed
 				return
@@ -128,6 +130,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 
 			trID := fmt.Sprintf("%s-%d", rcvPkt.RemoteAddr, msg.Sequence())
 			if isRequest(msg) {
+				s.log.Tracef("receive req pkt from %s", trID)
 				rx, ok := s.rxTrans[trID]
 				if !ok {
 					rx = NewRxTransaction(s, rcvPkt.RemoteAddr, msg.Sequence())
@@ -147,6 +150,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 					s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
 				}
 			} else if isResponse(msg) {
+				s.log.Tracef("receive rsp pkt from %s", trID)
 				tx, ok := s.txTrans[trID]
 				if !ok {
 					s.log.Debugf("rcvCh: No txtr[%s] found for rsp", trID)
@@ -160,6 +164,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 				}
 			}
 		case trTo := <-s.trToCh:
+			s.log.Tracef("receive tr timeout (%v) from trToCh", trTo)
 			if trTo.TrType == TX {
 				tx, ok := s.txTrans[trTo.TrID]
 				if !ok {
@@ -192,12 +197,14 @@ func (s *PfcpServer) receiver(wg *sync.WaitGroup) {
 
 	for {
 		buf := make([]byte, MAX_PFCP_MSG_LEN)
+		s.log.Tracef("receiver starts to read...")
 		n, addr, err := s.conn.ReadFrom(buf)
 		if err != nil {
 			s.log.Errorf("%+v", err)
 			s.rcvCh <- ReceivePacket{}
 			break
 		}
+		s.log.Tracef("receiver reads message(len=%d)", n)
 		s.rcvCh <- ReceivePacket{
 			RemoteAddr: addr,
 			Buf:        buf[:n],
