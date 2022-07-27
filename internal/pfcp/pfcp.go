@@ -22,7 +22,7 @@ const (
 	RECEIVE_CHANNEL_LEN       = 512
 	REPORT_CHANNEL_LEN        = 64
 	TRANS_TIMEOUT_CHANNEL_LEN = 64
-	MAX_PFCP_MSG_LEN          = 1500
+	MAX_PFCP_MSG_LEN          = 65536
 )
 
 type ReceivePacket struct {
@@ -195,8 +195,8 @@ func (s *PfcpServer) receiver(wg *sync.WaitGroup) {
 		wg.Done()
 	}()
 
+	buf := make([]byte, MAX_PFCP_MSG_LEN)
 	for {
-		buf := make([]byte, MAX_PFCP_MSG_LEN)
 		s.log.Tracef("receiver starts to read...")
 		n, addr, err := s.conn.ReadFrom(buf)
 		if err != nil {
@@ -204,10 +204,13 @@ func (s *PfcpServer) receiver(wg *sync.WaitGroup) {
 			s.rcvCh <- ReceivePacket{}
 			break
 		}
+
 		s.log.Tracef("receiver reads message(len=%d)", n)
+		msgBuf := make([]byte, n)
+		copy(msgBuf, buf)
 		s.rcvCh <- ReceivePacket{
 			RemoteAddr: addr,
-			Buf:        buf[:n],
+			Buf:        msgBuf,
 		}
 	}
 }
