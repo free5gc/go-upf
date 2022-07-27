@@ -41,6 +41,7 @@ type IfInfo struct {
 	Type   string `yaml:"type"   valid:"required,in(N3|N9)"`
 	Name   string `yaml:"name"   valid:"optional"`
 	IfName string `yaml:"ifname" valid:"optional"`
+	MTU    uint32 `yaml:"mtu"    valid:"optional"`
 }
 
 type DnnList struct {
