@@ -33,7 +33,7 @@ type Gtp5g struct {
 	log    *logrus.Entry
 }
 
-func OpenGtp5g(wg *sync.WaitGroup, addr string) (*Gtp5g, error) {
+func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	g := &Gtp5g{
 		log: logger.FwderLog.WithField(logger.FieldCategory, "Gtp5g"),
 	}
@@ -52,7 +52,7 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string) (*Gtp5g, error) {
 	}()
 	g.mux = mux
 
-	link, err := OpenGtp5gLink(mux, addr, g.log)
+	link, err := OpenGtp5gLink(mux, addr, mtu, g.log)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "open link")
