@@ -10,7 +10,7 @@ require (
 	github.com/free5gc/util v1.0.3
 	github.com/hashicorp/go-version v1.6.0
 	github.com/khirono/go-nl v1.0.3
-	github.com/khirono/go-rtnllink v1.0.0
+	github.com/khirono/go-rtnllink v1.1.0
 	github.com/khirono/go-rtnlroute v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.8.1
