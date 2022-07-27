@@ -1,7 +1,9 @@
 package report
 
+type ReportType int
+
 const (
-	DLDR = iota + 1
+	DLDR ReportType = iota + 1
 	USAR
 	ERIR
 	UPIR
@@ -10,15 +12,20 @@ const (
 	UISR
 )
 
+func (t ReportType) String() string {
+	str := []string{"", "DLDR", "USAR", "ERIR", "UPIR", "TMIR", "SESR", "UISR"}
+	return str[t]
+}
+
 type Report interface {
-	Type() int
+	Type() ReportType
 }
 
 type DLDReport struct {
 	PDRID uint16
 }
 
-func (r DLDReport) Type() int {
+func (r DLDReport) Type() ReportType {
 	return DLDR
 }
 
@@ -52,7 +59,7 @@ type UsageReportTrigger struct {
 	EMRRE uint8
 }
 
-func (r USAReport) Type() int {
+func (r USAReport) Type() ReportType {
 	return USAR
 }
 

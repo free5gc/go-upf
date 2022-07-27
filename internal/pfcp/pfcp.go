@@ -113,7 +113,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	for {
 		select {
 		case sr := <-s.srCh:
-			s.log.Tracef("receive SessReport from srCh")
+			s.log.Tracef("receive SessReport(%s) from srCh", sr.Report.Type())
 			s.ServeReport(&sr)
 		case rcvPkt := <-s.rcvCh:
 			s.log.Tracef("receive buf(len=%d) from rcvCh", len(rcvPkt.Buf))
