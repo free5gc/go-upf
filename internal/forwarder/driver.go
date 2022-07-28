@@ -44,7 +44,7 @@ type Driver interface {
 	HandleReport(report.Handler)
 }
 
-const expectedGtp5gVersion string = "0.6.2"
+const expectedGtp5gVersion string = "0.6.3"
 
 func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 	cfgGtpu := cfg.Gtpu
@@ -70,7 +70,8 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 		}
 		if nowVer.LessThan(expVer) {
 			return nil, errors.Errorf(
-				"gtp5g version should be >= %s", expectedGtp5gVersion)
+				"gtp5g version should be >= %s, please upgrade it",
+				expectedGtp5gVersion)
 		}
 
 		var gtpuAddr string
