@@ -144,8 +144,6 @@ func (s *PfcpServer) ServeDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 	return errors.Wrap(err, "ServeDLDReport")
 }
 
-var tol_ul uint64
-
 func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.USAReport) error {
 
 	sess, err := s.lnode.Sess(lSeid)
@@ -176,8 +174,6 @@ func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.US
 			// TODO:
 		),
 	)
-	tol_ul += vm.UplinkVolume
-	logger.ReportLog.Warn("tol ul: ", tol_ul)
 	err = s.sendReqTo(req, addr)
 	return errors.Wrap(err, "ServeUSAReport")
 }
