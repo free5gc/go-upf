@@ -97,8 +97,12 @@ func (u *UPF) listenShutdownEvent() {
 	}()
 
 	<-u.ctx.Done()
-	u.pfcpServer.Stop()
-	u.driver.Close()
+	if u.pfcpServer != nil {
+		u.pfcpServer.Stop()
+	}
+	if u.driver != nil {
+		u.driver.Close()
+	}
 }
 
 func (u *UPF) WaitRoutineStopped() {

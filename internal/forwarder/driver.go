@@ -3,8 +3,11 @@ package forwarder
 import (
 	"fmt"
 	"net"
+	"os/exec"
+	"strings"
 	"sync"
 
+	"github.com/hashicorp/go-version"
 	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 
@@ -41,6 +44,8 @@ type Driver interface {
 	HandleReport(report.Handler)
 }
 
+const expectedGtp5gVersion string = "0.6.2"
+
 func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 	cfgGtpu := cfg.Gtpu
 	if cfgGtpu == nil {
@@ -49,8 +54,29 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 
 	logger.MainLog.Infof("starting Gtpu Forwarder [%s]", cfgGtpu.Forwarder)
 	if cfgGtpu.Forwarder == "gtp5g" {
+		cmd := exec.Command("modinfo", "gtp5g", "-F", "version")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return nil, errors.Wrapf(err, "Unable to get gtp5g version")
+		}
+		expVer, err := version.NewVersion(expectedGtp5gVersion)
+		if err != nil {
+			return nil, errors.Wrapf(err, "parse expectedGtp5gVersion err")
+		}
+		outVer := strings.TrimSpace(string(out))
+		nowVer, err := version.NewVersion(outVer)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Unable to parse gtp5g version(%s)", outVer)
+		}
+		if nowVer.LessThan(expVer) {
+			return nil, errors.Errorf(
+				"gtp5g version should be >= %s", expectedGtp5gVersion)
+		}
+
 		var gtpuAddr string
+		var mtu uint32
 		for _, ifInfo := range cfgGtpu.IfList {
+			mtu = ifInfo.MTU
 			gtpuAddr = fmt.Sprintf("%s:%d", ifInfo.Addr, factory.UpfGtpDefaultPort)
 			logger.MainLog.Infof("GTP Address: %q", gtpuAddr)
 			break
@@ -58,7 +84,7 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 		if gtpuAddr == "" {
 			return nil, errors.Errorf("not found GTP address")
 		}
-		driver, err := OpenGtp5g(wg, gtpuAddr)
+		driver, err := OpenGtp5g(wg, gtpuAddr, mtu)
 		if err != nil {
 			return nil, errors.Wrap(err, "open Gtp5g")
 		}

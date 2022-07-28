@@ -1,6 +1,7 @@
 package forwarder
 
 import (
+	"bytes"
 	"net"
 	"strconv"
 	"sync"
@@ -12,13 +13,23 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
+func Test_convertSlice(t *testing.T) {
+	t.Run("convert slices", func(t *testing.T) {
+		b := convertSlice([][]uint16{{1}, {2, 4}})
+		want := []byte{0x01, 0x00, 0x01, 0x00, 0x04, 0x00, 0x02, 0x00}
+		if !bytes.Equal(b, want) {
+			t.Errorf("want %x; but got %x\n", want, b)
+		}
+	})
+}
+
 func TestGtp5g_CreateRules(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping testing in short mode")
 	}
 
 	var wg sync.WaitGroup
-	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort))
+	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort), 1400)
 	if err != nil {
 		t.Fatal(err)
 	}

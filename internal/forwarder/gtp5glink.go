@@ -24,7 +24,7 @@ type Gtp5gLink struct {
 	log    *logrus.Entry
 }
 
-func OpenGtp5gLink(mux *nl.Mux, addr string, log *logrus.Entry) (*Gtp5gLink, error) {
+func OpenGtp5gLink(mux *nl.Mux, addr string, mtu uint32, log *logrus.Entry) (*Gtp5gLink, error) {
 	g := &Gtp5gLink{
 		log: log,
 	}
@@ -38,12 +38,12 @@ func OpenGtp5gLink(mux *nl.Mux, addr string, log *logrus.Entry) (*Gtp5gLink, err
 	g.rtconn = rtconn
 	g.client = nl.NewClient(rtconn, mux)
 
-	laddr, err := net.ResolveUDPAddr("udp", addr)
+	laddr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "resolve addr")
 	}
-	conn, err := net.ListenUDP("udp", laddr)
+	conn, err := net.ListenUDP("udp4", laddr)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "listen")
@@ -80,7 +80,16 @@ func OpenGtp5gLink(mux *nl.Mux, addr string, log *logrus.Entry) (*Gtp5gLink, err
 			},
 		},
 	}
-	err = rtnllink.Create(g.client, "upfgtp", linkinfo)
+	attrs := []*nl.Attr{linkinfo}
+
+	if mtu != 0 {
+		attrs = append(attrs, &nl.Attr{
+			Type:  syscall.IFLA_MTU,
+			Value: nl.AttrU32(mtu),
+		})
+	}
+
+	err = rtnllink.Create(g.client, "upfgtp", attrs...)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "create")
