@@ -20,7 +20,7 @@ import (
 
 const (
 	RECEIVE_CHANNEL_LEN       = 512
-	REPORT_CHANNEL_LEN        = 64
+	REPORT_CHANNEL_LEN        = 128
 	TRANS_TIMEOUT_CHANNEL_LEN = 64
 	MAX_PFCP_MSG_LEN          = 65536
 )
@@ -47,6 +47,7 @@ type PfcpServer struct {
 	listen       string
 	nodeID       string
 	rcvCh        chan ReceivePacket
+	ursCh        chan []report.USAReport
 	srCh         chan report.SessReport
 	trToCh       chan TransactionTimeout
 	conn         *net.UDPConn

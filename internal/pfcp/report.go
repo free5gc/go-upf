@@ -42,12 +42,17 @@ func (s *PfcpServer) PeriodMeasurement(sess *Sess, ie *ie.IE) {
 		}
 
 		timer := time.NewTicker(perio)
+		// timer := time.NewTicker(5 * time.Millisecond)
 
 		go func() {
 			for {
 				select {
 				case <-timer.C:
+					logger.ReportLog.Info("Send Period Report")
+
 					usar, err := sess.GetReport(ie)
+					logger.ReportLog.Info("Get Period Report")
+
 					usar.USARTrigger.PERIO = 1
 					if err != nil {
 						sess.log.Errorf("Est GetReport error: %+v", err)
@@ -58,12 +63,11 @@ func (s *PfcpServer) PeriodMeasurement(sess *Sess, ie *ie.IE) {
 					if err != nil {
 						return
 					}
-					logger.ReportLog.Info("Send Period Report")
 					s.ServeUSAReport(laddr, sess.LocalID, usar)
 				case <-sess.EndPERIO[id]:
-					sess.log.Trace("End PERIOD MEASUREMENT for urr(%+v)", id)
+					timer.Stop()
+					sess.log.Error("End PERIOD MEASUREMENT for urr(%+v)", id)
 					return
-
 				}
 			}
 		}()

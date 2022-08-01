@@ -1312,44 +1312,48 @@ func (g *Gtp5g) GetReport(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	}
 	oid := gtp5gnl.OID{lSeid, urrid}
 	tr, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
-	tirggerreport.URRID = tr.URRID
-	tirggerreport.URSEQN = tr.URSEQN
-	tirggerreport.QueryUrrRef = tr.QueryUrrRef
+	if tr != nil {
+		tirggerreport.URRID = tr.URRID
+		tirggerreport.URSEQN = tr.URSEQN
+		tirggerreport.QueryUrrRef = tr.QueryUrrRef
 
-	trigger := tr.USARTrigger
-	tirggerreport.USARTrigger = report.UsageReportTrigger{
-		PERIO: uint8(trigger & 1),
-		VOLTH: uint8((trigger >> 1) & 1),
-		TIMTH: uint8((trigger >> 2) & 1),
-		QUHTI: uint8((trigger >> 3) & 1),
-		START: uint8((trigger >> 4) & 1),
-		STOPT: uint8((trigger >> 5) & 1),
-		DROTH: uint8((trigger >> 6) & 1),
-		IMMER: uint8((trigger >> 7) & 1),
-		VOLQU: uint8((trigger >> 8) & 1),
-		TIMQU: uint8((trigger >> 9) & 1),
-		LIUSA: uint8((trigger >> 10) & 1),
-		TERMR: uint8((trigger >> 11) & 1),
-		MONIT: uint8((trigger >> 12) & 1),
-		ENVCL: uint8((trigger >> 13) & 1),
-		MACAR: uint8((trigger >> 14) & 1),
-		EVETH: uint8((trigger >> 15) & 1),
-		EVEQU: uint8((trigger >> 16) & 1),
-		TEBUR: uint8((trigger >> 17) & 1),
-		IPMJL: uint8((trigger >> 18) & 1),
-		QUVTI: uint8((trigger >> 19) & 1),
-		EMRRE: uint8((trigger >> 20) & 1),
-	}
+		trigger := tr.USARTrigger
+		tirggerreport.USARTrigger = report.UsageReportTrigger{
+			PERIO: uint8(trigger & 1),
+			VOLTH: uint8((trigger >> 1) & 1),
+			TIMTH: uint8((trigger >> 2) & 1),
+			QUHTI: uint8((trigger >> 3) & 1),
+			START: uint8((trigger >> 4) & 1),
+			STOPT: uint8((trigger >> 5) & 1),
+			DROTH: uint8((trigger >> 6) & 1),
+			IMMER: uint8((trigger >> 7) & 1),
+			VOLQU: uint8((trigger >> 8) & 1),
+			TIMQU: uint8((trigger >> 9) & 1),
+			LIUSA: uint8((trigger >> 10) & 1),
+			TERMR: uint8((trigger >> 11) & 1),
+			MONIT: uint8((trigger >> 12) & 1),
+			ENVCL: uint8((trigger >> 13) & 1),
+			MACAR: uint8((trigger >> 14) & 1),
+			EVETH: uint8((trigger >> 15) & 1),
+			EVEQU: uint8((trigger >> 16) & 1),
+			TEBUR: uint8((trigger >> 17) & 1),
+			IPMJL: uint8((trigger >> 18) & 1),
+			QUVTI: uint8((trigger >> 19) & 1),
+			EMRRE: uint8((trigger >> 20) & 1),
+		}
 
-	volumemeasurement := tr.VolMeasurement
-	tirggerreport.VolMeasurement = report.VolumeMeasurement{
-		Flag:           volumemeasurement.Flag,
-		TotalVolume:    volumemeasurement.TotalVolume,
-		UplinkVolume:   volumemeasurement.UplinkVolume,
-		DownlinkVolume: volumemeasurement.DownlinkVolume,
-		TotalPktNum:    volumemeasurement.TotalPktNum,
-		UplinkPktNum:   volumemeasurement.UplinkPktNum,
-		DownlinkPktNum: volumemeasurement.DownlinkPktNum,
+		volumemeasurement := tr.VolMeasurement
+		tirggerreport.VolMeasurement = report.VolumeMeasurement{
+			Flag:           volumemeasurement.Flag,
+			TotalVolume:    volumemeasurement.TotalVolume,
+			UplinkVolume:   volumemeasurement.UplinkVolume,
+			DownlinkVolume: volumemeasurement.DownlinkVolume,
+			TotalPktNum:    volumemeasurement.TotalPktNum,
+			UplinkPktNum:   volumemeasurement.UplinkPktNum,
+			DownlinkPktNum: volumemeasurement.DownlinkPktNum,
+		}
+	} else {
+		logger.ReportLog.Warn("Failed to get periodic report")
 	}
 
 	return &tirggerreport, err

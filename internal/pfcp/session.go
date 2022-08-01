@@ -62,7 +62,6 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 
 	for _, i := range req.CreateURR {
 		err = sess.CreateURR(i)
-		s.PeriodMeasurement(sess, i)
 
 		if err != nil {
 			sess.log.Errorf("Est CreateURR error: %+v", err)
@@ -82,6 +81,10 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		if err != nil {
 			sess.log.Errorf("Est CreatePDR error: %+v", err)
 		}
+	}
+
+	for _, i := range req.CreateURR {
+		s.PeriodMeasurement(sess, i)
 	}
 
 	var v4 net.IP
@@ -168,7 +171,6 @@ func (s *PfcpServer) handleSessionModificationRequest(
 
 	for _, i := range req.CreateURR {
 		err = sess.CreateURR(i)
-		s.PeriodMeasurement(sess, i)
 		if err != nil {
 			sess.log.Errorf("Mod CreateURR error:  %+v", err)
 		}
@@ -256,6 +258,10 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err != nil {
 			sess.log.Errorf("Mod UpdatePDR error: %+v", err)
 		}
+	}
+
+	for _, i := range req.CreateURR {
+		s.PeriodMeasurement(sess, i)
 	}
 
 	rsp := message.NewSessionModificationResponse(
