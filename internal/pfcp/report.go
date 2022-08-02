@@ -167,7 +167,7 @@ func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.US
 		ie.NewReportType(0, 0, 1, 0),
 		ie.NewUsageReportWithinSessionReportRequest(
 			ie.NewURRID(usar.URRID),
-			ie.NewURSEQN(usar.URSEQN),
+			ie.NewURSEQN(s.urrURSEQN[usar.URRID]),
 			ie.NewUsageReportTrigger(
 				tr.PERIO|tr.VOLTH<<1|tr.TIMTH<<2|tr.QUHTI<<3|tr.START<<4|tr.STOPT<<5|tr.DROTH<<6|tr.IMMER<<7,
 				tr.VOLQU|tr.TIMQU<<1|tr.LIUSA<<2|tr.TERMR<<3|tr.MONIT<<4|tr.ENVCL<<5|tr.MACAR<<6|tr.EVETH<<7,
@@ -178,6 +178,7 @@ func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.US
 			// TODO:
 		),
 	)
+	s.urrURSEQN[usar.URRID]++
 	err = s.sendReqTo(req, addr)
 	return errors.Wrap(err, "ServeUSAReport")
 }

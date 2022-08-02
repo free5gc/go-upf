@@ -47,7 +47,6 @@ type PfcpServer struct {
 	listen       string
 	nodeID       string
 	rcvCh        chan ReceivePacket
-	ursCh        chan []report.USAReport
 	srCh         chan report.SessReport
 	trToCh       chan TransactionTimeout
 	conn         *net.UDPConn
@@ -59,6 +58,7 @@ type PfcpServer struct {
 	rxTrans      map[string]*RxTransaction // key: RemoteAddr-Sequence
 	txSeq        uint32
 	log          *logrus.Entry
+	urrURSEQN    map[uint32]uint32
 }
 
 func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
@@ -76,6 +76,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		txTrans:      make(map[string]*TxTransaction),
 		rxTrans:      make(map[string]*RxTransaction),
 		log:          logger.PfcpLog.WithField(logger.FieldListenAddr, listen),
+		urrURSEQN:    make(map[uint32]uint32),
 	}
 }
 
