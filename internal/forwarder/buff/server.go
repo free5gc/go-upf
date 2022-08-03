@@ -12,8 +12,9 @@ import (
 )
 
 type Server struct {
-	conn    *net.UnixConn
-	handler report.Handler
+	conn     *net.UnixConn
+	handler  report.Handler
+	EndPERIO map[uint32]chan bool
 }
 
 func OpenServer(wg *sync.WaitGroup, addr string) (*Server, error) {
@@ -45,6 +46,13 @@ func (s *Server) Close() {
 	if err != nil {
 		logger.BuffLog.Warnf("Server close err: %+v", err)
 	}
+}
+
+//Don't know why gtp5g.go can't directly call NotifySessReport
+func (s *Server) SendReport(sp report.SessReport) {
+	s.handler.NotifySessReport(
+		sp,
+	)
 }
 
 func (s *Server) Handle(handler report.Handler) {

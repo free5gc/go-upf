@@ -39,7 +39,7 @@ type Driver interface {
 	UpdateBAR(uint64, *ie.IE) error
 	RemoveBAR(uint64, *ie.IE) error
 
-	GetReport(uint64, *ie.IE) (*report.USAReport, error)
+	PeriodReport(uint64, *ie.IE) error
 
 	HandleReport(report.Handler)
 }

@@ -5,6 +5,7 @@ import (
 	"net"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/khirono/go-nl"
@@ -1270,6 +1271,62 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 	}
 	oid := gtp5gnl.OID{lSeid, uint64(v)}
 	return gtp5gnl.RemoveBAROID(g.client, g.link.link, oid)
+}
+
+func (g *Gtp5g) PeriodReport(lSeid uint64, req *ie.IE) error {
+	trigger, err := req.ReportingTriggers()
+
+	if err != nil {
+		return err
+	}
+
+	period, err := req.MeasurementPeriod()
+
+	if err != nil {
+		return err
+	}
+
+	id, err := req.URRID()
+	if err != nil {
+		return err
+	}
+	//check for perio flag
+	if trigger&256 == 256 && period > 0 {
+		perio, err := req.MeasurementPeriod()
+
+		if err != nil {
+			g.log.Errorf("Get period err: %+v", err)
+			return err
+		}
+
+		timer := time.NewTicker(perio)
+		// timer := time.NewTicker(5 * time.Millisecond)
+		go func() {
+			for {
+				select {
+				case <-timer.C:
+					usar, err := g.GetReport(lSeid, req)
+					usar.USARTrigger.PERIO = 1
+					if err != nil {
+						g.log.Errorf("Est GetReport error: %+v", err)
+						return
+					}
+					g.bs.SendReport(report.SessReport{
+						SEID:   lSeid,
+						Report: *usar,
+						Action: 0,
+						BufPkt: nil,
+					})
+				case <-g.bs.EndPERIO[id]:
+					timer.Stop()
+					g.log.Error("End PERIOD MEASUREMENT for urr(%+v)", id)
+					return
+				}
+			}
+		}()
+	}
+
+	return nil
 }
 
 func (g *Gtp5g) GetReport(lSeid uint64, req *ie.IE) (*report.USAReport, error) {

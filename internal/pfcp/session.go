@@ -84,7 +84,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	}
 
 	for _, i := range req.CreateURR {
-		s.PeriodMeasurement(sess, i)
+		sess.PeriodReport(i)
 	}
 
 	var v4 net.IP
@@ -261,7 +261,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.CreateURR {
-		s.PeriodMeasurement(sess, i)
+		sess.PeriodReport(i)
 	}
 
 	rsp := message.NewSessionModificationResponse(
