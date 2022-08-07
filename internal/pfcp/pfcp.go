@@ -136,7 +136,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 					rx = NewRxTransaction(s, rcvPkt.RemoteAddr, msg.Sequence())
 					s.rxTrans[trID] = rx
 				}
-				needDispatch, err1 := rx.recv(msg)
+				needDispatch, err1 := rx.recv(msg, ok)
 				if err1 != nil {
 					s.log.Warnf("rcvCh: %v", err1)
 					continue
