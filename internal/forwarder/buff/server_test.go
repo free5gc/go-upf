@@ -32,16 +32,19 @@ func (h *testHandler) NotifySessReport(sr report.SessReport) {
 	if !ok {
 		return
 	}
-	if sr.Action&report.BUFF != 0 && len(sr.BufPkt) > 0 {
-		dldr, ok := sr.Report.(report.DLDReport)
-		if ok {
-			q, ok := s[dldr.PDRID]
-			if !ok {
-				qlen := 10
-				s[dldr.PDRID] = make(chan []byte, qlen)
-				q = s[dldr.PDRID]
+	for _, rep := range sr.Reports {
+		switch r := rep.(type) {
+		case report.DLDReport:
+			if r.Action&report.BUFF != 0 && len(r.BufPkt) > 0 {
+				q, ok := s[r.PDRID]
+				if !ok {
+					qlen := 10
+					s[r.PDRID] = make(chan []byte, qlen)
+					q = s[r.PDRID]
+				}
+				q <- r.BufPkt
 			}
-			q <- sr.BufPkt
+		default:
 		}
 	}
 }

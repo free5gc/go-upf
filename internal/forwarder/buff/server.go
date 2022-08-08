@@ -71,14 +71,15 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if s.handler == nil {
 			continue
 		}
+		dldr := report.DLDReport{
+			PDRID:  pdrid,
+			Action: action,
+			BufPkt: pkt,
+		}
 		s.handler.NotifySessReport(
 			report.SessReport{
-				SEID: seid,
-				Report: report.DLDReport{
-					PDRID: pdrid,
-				},
-				Action: action,
-				BufPkt: pkt,
+				SEID:    seid,
+				Reports: []report.Report{dldr},
 			},
 		)
 	}

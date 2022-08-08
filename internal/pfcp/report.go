@@ -12,9 +12,9 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
-func (s *PfcpServer) ServeReport(rp *report.SessReport) {
-	s.log.Debugf("ServeReport: %v", rp)
-	sess, err := s.lnode.Sess(rp.SEID)
+func (s *PfcpServer) ServeReport(sr *report.SessReport) {
+	s.log.Debugf("ServeReport: SEID(%#x)", sr.SEID)
+	sess, err := s.lnode.Sess(sr.SEID)
 	if err != nil {
 		s.log.Errorln(err)
 		return
@@ -26,38 +26,43 @@ func (s *PfcpServer) ServeReport(rp *report.SessReport) {
 		return
 	}
 
-	if rp.Action&report.BUFF != 0 && len(rp.BufPkt) > 0 {
-		dldr, ok := rp.Report.(report.DLDReport)
-		if ok {
-			sess.Push(dldr.PDRID, rp.BufPkt)
+	var usars []report.USAReport
+	for _, rep := range sr.Reports {
+		switch r := rep.(type) {
+		case report.DLDReport:
+			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
+			if r.Action&report.BUFF != 0 && len(r.BufPkt) > 0 {
+				sess.Push(r.PDRID, r.BufPkt)
+			}
+			if r.Action&report.NOCP == 0 {
+				return
+			}
+			err := s.serveDLDReport(laddr, sr.SEID, r.PDRID)
+			if err != nil {
+				s.log.Errorln(err)
+			}
+		case report.USAReport:
+			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
+			usars = append(usars, r)
+		default:
+			s.log.Warnf("Unsupported Report: SEID(%#x), type(%d)", sr.SEID, rep.Type())
 		}
 	}
 
-	switch r := rp.Report.(type) {
-	case report.DLDReport:
-		if rp.Action&report.NOCP == 0 {
-			return
-		}
-		err := s.ServeDLDReport(laddr, rp.SEID, r.PDRID)
+	if len(usars) > 0 {
+		err := s.serveUSAReport(laddr, sr.SEID, usars)
 		if err != nil {
 			s.log.Errorln(err)
 		}
-	case report.USAReport:
-		err := s.ServeUSAReport(laddr, rp.SEID, &r)
-		if err != nil {
-			s.log.Errorln(err)
-		}
-	default:
-		s.log.Warnf("Unsupported Report(%d)", rp.Report.Type())
 	}
 }
 
-func (s *PfcpServer) ServeDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) error {
-	s.log.Infoln("ServeDLDReport")
+func (s *PfcpServer) serveDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) error {
+	s.log.Infoln("serveDLDReport")
 
 	sess, err := s.lnode.Sess(lSeid)
 	if err != nil {
-		return errors.Wrap(err, "ServeDLDReport")
+		return errors.Wrap(err, "serveDLDReport")
 	}
 
 	req := message.NewSessionReportRequest(
@@ -81,18 +86,17 @@ func (s *PfcpServer) ServeDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 	)
 
 	err = s.sendReqTo(req, addr)
-	return errors.Wrap(err, "ServeDLDReport")
+	return errors.Wrap(err, "serveDLDReport")
 }
 
-func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.USAReport) error {
-	s.log.Infoln("ServeUSAReport")
+func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.USAReport) error {
+	s.log.Infoln("serveUSAReport")
 
 	sess, err := s.lnode.Sess(lSeid)
 	if err != nil {
-		return errors.Wrap(err, "ServeDLDReport")
+		return errors.Wrap(err, "serveUSAReport")
 	}
 
-	tr := &usar.USARTrigger
 	req := message.NewSessionReportRequest(
 		0,
 		0,
@@ -100,18 +104,22 @@ func (s *PfcpServer) ServeUSAReport(addr net.Addr, lSeid uint64, usar *report.US
 		0,
 		0,
 		ie.NewReportType(0, 0, 1, 0),
-		ie.NewUsageReportWithinSessionReportRequest(
-			ie.NewURRID(usar.URRID),
-			ie.NewURSEQN(usar.URSEQN),
-			ie.NewUsageReportTrigger(
-				tr.PERIO|tr.VOLTH<<1|tr.TIMTH<<2|tr.QUHTI<<3|tr.START<<4|tr.STOPT<<5|tr.DROTH<<6|tr.IMMER<<7,
-				tr.VOLQU|tr.TIMQU<<1|tr.LIUSA<<2|tr.TERMR<<3|tr.MONIT<<4|tr.ENVCL<<5|tr.MACAR<<6|tr.EVETH<<7,
-				tr.EVEQU|tr.TEBUR<<1|tr.IPMJL<<2|tr.QUVTI<<3|tr.EMRRE<<4,
-			),
-			// TODO:
-		),
 	)
+	for _, r := range usars {
+		tr := &r.USARTrigger
+		req.UsageReport = append(req.UsageReport,
+			ie.NewUsageReportWithinSessionReportRequest(
+				ie.NewURRID(r.URRID),
+				ie.NewURSEQN(r.URSEQN),
+				ie.NewUsageReportTrigger(
+					tr.PERIO|tr.VOLTH<<1|tr.TIMTH<<2|tr.QUHTI<<3|tr.START<<4|tr.STOPT<<5|tr.DROTH<<6|tr.IMMER<<7,
+					tr.VOLQU|tr.TIMQU<<1|tr.LIUSA<<2|tr.TERMR<<3|tr.MONIT<<4|tr.ENVCL<<5|tr.MACAR<<6|tr.EVETH<<7,
+					tr.EVEQU|tr.TEBUR<<1|tr.IPMJL<<2|tr.QUVTI<<3|tr.EMRRE<<4,
+				),
+				// TODO:
+			))
+	}
 
 	err = s.sendReqTo(req, addr)
-	return errors.Wrap(err, "ServeUSAReport")
+	return errors.Wrap(err, "serveUSAReport")
 }
