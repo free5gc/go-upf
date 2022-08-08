@@ -3,6 +3,7 @@ package pfcp
 import (
 	"net"
 
+	"github.com/free5gc/go-upf/internal/report"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 )
@@ -81,10 +82,6 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		if err != nil {
 			sess.log.Errorf("Est CreatePDR error: %+v", err)
 		}
-	}
-
-	for _, i := range req.CreateURR {
-		sess.PeriodReport(i)
 	}
 
 	var v4 net.IP
@@ -204,11 +201,13 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 	}
 
+	var usars []*report.USAReport
 	for _, i := range req.RemoveURR {
-		err = sess.RemoveURR(i)
+		usar, err := sess.RemoveURR(i)
 		if err != nil {
 			sess.log.Errorf("Mod RemoveURR error: %+v", err)
 		}
+		usars = append(usars, usar)
 	}
 
 	if req.RemoveBAR != nil {
@@ -260,10 +259,6 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 	}
 
-	for _, i := range req.CreateURR {
-		sess.PeriodReport(i)
-	}
-
 	rsp := message.NewSessionModificationResponse(
 		0,             // mp
 		0,             // fo
@@ -273,6 +268,24 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 
+	for _, usar := range usars {
+		tr := &usar.USARTrigger
+		vm := &usar.VolMeasurement
+
+		rsp.IEs = append(rsp.IEs,
+			ie.NewUsageReportWithinSessionReportRequest(
+				ie.NewURRID(usar.URRID),
+				ie.NewURSEQN(sess.URRURSEQN[usar.URRID]),
+				ie.NewUsageReportTrigger(
+					tr.PERIO|tr.VOLTH<<1|tr.TIMTH<<2|tr.QUHTI<<3|tr.START<<4|tr.STOPT<<5|tr.DROTH<<6|tr.IMMER<<7,
+					tr.VOLQU|tr.TIMQU<<1|tr.LIUSA<<2|tr.TERMR<<3|tr.MONIT<<4|tr.ENVCL<<5|tr.MACAR<<6|tr.EVETH<<7,
+					tr.EVEQU|tr.TEBUR<<1|tr.IPMJL<<2|tr.QUVTI<<3|tr.EMRRE<<4,
+				),
+				ie.NewVolumeMeasurement(vm.Flag, vm.TotalVolume, vm.UplinkVolume, vm.DownlinkVolume,
+					vm.TotalPktNum, vm.UplinkPktNum, vm.DownlinkPktNum),
+				// TODO:
+			))
+	}
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)
@@ -297,6 +310,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 			req.Header.SequenceNumber,
 			0, // pri
 			ie.NewCause(ie.CauseSessionContextNotFound),
+			ie.NewReportType(0, 0, 1, 0),
 		)
 
 		err = s.sendRspTo(rsp, addr)
@@ -307,7 +321,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		return
 	}
 
-	sess.rnode.DeleteSess(req.SEID())
+	usars := sess.rnode.DeleteSess(req.SEID())
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -318,6 +332,23 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 
+	for _, usar := range usars {
+		tr := &usar.USARTrigger
+		vm := &usar.VolMeasurement
+
+		rsp.IEs = append(rsp.IEs, ie.NewUsageReportWithinSessionReportRequest(
+			ie.NewURRID(usar.URRID),
+			ie.NewURSEQN(sess.URRURSEQN[usar.URRID]),
+			ie.NewUsageReportTrigger(
+				tr.PERIO|tr.VOLTH<<1|tr.TIMTH<<2|tr.QUHTI<<3|tr.START<<4|tr.STOPT<<5|tr.DROTH<<6|tr.IMMER<<7,
+				tr.VOLQU|tr.TIMQU<<1|tr.LIUSA<<2|tr.TERMR<<3|tr.MONIT<<4|tr.ENVCL<<5|tr.MACAR<<6|tr.EVETH<<7,
+				tr.EVEQU|tr.TEBUR<<1|tr.IPMJL<<2|tr.QUVTI<<3|tr.EMRRE<<4,
+			),
+			ie.NewVolumeMeasurement(vm.Flag, vm.TotalVolume, vm.UplinkVolume, vm.DownlinkVolume,
+				vm.TotalPktNum, vm.UplinkPktNum, vm.DownlinkPktNum),
+			// TODO:
+		))
+	}
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)

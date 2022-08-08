@@ -12,9 +12,8 @@ import (
 )
 
 type Server struct {
-	conn     *net.UnixConn
-	handler  report.Handler
-	EndPERIO map[uint32]chan bool
+	conn    *net.UnixConn
+	handler report.Handler
 }
 
 func OpenServer(wg *sync.WaitGroup, addr string) (*Server, error) {
