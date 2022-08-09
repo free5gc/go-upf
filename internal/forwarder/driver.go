@@ -100,7 +100,6 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 				driver.Close()
 				return nil, err
 			}
-			break
 		}
 		return driver, nil
 	}
