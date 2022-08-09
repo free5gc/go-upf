@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/hashicorp/go-version"
 	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -73,6 +74,11 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	}
 	g.client = c
 
+	err = g.checkVersion()
+	if err != nil {
+		return nil, errors.Wrap(err, "version mismatch")
+	}
+
 	bs, err := buff.OpenServer(wg, SOCKPATH)
 	if err != nil {
 		g.Close()
@@ -96,6 +102,33 @@ func (g *Gtp5g) Close() {
 	if g.bs != nil {
 		g.bs.Close()
 	}
+}
+
+const expectedGtp5gVersion string = "0.6.4"
+
+func (g *Gtp5g) checkVersion() error {
+	// get gtp5g version
+	gtp5gVer, err := gtp5gnl.GetVersion(g.client)
+	if err != nil {
+		return err
+	}
+
+	// compare version
+	expVer, err := version.NewVersion(expectedGtp5gVersion)
+	if err != nil {
+		return errors.Wrapf(err, "parse expectedGtp5gVersion err")
+	}
+	nowVer, err := version.NewVersion(gtp5gVer)
+	if err != nil {
+		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", nowVer)
+	}
+	if nowVer.LessThan(expVer) {
+		return errors.Errorf(
+			"gtp5g version should be >= %s, please upgrade it",
+			expectedGtp5gVersion)
+	}
+
+	return nil
 }
 
 func (g *Gtp5g) Link() *Gtp5gLink {

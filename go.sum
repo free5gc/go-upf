@@ -9,8 +9,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/evanphx/json-patch v0.5.2/go.mod h1:ZWS5hhDbVDyob71nXKNL0+PWn6ToqBHMikGIFbs31qQ=
-github.com/free5gc/go-gtp5gnl v1.3.4 h1:azAZlGOQQx+Bu+JTbDtjKYlR4c2pjGCQacsWjcePBbk=
-github.com/free5gc/go-gtp5gnl v1.3.4/go.mod h1:lf7uoxlFbwgqcpleFBOj51RxETXfLWtGda5wE7cXFsc=
+github.com/free5gc/go-gtp5gnl v1.3.5 h1:SOSoGUJXVmJxpV6zQYUPT154RDrmSZLzppOPPhp0M6I=
+github.com/free5gc/go-gtp5gnl v1.3.5/go.mod h1:lf7uoxlFbwgqcpleFBOj51RxETXfLWtGda5wE7cXFsc=
 github.com/free5gc/util v1.0.3 h1:or/gqHCAi3j2YKd+nzViRnc/tl1tuuJAYxCao6IbOAU=
 github.com/free5gc/util v1.0.3/go.mod h1:DL1Dnryh//Ps5B+hfXbhU1R07fVfrmPs4uuTO4g9yTg=
 github.com/gin-contrib/sse v0.1.0 h1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=
