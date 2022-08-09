@@ -1202,12 +1202,12 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	}
 
 	oid := gtp5gnl.OID{lSeid, uint64(v)}
-	g.log.Errorf("RemoveURR")
+
 	g.EndPERIO[lSeid][v] <- true
 	usar, err := g.GetReport(lSeid, v)
 
 	if err != nil {
-		return nil, errors.New("not found URRID")
+		return nil, errors.New("get report err")
 	}
 	return usar, gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
 }
