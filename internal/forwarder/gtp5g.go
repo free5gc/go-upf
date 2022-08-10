@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	SOCKPATH = "/tmp/free5gc_unix_sock"
+	expectedGtp5gVersion string = "0.6.5"
+	SOCKPATH             string = "/tmp/free5gc_unix_sock"
 )
 
 type Gtp5g struct {
@@ -103,8 +104,6 @@ func (g *Gtp5g) Close() {
 		g.bs.Close()
 	}
 }
-
-const expectedGtp5gVersion string = "0.6.4"
 
 func (g *Gtp5g) checkVersion() error {
 	// get gtp5g version
