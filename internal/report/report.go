@@ -17,25 +17,34 @@ func (t ReportType) String() string {
 	return str[t]
 }
 
+type MeasurementType int
+
+// 29244-ga0 8.2.40 Measurement Method
+const (
+	MEASURE_DURAT MeasurementType = iota + 1
+	MEASURE_VOLUM
+	MEASURE_EVENT
+)
+
+func (t MeasurementType) String() string {
+	str := []string{"", "DURATION", "VOLUME", "EVENT"}
+	return str[t]
+}
+
 type Report interface {
 	Type() ReportType
 }
 
 type DLDReport struct {
-	PDRID uint16
+	PDRID  uint16
+	Action uint16
+	BufPkt []byte
 }
 
 func (r DLDReport) Type() ReportType {
 	return DLDR
 }
 
-type USAReport struct {
-	URRID          uint32
-	URSEQN         uint32
-	USARTrigger    UsageReportTrigger
-	VolMeasurement VolumeMeasurement
-	QueryUrrRef    uint32
-}
 type VolumeMeasurement struct {
 	Flag           uint8
 	TotalVolume    uint64
@@ -44,6 +53,15 @@ type VolumeMeasurement struct {
 	TotalPktNum    uint64
 	UplinkPktNum   uint64
 	DownlinkPktNum uint64
+}
+
+type USAReport struct {
+	URRID          uint32
+	URSEQN         uint32
+	USARTrigger    UsageReportTrigger
+	MeasureRpt     MeasureReport
+	VolMeasurement VolumeMeasurement
+	QueryUrrRef    uint32
 }
 
 type UsageReportTrigger struct {
@@ -74,6 +92,37 @@ func (r USAReport) Type() ReportType {
 	return USAR
 }
 
+type MeasureReport interface {
+	Type() MeasurementType
+}
+
+type VolumeMeasure struct {
+	TOVOL          uint8
+	ULVOL          uint8
+	DLVOL          uint8
+	TONOP          uint8
+	ULNOP          uint8
+	DLNOP          uint8
+	TotalVolume    uint64
+	UplinkVolume   uint64
+	DownlinkVolume uint64
+	TotalPktNum    uint64
+	UplinkPktNum   uint64
+	DownlinkPktNum uint64
+}
+
+func (m VolumeMeasure) Type() MeasurementType {
+	return MEASURE_VOLUM
+}
+
+type DurationMeasure struct {
+	DurationValue uint64
+}
+
+func (m DurationMeasure) Type() MeasurementType {
+	return MEASURE_DURAT
+}
+
 const (
 	DROP = 1 << 0
 	FORW = 1 << 1
@@ -82,10 +131,8 @@ const (
 )
 
 type SessReport struct {
-	SEID   uint64
-	Report Report
-	Action uint16
-	BufPkt []byte
+	SEID    uint64
+	Reports []Report
 }
 
 type BufInfo struct {

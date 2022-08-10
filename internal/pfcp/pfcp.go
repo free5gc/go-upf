@@ -115,7 +115,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	for {
 		select {
 		case sr := <-s.srCh:
-			s.log.Tracef("receive SessReport(%s) from srCh", sr.Report.Type())
+			s.log.Tracef("receive SessReport from srCh")
 			s.ServeReport(&sr)
 		case rcvPkt := <-s.rcvCh:
 			s.log.Tracef("receive buf(len=%d) from rcvCh", len(rcvPkt.Buf))
@@ -138,7 +138,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 					rx = NewRxTransaction(s, rcvPkt.RemoteAddr, msg.Sequence())
 					s.rxTrans[trID] = rx
 				}
-				needDispatch, err1 := rx.recv(msg)
+				needDispatch, err1 := rx.recv(msg, ok)
 				if err1 != nil {
 					s.log.Warnf("rcvCh: %v", err1)
 					continue

@@ -70,57 +70,58 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if err != nil {
 			break
 		}
-		seid, pdrid, action, pkt, reports, err := s.decode(b[:n])
+		msgtype, seid, pdrid, action, pkt, reports, err := s.decode(b[:n])
 		if err != nil {
 			continue
 		}
 		if s.handler == nil {
 			continue
 		}
-		if reports != nil {
-			for _, usar := range reports {
-				s.handler.NotifySessReport(
-					report.SessReport{
-						SEID:   seid,
-						Report: usar,
-						Action: action,
-						BufPkt: pkt,
-					},
-				)
+		logger.BuffLog.Warn("Report: ", reports)
+		if msgtype == 1 {
+			dldr := report.DLDReport{
+				PDRID:  pdrid,
+				Action: action,
+				BufPkt: pkt,
 			}
-		} else {
 			s.handler.NotifySessReport(
 				report.SessReport{
-					SEID: seid,
-					Report: report.DLDReport{
-						PDRID: pdrid,
-					},
-					Action: action,
-					BufPkt: pkt,
+					SEID:    seid,
+					Reports: []report.Report{dldr},
 				},
 			)
+		} else if msgtype == 2 {
+
+			var usars []report.Report
+			for _, usar := range reports {
+				usars = append(usars, usar)
+			}
+
+			s.handler.NotifySessReport(
+				report.SessReport{
+					SEID:    seid,
+					Reports: usars,
+				},
+			)
+		} else {
+			logger.BuffLog.Warn("Unknow Report Type")
 		}
 
 	}
 }
 
-func (s *Server) decode(b []byte) (uint64, uint16, uint16, []byte, []report.USAReport, error) {
+func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []report.USAReport, error) {
 	n := len(b)
 	if n < 12 {
-		return 0, 0, 0, nil, nil, io.ErrUnexpectedEOF
+		return 0, 0, 0, 0, nil, nil, io.ErrUnexpectedEOF
 	}
 	var off int
 	msgtype := *(*uint8)(unsafe.Pointer(&b[off]))
 	off += 1
 	seid := *(*uint64)(unsafe.Pointer(&b[off]))
 	off += 8
-	pdrid := *(*uint16)(unsafe.Pointer(&b[off]))
-	off += 2
-	action := *(*uint16)(unsafe.Pointer(&b[off]))
-	off += 2
 
 	if msgtype == 2 {
-
 		report_num := int(*(*uint16)(unsafe.Pointer(&b[off])))
 		off += 2
 		multiusar := []report.USAReport{}
@@ -159,13 +160,13 @@ func (s *Server) decode(b []byte) (uint64, uint16, uint16, []byte, []report.USAR
 				EMRRE: uint8((trigger >> 4) & 1),
 			}
 			off += 8
-			usar.VolMeasurement.Flag = (uint8)(*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolMeasurement.Flag = (*(*uint8)(unsafe.Pointer(&b[off])))
 			off += 1
-			usar.VolMeasurement.TotalVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolMeasurement.TotalVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
 			off += 8
-			usar.VolMeasurement.UplinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolMeasurement.UplinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
 			off += 8
-			usar.VolMeasurement.DownlinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolMeasurement.DownlinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
 			off += 8
 			usar.VolMeasurement.TotalPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
@@ -178,9 +179,15 @@ func (s *Server) decode(b []byte) (uint64, uint16, uint16, []byte, []report.USAR
 
 			multiusar = append(multiusar, usar)
 		}
-		return seid, pdrid, action, nil, multiusar, nil
+		return msgtype, seid, 0, 0, nil, multiusar, nil
+	} else if msgtype == 1 {
+		pdrid := *(*uint16)(unsafe.Pointer(&b[off]))
+		off += 2
+		action := *(*uint16)(unsafe.Pointer(&b[off]))
+		off += 2
+		return msgtype, seid, pdrid, action, b[off:], nil, nil
 	} else {
-		return seid, pdrid, action, b[off:], nil, nil
+		return msgtype, seid, 0, 0, b[off:], nil, nil
 	}
 }
 

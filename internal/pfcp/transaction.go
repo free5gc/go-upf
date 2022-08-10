@@ -123,7 +123,7 @@ func NewRxTransaction(
 	raddr net.Addr,
 	seq uint32,
 ) *RxTransaction {
-	return &RxTransaction{
+	rx := &RxTransaction{
 		server:  server,
 		raddr:   raddr,
 		seq:     seq,
@@ -131,6 +131,9 @@ func NewRxTransaction(
 		timeout: server.cfg.Pfcp.RetransTimeout * time.Duration(server.cfg.Pfcp.MaxRetrans+1),
 		log:     server.log.WithField(logger.FieldTransction, fmt.Sprintf("RxTr:%s(%d)", raddr, seq)),
 	}
+	// Start rx timer to delete rx
+	rx.timer = rx.startTimer()
+	return rx
 }
 
 func (rx *RxTransaction) send(rsp message.Message) error {
@@ -142,10 +145,7 @@ func (rx *RxTransaction) send(rsp message.Message) error {
 		return err
 	}
 
-	// Start rx timer to delete rx
 	rx.msgBuf = b
-	rx.timer = rx.startTimer()
-
 	_, err = rx.server.conn.WriteTo(b, rx.raddr)
 	if err != nil {
 		return err
@@ -156,10 +156,15 @@ func (rx *RxTransaction) send(rsp message.Message) error {
 
 // True  - need to handle this req
 // False - req already handled
-func (rx *RxTransaction) recv(req message.Message) (bool, error) {
-	rx.log.Debugf("recv req")
-	if len(rx.msgBuf) == 0 {
+func (rx *RxTransaction) recv(req message.Message, rxTrFound bool) (bool, error) {
+	rx.log.Debugf("recv req - rxTrFound(%v)", rxTrFound)
+	if !rxTrFound {
 		return true, nil
+	}
+
+	if len(rx.msgBuf) == 0 {
+		rx.log.Warnf("recv req: no rsp to retransmit")
+		return false, nil
 	}
 
 	rx.log.Debugf("recv req: retransmit rsp")

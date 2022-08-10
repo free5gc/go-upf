@@ -8,6 +8,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/hashicorp/go-version"
 	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -78,6 +79,11 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	}
 	g.client = c
 
+	err = g.checkVersion()
+	if err != nil {
+		return nil, errors.Wrap(err, "version mismatch")
+	}
+
 	bs, err := buff.OpenServer(wg, SOCKPATH)
 	if err != nil {
 		g.Close()
@@ -115,6 +121,33 @@ func (g *Gtp5g) Close() {
 
 	}
 
+}
+
+const expectedGtp5gVersion string = "0.6.4"
+
+func (g *Gtp5g) checkVersion() error {
+	// get gtp5g version
+	gtp5gVer, err := gtp5gnl.GetVersion(g.client)
+	if err != nil {
+		return err
+	}
+
+	// compare version
+	expVer, err := version.NewVersion(expectedGtp5gVersion)
+	if err != nil {
+		return errors.Wrapf(err, "parse expectedGtp5gVersion err")
+	}
+	nowVer, err := version.NewVersion(gtp5gVer)
+	if err != nil {
+		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", nowVer)
+	}
+	if nowVer.LessThan(expVer) {
+		return errors.Errorf(
+			"gtp5g version should be >= %s, please upgrade it",
+			expectedGtp5gVersion)
+	}
+
+	return nil
 }
 
 func (g *Gtp5g) Link() *Gtp5gLink {
@@ -973,18 +1006,21 @@ func (g *Gtp5g) newVolumeThreshold(i *ie.IE) (nl.AttrList, error) {
 		Value: nl.AttrU8(v.Flags),
 	})
 	if v.HasTOVOL() {
+		v.TotalVolume = uint64(v.TotalVolume / 8192.0)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_TOVOL,
 			Value: nl.AttrU64(v.TotalVolume),
 		})
 	}
 	if v.HasULVOL() {
+		v.UplinkVolume = uint64(v.UplinkVolume / 8192.0)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_UVOL,
 			Value: nl.AttrU64(v.UplinkVolume),
 		})
 	}
 	if v.HasDLVOL() {
+		v.DownlinkVolume = uint64(v.DownlinkVolume / 8192.0)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_DVOL,
 			Value: nl.AttrU64(v.DownlinkVolume),
@@ -1007,18 +1043,24 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 		Value: nl.AttrU8(v.Flags),
 	})
 	if v.HasTOVOL() {
+		v.TotalVolume = uint64(v.TotalVolume / 8192.0)
+
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_TOVOL,
 			Value: nl.AttrU64(v.TotalVolume),
 		})
 	}
 	if v.HasULVOL() {
+		v.UplinkVolume = uint64(v.UplinkVolume / 8192.0)
+
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_UVOL,
 			Value: nl.AttrU64(v.UplinkVolume),
 		})
 	}
 	if v.HasDLVOL() {
+		v.DownlinkVolume = uint64(v.DownlinkVolume / 8192.0)
+
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_DVOL,
 			Value: nl.AttrU64(v.DownlinkVolume),
@@ -1335,17 +1377,19 @@ func (g *Gtp5g) PeriodReportServer(wg *sync.WaitGroup) error {
 						wg.Add(1)
 						go func() {
 							defer wg.Done()
-							g.log.Warn("report time: ", time.Now())
+							var usars []report.Report
+
 							usar, err := g.GetReport(lSeid, id)
-							usar.USARTrigger.PERIO = 1
 							if err != nil {
 								g.log.Errorf("Est GetReport error: %+v", err)
 							}
+
+							usar.USARTrigger.PERIO = 1
+
+							usars = append(usars, usar)
 							g.bs.SendReport(report.SessReport{
-								SEID:   lSeid,
-								Report: *usar,
-								Action: 0,
-								BufPkt: nil,
+								SEID:    lSeid,
+								Reports: usars,
 							})
 						}()
 					case <-g.EndPERIO[lSeid][id]:
@@ -1401,9 +1445,9 @@ func (g *Gtp5g) GetReport(lSeid uint64, id uint32) (*report.USAReport, error) {
 		volumemeasurement := tr.VolMeasurement
 		tirggerreport.VolMeasurement = report.VolumeMeasurement{
 			Flag:           volumemeasurement.Flag,
-			TotalVolume:    volumemeasurement.TotalVolume,
-			UplinkVolume:   volumemeasurement.UplinkVolume,
-			DownlinkVolume: volumemeasurement.DownlinkVolume,
+			TotalVolume:    uint64(volumemeasurement.TotalVolume / 8192.0),
+			UplinkVolume:   uint64(volumemeasurement.UplinkVolume / 8192.0),
+			DownlinkVolume: uint64(volumemeasurement.DownlinkVolume / 8192.0),
 			TotalPktNum:    volumemeasurement.TotalPktNum,
 			UplinkPktNum:   volumemeasurement.UplinkPktNum,
 			DownlinkPktNum: volumemeasurement.DownlinkPktNum,

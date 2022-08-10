@@ -42,8 +42,6 @@ type Driver interface {
 	HandleReport(report.Handler)
 }
 
-const expectedGtp5gVersion string = "0.6.3"
-
 func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 	cfgGtpu := cfg.Gtpu
 	if cfgGtpu == nil {
