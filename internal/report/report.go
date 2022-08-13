@@ -77,6 +77,14 @@ type UsageReportTrigger struct {
 	EMRRE uint8
 }
 
+func (t UsageReportTrigger) ToOctects() []uint8 {
+	return []uint8{
+		t.PERIO | t.VOLTH<<1 | t.TIMTH<<2 | t.QUHTI<<3 | t.START<<4 | t.STOPT<<5 | t.DROTH<<6 | t.IMMER<<7,
+		t.VOLQU | t.TIMQU<<1 | t.LIUSA<<2 | t.TERMR<<3 | t.MONIT<<4 | t.ENVCL<<5 | t.MACAR<<6 | t.EVETH<<7,
+		t.EVEQU | t.TEBUR<<1 | t.IPMJL<<2 | t.QUVTI<<3 | t.EMRRE<<4,
+	}
+}
+
 func (r USAReport) Type() ReportType {
 	return USAR
 }

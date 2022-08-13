@@ -1095,13 +1095,15 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
 }
 
-func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) error {
+func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) {
 	v, err := req.URRID()
 	if err != nil {
-		return errors.New("not found URRID")
+		return nil, errors.New("not found URRID")
 	}
 	oid := gtp5gnl.OID{lSeid, uint64(v)}
-	return gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
+	// TODO: return USAReport
+	err = gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
+	return nil, err
 }
 
 func (g *Gtp5g) CreateBAR(lSeid uint64, req *ie.IE) error {

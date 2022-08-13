@@ -32,8 +32,8 @@ func (h *testHandler) NotifySessReport(sr report.SessReport) {
 	if !ok {
 		return
 	}
-	for _, rep := range sr.Reports {
-		switch r := rep.(type) {
+	for _, rpt := range sr.Reports {
+		switch r := rpt.(type) {
 		case report.DLDReport:
 			if r.Action&report.BUFF != 0 && len(r.BufPkt) > 0 {
 				q, ok := s[r.PDRID]

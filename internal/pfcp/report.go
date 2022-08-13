@@ -27,8 +27,8 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 	}
 
 	var usars []report.USAReport
-	for _, rep := range sr.Reports {
-		switch r := rep.(type) {
+	for _, rpt := range sr.Reports {
+		switch r := rpt.(type) {
 		case report.DLDReport:
 			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
 			if r.Action&report.BUFF != 0 && len(r.BufPkt) > 0 {
@@ -45,7 +45,7 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
 			usars = append(usars, r)
 		default:
-			s.log.Warnf("Unsupported Report: SEID(%#x), type(%d)", sr.SEID, rep.Type())
+			s.log.Warnf("Unsupported Report: SEID(%#x), type(%d)", sr.SEID, rpt.Type())
 		}
 	}
 
@@ -106,16 +106,11 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 		ie.NewReportType(0, 0, 1, 0),
 	)
 	for _, r := range usars {
-		tr := &r.USARTrigger
 		req.UsageReport = append(req.UsageReport,
 			ie.NewUsageReportWithinSessionReportRequest(
 				ie.NewURRID(r.URRID),
 				ie.NewURSEQN(r.URSEQN),
-				ie.NewUsageReportTrigger(
-					tr.PERIO|tr.VOLTH<<1|tr.TIMTH<<2|tr.QUHTI<<3|tr.START<<4|tr.STOPT<<5|tr.DROTH<<6|tr.IMMER<<7,
-					tr.VOLQU|tr.TIMQU<<1|tr.LIUSA<<2|tr.TERMR<<3|tr.MONIT<<4|tr.ENVCL<<5|tr.MACAR<<6|tr.EVETH<<7,
-					tr.EVEQU|tr.TEBUR<<1|tr.IPMJL<<2|tr.QUVTI<<3|tr.EMRRE<<4,
-				),
+				ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
 				// TODO:
 			))
 	}

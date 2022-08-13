@@ -5,6 +5,8 @@ import (
 
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
+
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 func (s *PfcpServer) handleSessionEstablishmentRequest(
@@ -198,10 +200,14 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 	}
 
+	var usars []report.USAReport
 	for _, i := range req.RemoveURR {
-		err = sess.RemoveURR(i)
-		if err != nil {
+		rpts, err1 := sess.RemoveURR(i)
+		if err1 != nil {
 			sess.log.Errorf("Mod RemoveURR error: %+v", err)
+		}
+		if len(rpts) > 0 {
+			usars = append(usars, rpts...)
 		}
 	}
 
@@ -262,6 +268,15 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
+	for _, r := range usars {
+		rsp.UsageReport = append(rsp.UsageReport,
+			ie.NewUsageReportWithinSessionModificationResponse(
+				ie.NewURRID(r.URRID),
+				ie.NewURSEQN(r.URSEQN),
+				ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+				// TODO:
+			))
+	}
 
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
@@ -297,7 +312,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		return
 	}
 
-	sess.rnode.DeleteSess(req.SEID())
+	usars := sess.rnode.DeleteSess(req.SEID())
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -307,6 +322,15 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
+	for _, r := range usars {
+		rsp.UsageReport = append(rsp.UsageReport,
+			ie.NewUsageReportWithinSessionReportRequest(
+				ie.NewURRID(r.URRID),
+				ie.NewURSEQN(r.URSEQN),
+				ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+				// TODO:
+			))
+	}
 
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
