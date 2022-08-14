@@ -187,7 +187,7 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 	return nil
 }
 
-func (s *Sess) UpdateURR(req *ie.IE) error {
+func (s *Sess) UpdateURR(req *ie.IE) ([]report.USAReport, error) {
 	return s.rnode.driver.UpdateURR(s.LocalID, req)
 }
 

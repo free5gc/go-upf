@@ -204,7 +204,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	for _, i := range req.RemoveURR {
 		rpts, err1 := sess.RemoveURR(i)
 		if err1 != nil {
-			sess.log.Errorf("Mod RemoveURR error: %+v", err)
+			sess.log.Errorf("Mod RemoveURR error: %+v", err1)
 		}
 		if len(rpts) > 0 {
 			usars = append(usars, rpts...)
@@ -240,9 +240,12 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.UpdateURR {
-		err = sess.UpdateURR(i)
-		if err != nil {
-			sess.log.Errorf("Mod UpdateURR error: %+v", err)
+		rpts, err1 := sess.UpdateURR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod UpdateURR error: %+v", err1)
+		}
+		if len(rpts) > 0 {
+			usars = append(usars, rpts...)
 		}
 	}
 

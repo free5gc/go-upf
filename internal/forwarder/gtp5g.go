@@ -1034,44 +1034,44 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.CreateURROID(g.client, g.link.link, oid, attrs)
 }
 
-func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
+func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) {
 	var urrid uint64
 	var attrs []nl.Attr
 
 	ies, err := req.UpdateURR()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, i := range ies {
 		switch i.Type {
 		case ie.URRID:
-			v, err := i.URRID()
-			if err != nil {
-				return err
+			v, err1 := i.URRID()
+			if err1 != nil {
+				return nil, err1
 			}
 			urrid = uint64(v)
 		case ie.MeasurementMethod:
-			v, err := i.MeasurementMethod()
-			if err != nil {
-				return err
+			v, err1 := i.MeasurementMethod()
+			if err1 != nil {
+				return nil, err1
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_METHOD,
 				Value: nl.AttrU64(v),
 			})
 		case ie.ReportingTriggers:
-			v, err := i.ReportingTriggers()
-			if err != nil {
-				return err
+			v, err1 := i.ReportingTriggers()
+			if err1 != nil {
+				return nil, err1
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
 				Value: nl.AttrU64(v),
 			})
 		case ie.MeasurementPeriod:
-			v, err := i.MeasurementPeriod()
-			if err != nil {
-				return err
+			v, err1 := i.MeasurementPeriod()
+			if err1 != nil {
+				return nil, err1
 			}
 			// TODO: convert time.Duration -> ?
 			attrs = append(attrs, nl.Attr{
@@ -1079,9 +1079,9 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
 				Value: nl.AttrU64(v),
 			})
 		case ie.MeasurementInformation:
-			v, err := i.MeasurementInformation()
-			if err != nil {
-				return err
+			v, err1 := i.MeasurementInformation()
+			if err1 != nil {
+				return nil, err1
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_INFO,
@@ -1092,7 +1092,9 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
 	}
 
 	oid := gtp5gnl.OID{lSeid, urrid}
-	return gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
+	// TODO: return USAReport
+	err = gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
+	return nil, err
 }
 
 func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) {
