@@ -1006,21 +1006,21 @@ func (g *Gtp5g) newVolumeThreshold(i *ie.IE) (nl.AttrList, error) {
 		Value: nl.AttrU8(v.Flags),
 	})
 	if v.HasTOVOL() {
-		v.TotalVolume = uint64(v.TotalVolume / 8192.0)
+		v.TotalVolume = uint64(v.TotalVolume * 8192)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_TOVOL,
 			Value: nl.AttrU64(v.TotalVolume),
 		})
 	}
 	if v.HasULVOL() {
-		v.UplinkVolume = uint64(v.UplinkVolume / 8192.0)
+		v.UplinkVolume = uint64(v.UplinkVolume * 8192)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_UVOL,
 			Value: nl.AttrU64(v.UplinkVolume),
 		})
 	}
 	if v.HasDLVOL() {
-		v.DownlinkVolume = uint64(v.DownlinkVolume / 8192.0)
+		v.DownlinkVolume = uint64(v.DownlinkVolume * 8192)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_DVOL,
 			Value: nl.AttrU64(v.DownlinkVolume),
@@ -1417,23 +1417,17 @@ func (g *Gtp5g) PeriodReportServer(wg *sync.WaitGroup) error {
 					select {
 					case <-timer.C:
 						wg.Add(1)
-						go func() {
-							defer wg.Done()
-							var usars []report.Report
 
-							usar, err := g.GetReport(lSeid, id)
-							if err != nil {
-								g.log.Errorf("Est GetReport error: %+v", err)
-							}
+						usar, err := g.GetReport(lSeid, id)
+						if err != nil {
+							g.log.Errorf("Est GetReport error: %+v", err)
+						}
+						usar.USARTrigger.PERIO = 1
 
-							usar.USARTrigger.PERIO = 1
-
-							usars = append(usars, usar)
-							g.bs.SendReport(report.SessReport{
-								SEID:    lSeid,
-								Reports: usars,
-							})
-						}()
+						g.bs.SendReport(report.SessReport{
+							SEID:    lSeid,
+							Reports: []report.Report{*usar},
+						})
 					case <-g.EndPERIO[lSeid][id]:
 						g.TimerList[lSeid][id].Stop()
 						g.TimerList[lSeid][id] = nil
@@ -1450,7 +1444,7 @@ func (g *Gtp5g) PeriodReportServer(wg *sync.WaitGroup) error {
 }
 
 func (g *Gtp5g) GetReport(lSeid uint64, id uint32) (*report.USAReport, error) {
-	var rp *report.USAReport
+	var rp report.USAReport
 
 	oid := gtp5gnl.OID{lSeid, uint64(id)}
 	tr, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
@@ -1499,7 +1493,7 @@ func (g *Gtp5g) GetReport(lSeid uint64, id uint32) (*report.USAReport, error) {
 
 	}
 
-	return rp, err
+	return &rp, err
 }
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {

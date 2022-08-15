@@ -47,7 +47,6 @@ func (s *Server) Close() {
 	}
 }
 
-//Don't know why gtp5g.go can't directly call NotifySessReport
 func (s *Server) SendReport(sp report.SessReport) {
 	s.handler.NotifySessReport(
 		sp,
@@ -77,7 +76,6 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if s.handler == nil {
 			continue
 		}
-		logger.BuffLog.Warn("Report: ", reports)
 		if msgtype == 1 {
 			dldr := report.DLDReport{
 				PDRID:  pdrid,
