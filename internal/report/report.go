@@ -1,7 +1,14 @@
 package report
 
+import (
+	"time"
+
+	"github.com/wmnsk/go-pfcp/ie"
+)
+
 type ReportType int
 
+// 29244-ga0 8.2.21 Report Type
 const (
 	DLDR ReportType = iota + 1
 	USAR
@@ -53,6 +60,46 @@ type USAReport struct {
 	QueryUrrRef uint32
 }
 
+func (r USAReport) Type() ReportType {
+	return USAR
+}
+
+func (r USAReport) IEsWithinSessReportReq() []*ie.IE {
+	ies := []*ie.IE{
+		ie.NewURRID(r.URRID),
+		ie.NewURSEQN(r.URSEQN),
+		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+	}
+	if r.MeasureRpt != nil {
+		ies = append(ies, r.MeasureRpt.IE())
+	}
+	return ies
+}
+
+func (r USAReport) IEsWithinSessModRsp() []*ie.IE {
+	ies := []*ie.IE{
+		ie.NewURRID(r.URRID),
+		ie.NewURSEQN(r.URSEQN),
+		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+	}
+	if r.MeasureRpt != nil {
+		ies = append(ies, r.MeasureRpt.IE())
+	}
+	return ies
+}
+
+func (r USAReport) IEsWithinSessDelRsp() []*ie.IE {
+	ies := []*ie.IE{
+		ie.NewURRID(r.URRID),
+		ie.NewURSEQN(r.URSEQN),
+		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+	}
+	if r.MeasureRpt != nil {
+		ies = append(ies, r.MeasureRpt.IE())
+	}
+	return ies
+}
+
 type UsageReportTrigger struct {
 	PERIO uint8
 	VOLTH uint8
@@ -85,12 +132,9 @@ func (t UsageReportTrigger) ToOctects() []uint8 {
 	}
 }
 
-func (r USAReport) Type() ReportType {
-	return USAR
-}
-
 type MeasureReport interface {
 	Type() MeasurementType
+	IE() *ie.IE
 }
 
 type VolumeMeasure struct {
@@ -112,12 +156,34 @@ func (m VolumeMeasure) Type() MeasurementType {
 	return MEASURE_VOLUM
 }
 
+func (m VolumeMeasure) IE() *ie.IE {
+	var flags uint8 = (m.DLNOP<<5 |
+		m.ULNOP<<4 |
+		m.TONOP<<3 |
+		m.DLVOL<<2 |
+		m.ULVOL<<1 |
+		m.TOVOL)
+	return ie.NewVolumeMeasurement(
+		flags,
+		m.TotalVolume,
+		m.UplinkVolume,
+		m.DownlinkVolume,
+		m.TotalPktNum,
+		m.UplinkPktNum,
+		m.DownlinkPktNum,
+	)
+}
+
 type DurationMeasure struct {
 	DurationValue uint64
 }
 
 func (m DurationMeasure) Type() MeasurementType {
 	return MEASURE_DURAT
+}
+
+func (m DurationMeasure) IE() *ie.IE {
+	return ie.NewDurationMeasurement(time.Duration(m.DurationValue))
 }
 
 const (

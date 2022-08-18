@@ -272,12 +272,10 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 	for _, r := range usars {
+		r.URSEQN = sess.URRSeq(r.URRID)
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionModificationResponse(
-				ie.NewURRID(r.URRID),
-				ie.NewURSEQN(r.URSEQN),
-				ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
-				// TODO:
+				r.IEsWithinSessModRsp()...,
 			))
 	}
 
@@ -295,7 +293,8 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 	// TODO: error response
 	s.log.Infoln("handleSessionDeletionRequest")
 
-	sess, err := s.lnode.Sess(req.SEID())
+	lSeid := req.SEID()
+	sess, err := s.lnode.Sess(lSeid)
 	if err != nil {
 		s.log.Errorf("handleSessionDeletionRequest: %v", err)
 		rsp := message.NewSessionDeletionResponse(
@@ -315,7 +314,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		return
 	}
 
-	usars := sess.rnode.DeleteSess(req.SEID())
+	usars := sess.rnode.DeleteSess(lSeid)
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -326,12 +325,10 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 	for _, r := range usars {
+		r.URSEQN = sess.URRSeq(r.URRID)
 		rsp.UsageReport = append(rsp.UsageReport,
-			ie.NewUsageReportWithinSessionReportRequest(
-				ie.NewURRID(r.URRID),
-				ie.NewURSEQN(r.URSEQN),
-				ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
-				// TODO:
+			ie.NewUsageReportWithinSessionDeletionResponse(
+				r.IEsWithinSessDelRsp()...,
 			))
 	}
 

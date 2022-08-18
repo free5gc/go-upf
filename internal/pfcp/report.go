@@ -106,12 +106,10 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 		ie.NewReportType(0, 0, 1, 0),
 	)
 	for _, r := range usars {
+		r.URSEQN = sess.URRSeq(r.URRID)
 		req.UsageReport = append(req.UsageReport,
 			ie.NewUsageReportWithinSessionReportRequest(
-				ie.NewURRID(r.URRID),
-				ie.NewURSEQN(r.URSEQN),
-				ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
-				// TODO:
+				r.IEsWithinSessReportReq()...,
 			))
 	}
 

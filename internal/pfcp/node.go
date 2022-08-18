@@ -24,7 +24,7 @@ type Sess struct {
 	PDRIDs   map[uint16]struct{}
 	FARIDs   map[uint32]struct{}
 	QERIDs   map[uint32]struct{}
-	URRIDs   map[uint32]struct{}
+	URRIDs   map[uint32]uint32 // key: URR_ID, value: SEQN
 	BARIDs   map[uint8]struct{}
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
@@ -183,7 +183,7 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 	if err != nil {
 		return err
 	}
-	s.URRIDs[id] = struct{}{}
+	s.URRIDs[id] = 0
 	return nil
 }
 
@@ -274,6 +274,15 @@ func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
 	default:
 		return nil, false
 	}
+}
+
+func (s *Sess) URRSeq(urrid uint32) uint32 {
+	seq, ok := s.URRIDs[urrid]
+	if !ok {
+		return 0
+	}
+	s.URRIDs[urrid] = seq + 1
+	return seq
 }
 
 type RemoteNode struct {
@@ -384,7 +393,7 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 		PDRIDs:   make(map[uint16]struct{}),
 		FARIDs:   make(map[uint32]struct{}),
 		QERIDs:   make(map[uint32]struct{}),
-		URRIDs:   make(map[uint32]struct{}),
+		URRIDs:   make(map[uint32]uint32),
 		BARIDs:   make(map[uint8]struct{}),
 		q:        make(map[uint16]chan []byte),
 		qlen:     qlen,
