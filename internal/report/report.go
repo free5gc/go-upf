@@ -1,7 +1,14 @@
 package report
 
+import (
+	"time"
+
+	"github.com/wmnsk/go-pfcp/ie"
+)
+
 type ReportType int
 
+// 29244-ga0 8.2.21 Report Type
 const (
 	DLDR ReportType = iota + 1
 	USAR
@@ -45,23 +52,56 @@ func (r DLDReport) Type() ReportType {
 	return DLDR
 }
 
-type VolumeMeasurement struct {
-	Flag           uint8
-	TotalVolume    uint64
-	UplinkVolume   uint64
-	DownlinkVolume uint64
-	TotalPktNum    uint64
-	UplinkPktNum   uint64
-	DownlinkPktNum uint64
+type USAReport struct {
+	URRID       uint32
+	URSEQN      uint32
+	USARTrigger UsageReportTrigger
+	VolMeasure  VolumeMeasure
+	MeasureRpt  MeasureReport
+	QueryUrrRef uint32
 }
 
-type USAReport struct {
-	URRID          uint32
-	URSEQN         uint32
-	USARTrigger    UsageReportTrigger
-	MeasureRpt     MeasureReport
-	VolMeasurement VolumeMeasurement
-	QueryUrrRef    uint32
+func (r USAReport) Type() ReportType {
+	return USAR
+}
+
+func (r USAReport) IEsWithinSessReportReq() []*ie.IE {
+	ies := []*ie.IE{
+		ie.NewURRID(r.URRID),
+		ie.NewURSEQN(r.URSEQN),
+		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+		r.VolMeasure.IE(),
+	}
+	if r.MeasureRpt != nil {
+		ies = append(ies, r.MeasureRpt.IE())
+	}
+	return ies
+}
+
+func (r USAReport) IEsWithinSessModRsp() []*ie.IE {
+	ies := []*ie.IE{
+		ie.NewURRID(r.URRID),
+		ie.NewURSEQN(r.URSEQN),
+		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+		r.VolMeasure.IE(),
+	}
+	if r.MeasureRpt != nil {
+		ies = append(ies, r.MeasureRpt.IE())
+	}
+	return ies
+}
+
+func (r USAReport) IEsWithinSessDelRsp() []*ie.IE {
+	ies := []*ie.IE{
+		ie.NewURRID(r.URRID),
+		ie.NewURSEQN(r.URSEQN),
+		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+		r.VolMeasure.IE(),
+	}
+	if r.MeasureRpt != nil {
+		ies = append(ies, r.MeasureRpt.IE())
+	}
+	return ies
 }
 
 type UsageReportTrigger struct {
@@ -88,12 +128,17 @@ type UsageReportTrigger struct {
 	EMRRE uint8
 }
 
-func (r USAReport) Type() ReportType {
-	return USAR
+func (t UsageReportTrigger) ToOctects() []uint8 {
+	return []uint8{
+		t.PERIO | t.VOLTH<<1 | t.TIMTH<<2 | t.QUHTI<<3 | t.START<<4 | t.STOPT<<5 | t.DROTH<<6 | t.IMMER<<7,
+		t.VOLQU | t.TIMQU<<1 | t.LIUSA<<2 | t.TERMR<<3 | t.MONIT<<4 | t.ENVCL<<5 | t.MACAR<<6 | t.EVETH<<7,
+		t.EVEQU | t.TEBUR<<1 | t.IPMJL<<2 | t.QUVTI<<3 | t.EMRRE<<4,
+	}
 }
 
 type MeasureReport interface {
 	Type() MeasurementType
+	IE() *ie.IE
 }
 
 type VolumeMeasure struct {
@@ -115,12 +160,34 @@ func (m VolumeMeasure) Type() MeasurementType {
 	return MEASURE_VOLUM
 }
 
+func (m VolumeMeasure) IE() *ie.IE {
+	var flags uint8 = (m.DLNOP<<5 |
+		m.ULNOP<<4 |
+		m.TONOP<<3 |
+		m.DLVOL<<2 |
+		m.ULVOL<<1 |
+		m.TOVOL)
+	return ie.NewVolumeMeasurement(
+		flags,
+		m.TotalVolume,
+		m.UplinkVolume,
+		m.DownlinkVolume,
+		m.TotalPktNum,
+		m.UplinkPktNum,
+		m.DownlinkPktNum,
+	)
+}
+
 type DurationMeasure struct {
 	DurationValue uint64
 }
 
 func (m DurationMeasure) Type() MeasurementType {
 	return MEASURE_DURAT
+}
+
+func (m DurationMeasure) IE() *ie.IE {
+	return ie.NewDurationMeasurement(time.Duration(m.DurationValue))
 }
 
 const (

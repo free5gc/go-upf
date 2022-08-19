@@ -131,46 +131,53 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 			off += 4
 			usar.URSEQN = (*(*uint32)(unsafe.Pointer(&b[off])))
 			off += 4
-
-			trigger := (*(*uint64)(unsafe.Pointer(&b[off])))
+			r := (*(*uint64)(unsafe.Pointer(&b[off])))
 
 			usar.USARTrigger = report.UsageReportTrigger{
-				PERIO: uint8((trigger >> 16) & 1),
-				VOLTH: uint8((trigger >> 17) & 1),
-				TIMTH: uint8((trigger >> 18) & 1),
-				QUHTI: uint8((trigger >> 19) & 1),
-				START: uint8((trigger >> 20) & 1),
-				STOPT: uint8((trigger >> 21) & 1),
-				DROTH: uint8((trigger >> 22) & 1),
-				IMMER: uint8((trigger >> 23) & 1),
-				VOLQU: uint8((trigger >> 8) & 1),
-				TIMQU: uint8((trigger >> 9) & 1),
-				LIUSA: uint8((trigger >> 10) & 1),
-				TERMR: uint8((trigger >> 11) & 1),
-				MONIT: uint8((trigger >> 12) & 1),
-				ENVCL: uint8((trigger >> 13) & 1),
-				MACAR: uint8((trigger >> 14) & 1),
-				EVETH: uint8((trigger >> 15) & 1),
-				EVEQU: uint8((trigger) & 1),
-				TEBUR: uint8((trigger >> 1) & 1),
-				IPMJL: uint8((trigger >> 2) & 1),
-				QUVTI: uint8((trigger >> 3) & 1),
-				EMRRE: uint8((trigger >> 4) & 1),
+				EVEQU: uint8((r) & 1),
+				TEBUR: uint8((r >> 1) & 1),
+				IPMJL: uint8((r >> 2) & 1),
+				QUVTI: uint8((r >> 3) & 1),
+				EMRRE: uint8((r >> 4) & 1),
+				VOLQU: uint8((r >> 8) & 1),
+				TIMQU: uint8((r >> 9) & 1),
+				LIUSA: uint8((r >> 10) & 1),
+				TERMR: uint8((r >> 11) & 1),
+				MONIT: uint8((r >> 12) & 1),
+				ENVCL: uint8((r >> 13) & 1),
+				MACAR: uint8((r >> 14) & 1),
+				EVETH: uint8((r >> 15) & 1),
+				PERIO: uint8((r >> 16) & 1),
+				VOLTH: uint8((r >> 17) & 1),
+				TIMTH: uint8((r >> 18) & 1),
+				QUHTI: uint8((r >> 19) & 1),
+				START: uint8((r >> 20) & 1),
+				STOPT: uint8((r >> 21) & 1),
+				DROTH: uint8((r >> 22) & 1),
+				IMMER: uint8((r >> 23) & 1),
 			}
 			off += 8
-			usar.VolMeasurement.Flag = (*(*uint8)(unsafe.Pointer(&b[off])))
+			v := (*(*uint8)(unsafe.Pointer(&b[off])))
+			usar.VolMeasure = report.VolumeMeasure{
+				DLNOP: (v >> 5) & 1,
+				ULNOP: (v >> 4) & 1,
+				TONOP: (v >> 3) & 1,
+				DLVOL: (v >> 2) & 1,
+				ULVOL: (v >> 1) & 1,
+				TOVOL: v & 1,
+			}
 			off += 1
-			usar.VolMeasurement.TotalVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
+			usar.VolMeasure.TotalVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
 			off += 8
-			usar.VolMeasurement.UplinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
+			usar.VolMeasure.UplinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
 			off += 8
-			usar.VolMeasurement.DownlinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
+			usar.VolMeasure.DownlinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
 			off += 8
-			usar.VolMeasurement.TotalPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolMeasure.TotalPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasurement.UplinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolMeasure.UplinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasurement.DownlinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolMeasure.DownlinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
 			usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))
 			off += 4

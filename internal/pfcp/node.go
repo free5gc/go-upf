@@ -18,21 +18,20 @@ const (
 )
 
 type Sess struct {
-	rnode     *RemoteNode
-	LocalID   uint64
-	RemoteID  uint64
-	PDRIDs    map[uint16]struct{}
-	FARIDs    map[uint32]struct{}
-	QERIDs    map[uint32]struct{}
-	URRIDs    map[uint32]struct{}
-	BARIDs    map[uint8]struct{}
-	q         map[uint16]chan []byte // key: PDR_ID
-	qlen      int
-	log       *logrus.Entry
-	URRURSEQN map[uint32]uint32
+	rnode    *RemoteNode
+	LocalID  uint64
+	RemoteID uint64
+	PDRIDs   map[uint16]struct{}
+	FARIDs   map[uint32]struct{}
+	QERIDs   map[uint32]struct{}
+	URRIDs   map[uint32]uint32 // key: URR_ID, value: SEQN
+	BARIDs   map[uint8]struct{}
+	q        map[uint16]chan []byte // key: PDR_ID
+	qlen     int
+	log      *logrus.Entry
 }
 
-func (s *Sess) Close() []*report.USAReport {
+func (s *Sess) Close() []report.USAReport {
 	for id := range s.FARIDs {
 		i := ie.NewRemoveFAR(ie.NewFARID(id))
 		err := s.RemoveFAR(i)
@@ -49,16 +48,17 @@ func (s *Sess) Close() []*report.USAReport {
 			return nil
 		}
 	}
-
-	var usars []*report.USAReport
+	var usars []report.USAReport
 	for id := range s.URRIDs {
 		i := ie.NewRemoveURR(ie.NewURRID(id))
-		usar, err := s.RemoveURR(i)
+		rpts, err := s.RemoveURR(i)
 		if err != nil {
 			s.log.Errorf("Remove URR err: %+v", err)
 			return nil
 		}
-		usars = append(usars, usar)
+		if len(rpts) > 0 {
+			usars = append(usars, rpts...)
+		}
 	}
 	for id := range s.BARIDs {
 		i := ie.NewRemoveBAR(ie.NewBARID(id))
@@ -79,7 +79,6 @@ func (s *Sess) Close() []*report.USAReport {
 	for _, q := range s.q {
 		close(q)
 	}
-
 	return usars
 }
 
@@ -189,17 +188,16 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 	if err != nil {
 		return err
 	}
-	s.URRIDs[id] = struct{}{}
+	s.URRIDs[id] = 0
 	return nil
 }
 
-func (s *Sess) UpdateURR(req *ie.IE) error {
+func (s *Sess) UpdateURR(req *ie.IE) ([]report.USAReport, error) {
 	return s.rnode.driver.UpdateURR(s.LocalID, req)
 }
 
-func (s *Sess) RemoveURR(req *ie.IE) (*report.USAReport, error) {
-	usar, err := s.rnode.driver.RemoveURR(s.LocalID, req)
-
+func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
+	usars, err := s.rnode.driver.RemoveURR(s.LocalID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +208,7 @@ func (s *Sess) RemoveURR(req *ie.IE) (*report.USAReport, error) {
 	}
 
 	delete(s.URRIDs, id)
-	return usar, nil
+	return usars, nil
 }
 
 func (s *Sess) CreateBAR(req *ie.IE) error {
@@ -280,6 +278,15 @@ func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
 	}
 }
 
+func (s *Sess) URRSeq(urrid uint32) uint32 {
+	seq, ok := s.URRIDs[urrid]
+	if !ok {
+		return 0
+	}
+	s.URRIDs[urrid] = seq + 1
+	return seq
+}
+
 type RemoteNode struct {
 	ID     string
 	addr   net.Addr
@@ -330,7 +337,7 @@ func (n *RemoteNode) NewSess(rSeid uint64) *Sess {
 	return s
 }
 
-func (n *RemoteNode) DeleteSess(lSeid uint64) []*report.USAReport {
+func (n *RemoteNode) DeleteSess(lSeid uint64) []report.USAReport {
 	_, ok := n.sess[lSeid]
 	if !ok {
 		return nil
@@ -341,7 +348,6 @@ func (n *RemoteNode) DeleteSess(lSeid uint64) []*report.USAReport {
 		n.log.Warnln(err)
 		return nil
 	}
-
 	return usars
 }
 
@@ -386,15 +392,14 @@ func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
 
 func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 	s := &Sess{
-		RemoteID:  rSeid,
-		PDRIDs:    make(map[uint16]struct{}),
-		FARIDs:    make(map[uint32]struct{}),
-		QERIDs:    make(map[uint32]struct{}),
-		URRIDs:    make(map[uint32]struct{}),
-		BARIDs:    make(map[uint8]struct{}),
-		q:         make(map[uint16]chan []byte),
-		qlen:      qlen,
-		URRURSEQN: make(map[uint32]uint32),
+		RemoteID: rSeid,
+		PDRIDs:   make(map[uint16]struct{}),
+		FARIDs:   make(map[uint32]struct{}),
+		QERIDs:   make(map[uint32]struct{}),
+		URRIDs:   make(map[uint32]uint32),
+		BARIDs:   make(map[uint8]struct{}),
+		q:        make(map[uint16]chan []byte),
+		qlen:     qlen,
 	}
 	last := len(n.free) - 1
 	if last >= 0 {
@@ -408,7 +413,7 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 	return s
 }
 
-func (n *LocalNode) DeleteSess(lSeid uint64) ([]*report.USAReport, error) {
+func (n *LocalNode) DeleteSess(lSeid uint64) ([]report.USAReport, error) {
 	if lSeid == 0 {
 		return nil, errors.New("DeleteSess: invalid lSeid:0")
 	}

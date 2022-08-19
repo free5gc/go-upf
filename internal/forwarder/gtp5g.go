@@ -24,7 +24,8 @@ import (
 )
 
 const (
-	SOCKPATH = "/tmp/free5gc_unix_sock"
+	expectedGtp5gVersion string = "0.6.5"
+	SOCKPATH             string = "/tmp/free5gc_unix_sock"
 )
 
 type Gtp5g struct {
@@ -120,10 +121,7 @@ func (g *Gtp5g) Close() {
 		g.TimerList = nil
 
 	}
-
 }
-
-const expectedGtp5gVersion string = "0.6.4"
 
 func (g *Gtp5g) checkVersion() error {
 	// get gtp5g version
@@ -1157,44 +1155,44 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.CreateURROID(g.client, g.link.link, oid, attrs)
 }
 
-func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
+func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) {
 	var urrid uint64
 	var attrs []nl.Attr
 
 	ies, err := req.UpdateURR()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, i := range ies {
 		switch i.Type {
 		case ie.URRID:
-			v, err := i.URRID()
-			if err != nil {
-				return err
+			v, err1 := i.URRID()
+			if err1 != nil {
+				return nil, err1
 			}
 			urrid = uint64(v)
 		case ie.MeasurementMethod:
-			v, err := i.MeasurementMethod()
-			if err != nil {
-				return err
+			v, err1 := i.MeasurementMethod()
+			if err1 != nil {
+				return nil, err1
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_METHOD,
 				Value: nl.AttrU64(v),
 			})
 		case ie.ReportingTriggers:
-			v, err := i.ReportingTriggers()
-			if err != nil {
-				return err
+			v, err1 := i.ReportingTriggers()
+			if err1 != nil {
+				return nil, err1
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
 				Value: nl.AttrU64(v),
 			})
 		case ie.MeasurementPeriod:
-			v, err := i.MeasurementPeriod()
-			if err != nil {
-				return err
+			v, err1 := i.MeasurementPeriod()
+			if err1 != nil {
+				return nil, err1
 			}
 			// TODO: convert time.Duration -> ?
 			attrs = append(attrs, nl.Attr{
@@ -1202,9 +1200,9 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
 				Value: nl.AttrU64(v),
 			})
 		case ie.MeasurementInformation:
-			v, err := i.MeasurementInformation()
-			if err != nil {
-				return err
+			v, err1 := i.MeasurementInformation()
+			if err1 != nil {
+				return nil, err1
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_INFO,
@@ -1234,10 +1232,12 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) error {
 	}
 
 	oid := gtp5gnl.OID{lSeid, urrid}
-	return gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
+	// TODO: return USAReport
+	err = gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
+	return nil, err
 }
 
-func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
+func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) {
 	v, err := req.URRID()
 	if err != nil {
 		return nil, errors.New("not found URRID")
@@ -1246,54 +1246,60 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	g.EndPERIO[lSeid][v] <- true
 	oid := gtp5gnl.OID{lSeid, uint64(v)}
 
-	rp, err := gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
+	reports, err := gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
 
 	if err != nil {
 		return nil, err
 	}
 
-	var usar *report.USAReport
+	var usars []report.USAReport
+	for _, r := range reports {
+		usar := report.USAReport{
+			URRID: r.URRID,
+			USARTrigger: report.UsageReportTrigger{
+				EVEQU: uint8((r.USARTrigger) & 1),
+				TEBUR: uint8((r.USARTrigger >> 1) & 1),
+				IPMJL: uint8((r.USARTrigger >> 2) & 1),
+				QUVTI: uint8((r.USARTrigger >> 3) & 1),
+				EMRRE: uint8((r.USARTrigger >> 4) & 1),
+				VOLQU: uint8((r.USARTrigger >> 8) & 1),
+				TIMQU: uint8((r.USARTrigger >> 9) & 1),
+				LIUSA: uint8((r.USARTrigger >> 10) & 1),
+				TERMR: uint8((r.USARTrigger >> 11) & 1),
+				MONIT: uint8((r.USARTrigger >> 12) & 1),
+				ENVCL: uint8((r.USARTrigger >> 13) & 1),
+				MACAR: uint8((r.USARTrigger >> 14) & 1),
+				EVETH: uint8((r.USARTrigger >> 15) & 1),
+				PERIO: uint8((r.USARTrigger >> 16) & 1),
+				VOLTH: uint8((r.USARTrigger >> 17) & 1),
+				TIMTH: uint8((r.USARTrigger >> 18) & 1),
+				QUHTI: uint8((r.USARTrigger >> 19) & 1),
+				START: uint8((r.USARTrigger >> 20) & 1),
+				STOPT: uint8((r.USARTrigger >> 21) & 1),
+				DROTH: uint8((r.USARTrigger >> 22) & 1),
+				IMMER: uint8((r.USARTrigger >> 23) & 1),
+			},
+			VolMeasure: report.VolumeMeasure{
+				DLNOP:          (r.VolMeasurement.Flag >> 5) & 1,
+				ULNOP:          (r.VolMeasurement.Flag >> 4) & 1,
+				TONOP:          (r.VolMeasurement.Flag >> 3) & 1,
+				DLVOL:          (r.VolMeasurement.Flag >> 2) & 1,
+				ULVOL:          (r.VolMeasurement.Flag >> 1) & 1,
+				TOVOL:          r.VolMeasurement.Flag & 1,
+				TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 8192.0),
+				UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 8192.0),
+				DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 8192.0),
+				TotalPktNum:    r.VolMeasurement.TotalPktNum,
+				UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+				DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+			},
+			QueryUrrRef: r.QueryUrrRef,
+		}
 
-	usar.URRID = rp.URRID
-	usar.QueryUrrRef = rp.QueryUrrRef
-
-	trigger := rp.USARTrigger
-	usar.USARTrigger = report.UsageReportTrigger{
-		PERIO: uint8(trigger & 1),
-		VOLTH: uint8((trigger >> 1) & 1),
-		TIMTH: uint8((trigger >> 2) & 1),
-		QUHTI: uint8((trigger >> 3) & 1),
-		START: uint8((trigger >> 4) & 1),
-		STOPT: uint8((trigger >> 5) & 1),
-		DROTH: uint8((trigger >> 6) & 1),
-		IMMER: uint8((trigger >> 7) & 1),
-		VOLQU: uint8((trigger >> 8) & 1),
-		TIMQU: uint8((trigger >> 9) & 1),
-		LIUSA: uint8((trigger >> 10) & 1),
-		TERMR: uint8((trigger >> 11) & 1),
-		MONIT: uint8((trigger >> 12) & 1),
-		ENVCL: uint8((trigger >> 13) & 1),
-		MACAR: uint8((trigger >> 14) & 1),
-		EVETH: uint8((trigger >> 15) & 1),
-		EVEQU: uint8((trigger >> 16) & 1),
-		TEBUR: uint8((trigger >> 17) & 1),
-		IPMJL: uint8((trigger >> 18) & 1),
-		QUVTI: uint8((trigger >> 19) & 1),
-		EMRRE: uint8((trigger >> 20) & 1),
+		usars = append(usars, usar)
 	}
 
-	volumemeasurement := rp.VolMeasurement
-	usar.VolMeasurement = report.VolumeMeasurement{
-		Flag:           volumemeasurement.Flag,
-		TotalVolume:    uint64(volumemeasurement.TotalVolume / 8192.0),
-		UplinkVolume:   uint64(volumemeasurement.UplinkVolume / 8192.0),
-		DownlinkVolume: uint64(volumemeasurement.DownlinkVolume / 8192.0),
-		TotalPktNum:    volumemeasurement.TotalPktNum,
-		UplinkPktNum:   volumemeasurement.UplinkPktNum,
-		DownlinkPktNum: volumemeasurement.DownlinkPktNum,
-	}
-
-	return usar, err
+	return usars, err
 }
 
 func (g *Gtp5g) CreateBAR(lSeid uint64, req *ie.IE) error {
@@ -1418,15 +1424,21 @@ func (g *Gtp5g) PeriodReportServer(wg *sync.WaitGroup) error {
 					case <-timer.C:
 						wg.Add(1)
 
-						usar, err := g.GetReport(lSeid, id)
+						usars, err := g.GetReport(lSeid, id)
 						if err != nil {
 							g.log.Errorf("Est GetReport error: %+v", err)
 						}
-						usar.USARTrigger.PERIO = 1
+
+						var rs []report.Report
+
+						for _, r := range usars {
+							r.USARTrigger.PERIO = 1
+							rs = append(rs, r)
+						}
 
 						g.bs.SendReport(report.SessReport{
 							SEID:    lSeid,
-							Reports: []report.Report{*usar},
+							Reports: rs,
 						})
 					case <-g.EndPERIO[lSeid][id]:
 						g.TimerList[lSeid][id].Stop()
@@ -1443,57 +1455,57 @@ func (g *Gtp5g) PeriodReportServer(wg *sync.WaitGroup) error {
 	return nil
 }
 
-func (g *Gtp5g) GetReport(lSeid uint64, id uint32) (*report.USAReport, error) {
-	var rp report.USAReport
-
+func (g *Gtp5g) GetReport(lSeid uint64, id uint32) ([]report.USAReport, error) {
 	oid := gtp5gnl.OID{lSeid, uint64(id)}
-	tr, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
+	reports, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
 
-	if tr != nil {
-		rp.URRID = tr.URRID
-		rp.QueryUrrRef = tr.QueryUrrRef
-
-		trigger := tr.USARTrigger
-		rp.USARTrigger = report.UsageReportTrigger{
-			PERIO: uint8(trigger & 1),
-			VOLTH: uint8((trigger >> 1) & 1),
-			TIMTH: uint8((trigger >> 2) & 1),
-			QUHTI: uint8((trigger >> 3) & 1),
-			START: uint8((trigger >> 4) & 1),
-			STOPT: uint8((trigger >> 5) & 1),
-			DROTH: uint8((trigger >> 6) & 1),
-			IMMER: uint8((trigger >> 7) & 1),
-			VOLQU: uint8((trigger >> 8) & 1),
-			TIMQU: uint8((trigger >> 9) & 1),
-			LIUSA: uint8((trigger >> 10) & 1),
-			TERMR: uint8((trigger >> 11) & 1),
-			MONIT: uint8((trigger >> 12) & 1),
-			ENVCL: uint8((trigger >> 13) & 1),
-			MACAR: uint8((trigger >> 14) & 1),
-			EVETH: uint8((trigger >> 15) & 1),
-			EVEQU: uint8((trigger >> 16) & 1),
-			TEBUR: uint8((trigger >> 17) & 1),
-			IPMJL: uint8((trigger >> 18) & 1),
-			QUVTI: uint8((trigger >> 19) & 1),
-			EMRRE: uint8((trigger >> 20) & 1),
+	var usars []report.USAReport
+	for _, r := range reports {
+		usar := report.USAReport{
+			URRID: r.URRID,
+			USARTrigger: report.UsageReportTrigger{
+				EVEQU: uint8((r.USARTrigger) & 1),
+				TEBUR: uint8((r.USARTrigger >> 1) & 1),
+				IPMJL: uint8((r.USARTrigger >> 2) & 1),
+				QUVTI: uint8((r.USARTrigger >> 3) & 1),
+				EMRRE: uint8((r.USARTrigger >> 4) & 1),
+				VOLQU: uint8((r.USARTrigger >> 8) & 1),
+				TIMQU: uint8((r.USARTrigger >> 9) & 1),
+				LIUSA: uint8((r.USARTrigger >> 10) & 1),
+				TERMR: uint8((r.USARTrigger >> 11) & 1),
+				MONIT: uint8((r.USARTrigger >> 12) & 1),
+				ENVCL: uint8((r.USARTrigger >> 13) & 1),
+				MACAR: uint8((r.USARTrigger >> 14) & 1),
+				EVETH: uint8((r.USARTrigger >> 15) & 1),
+				PERIO: uint8((r.USARTrigger >> 16) & 1),
+				VOLTH: uint8((r.USARTrigger >> 17) & 1),
+				TIMTH: uint8((r.USARTrigger >> 18) & 1),
+				QUHTI: uint8((r.USARTrigger >> 19) & 1),
+				START: uint8((r.USARTrigger >> 20) & 1),
+				STOPT: uint8((r.USARTrigger >> 21) & 1),
+				DROTH: uint8((r.USARTrigger >> 22) & 1),
+				IMMER: uint8((r.USARTrigger >> 23) & 1),
+			},
+			VolMeasure: report.VolumeMeasure{
+				DLNOP:          (r.VolMeasurement.Flag >> 5) & 1,
+				ULNOP:          (r.VolMeasurement.Flag >> 4) & 1,
+				TONOP:          (r.VolMeasurement.Flag >> 3) & 1,
+				DLVOL:          (r.VolMeasurement.Flag >> 2) & 1,
+				ULVOL:          (r.VolMeasurement.Flag >> 1) & 1,
+				TOVOL:          r.VolMeasurement.Flag & 1,
+				TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 8192.0),
+				UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 8192.0),
+				DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 8192.0),
+				TotalPktNum:    r.VolMeasurement.TotalPktNum,
+				UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+				DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+			},
+			QueryUrrRef: r.QueryUrrRef,
 		}
-
-		volumemeasurement := tr.VolMeasurement
-		rp.VolMeasurement = report.VolumeMeasurement{
-			Flag:           volumemeasurement.Flag,
-			TotalVolume:    uint64(volumemeasurement.TotalVolume / 8192.0),
-			UplinkVolume:   uint64(volumemeasurement.UplinkVolume / 8192.0),
-			DownlinkVolume: uint64(volumemeasurement.DownlinkVolume / 8192.0),
-			TotalPktNum:    volumemeasurement.TotalPktNum,
-			UplinkPktNum:   volumemeasurement.UplinkPktNum,
-			DownlinkPktNum: volumemeasurement.DownlinkPktNum,
-		}
-	} else {
-		logger.ReportLog.Warn("Failed to get periodic report seid(%s), urr(%s)", lSeid, id)
-
+		usars = append(usars, usar)
 	}
 
-	return &rp, err
+	return usars, err
 }
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {

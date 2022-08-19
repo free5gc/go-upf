@@ -201,13 +201,15 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 	}
 
-	var usars []*report.USAReport
+	var usars []report.USAReport
 	for _, i := range req.RemoveURR {
-		usar, err := sess.RemoveURR(i)
-		if err != nil {
-			sess.log.Errorf("Mod RemoveURR error: %+v", err)
+		rpts, err1 := sess.RemoveURR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod RemoveURR error: %+v", err1)
 		}
-		usars = append(usars, usar)
+		if len(rpts) > 0 {
+			usars = append(usars, rpts...)
+		}
 	}
 
 	if req.RemoveBAR != nil {
@@ -239,9 +241,12 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.UpdateURR {
-		err = sess.UpdateURR(i)
-		if err != nil {
-			sess.log.Errorf("Mod UpdateURR error: %+v", err)
+		rpts, err1 := sess.UpdateURR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod UpdateURR error: %+v", err1)
+		}
+		if len(rpts) > 0 {
+			usars = append(usars, rpts...)
 		}
 	}
 
@@ -267,25 +272,14 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
-
-	for _, usar := range usars {
-		tr := &usar.USARTrigger
-		vm := &usar.VolMeasurement
-
-		rsp.IEs = append(rsp.IEs,
-			ie.NewUsageReportWithinSessionReportRequest(
-				ie.NewURRID(usar.URRID),
-				ie.NewURSEQN(sess.URRURSEQN[usar.URRID]),
-				ie.NewUsageReportTrigger(
-					tr.PERIO|tr.VOLTH<<1|tr.TIMTH<<2|tr.QUHTI<<3|tr.START<<4|tr.STOPT<<5|tr.DROTH<<6|tr.IMMER<<7,
-					tr.VOLQU|tr.TIMQU<<1|tr.LIUSA<<2|tr.TERMR<<3|tr.MONIT<<4|tr.ENVCL<<5|tr.MACAR<<6|tr.EVETH<<7,
-					tr.EVEQU|tr.TEBUR<<1|tr.IPMJL<<2|tr.QUVTI<<3|tr.EMRRE<<4,
-				),
-				ie.NewVolumeMeasurement(vm.Flag, vm.TotalVolume, vm.UplinkVolume, vm.DownlinkVolume,
-					vm.TotalPktNum, vm.UplinkPktNum, vm.DownlinkPktNum),
-				// TODO:
+	for _, r := range usars {
+		r.URSEQN = sess.URRSeq(r.URRID)
+		rsp.UsageReport = append(rsp.UsageReport,
+			ie.NewUsageReportWithinSessionModificationResponse(
+				r.IEsWithinSessModRsp()...,
 			))
 	}
+
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)
@@ -300,7 +294,8 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 	// TODO: error response
 	s.log.Infoln("handleSessionDeletionRequest")
 
-	sess, err := s.lnode.Sess(req.SEID())
+	lSeid := req.SEID()
+	sess, err := s.lnode.Sess(lSeid)
 	if err != nil {
 		s.log.Errorf("handleSessionDeletionRequest: %v", err)
 		rsp := message.NewSessionDeletionResponse(
@@ -321,7 +316,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		return
 	}
 
-	usars := sess.rnode.DeleteSess(req.SEID())
+	usars := sess.rnode.DeleteSess(lSeid)
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -331,24 +326,14 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
-
-	for _, usar := range usars {
-		tr := &usar.USARTrigger
-		vm := &usar.VolMeasurement
-
-		rsp.IEs = append(rsp.IEs, ie.NewUsageReportWithinSessionReportRequest(
-			ie.NewURRID(usar.URRID),
-			ie.NewURSEQN(sess.URRURSEQN[usar.URRID]),
-			ie.NewUsageReportTrigger(
-				tr.PERIO|tr.VOLTH<<1|tr.TIMTH<<2|tr.QUHTI<<3|tr.START<<4|tr.STOPT<<5|tr.DROTH<<6|tr.IMMER<<7,
-				tr.VOLQU|tr.TIMQU<<1|tr.LIUSA<<2|tr.TERMR<<3|tr.MONIT<<4|tr.ENVCL<<5|tr.MACAR<<6|tr.EVETH<<7,
-				tr.EVEQU|tr.TEBUR<<1|tr.IPMJL<<2|tr.QUVTI<<3|tr.EMRRE<<4,
-			),
-			ie.NewVolumeMeasurement(vm.Flag, vm.TotalVolume, vm.UplinkVolume, vm.DownlinkVolume,
-				vm.TotalPktNum, vm.UplinkPktNum, vm.DownlinkPktNum),
-			// TODO:
-		))
+	for _, r := range usars {
+		r.URSEQN = sess.URRSeq(r.URRID)
+		rsp.UsageReport = append(rsp.UsageReport,
+			ie.NewUsageReportWithinSessionDeletionResponse(
+				r.IEsWithinSessDelRsp()...,
+			))
 	}
+
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
 		s.log.Errorln(err)
