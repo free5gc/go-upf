@@ -188,13 +188,27 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 }
 
 func (s *Sess) UpdateURR(req *ie.IE) ([]report.USAReport, error) {
-	return s.rnode.driver.UpdateURR(s.LocalID, req)
+	usars, err := s.rnode.driver.UpdateURR(s.LocalID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// assign URSEQN
+	for _, r := range usars {
+		r.URSEQN = s.URRSeq(r.URRID)
+	}
+	return usars, nil
 }
 
 func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 	usars, err := s.rnode.driver.RemoveURR(s.LocalID, req)
 	if err != nil {
 		return nil, err
+	}
+
+	// assign URSEQN before deleting URR
+	for _, r := range usars {
+		r.URSEQN = s.URRSeq(r.URRID)
 	}
 
 	id, err := req.URRID()
