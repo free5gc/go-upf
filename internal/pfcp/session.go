@@ -273,7 +273,6 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 	for _, r := range usars {
-		r.URSEQN = sess.URRSeq(r.URRID)
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionModificationResponse(
 				r.IEsWithinSessModRsp()...,
@@ -327,7 +326,6 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 	for _, r := range usars {
-		r.URSEQN = sess.URRSeq(r.URRID)
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionDeletionResponse(
 				r.IEsWithinSessDelRsp()...,
