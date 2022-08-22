@@ -194,8 +194,8 @@ func (s *Sess) UpdateURR(req *ie.IE) ([]report.USAReport, error) {
 	}
 
 	// assign URSEQN
-	for _, r := range usars {
-		r.URSEQN = s.URRSeq(r.URRID)
+	for i := range usars {
+		usars[i].URSEQN = s.URRSeq(usars[i].URRID)
 	}
 	return usars, nil
 }
@@ -207,8 +207,8 @@ func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 	}
 
 	// assign URSEQN before deleting URR
-	for _, r := range usars {
-		r.URSEQN = s.URRSeq(r.URRID)
+	for i := range usars {
+		usars[i].URSEQN = s.URRSeq(usars[i].URRID)
 	}
 
 	id, err := req.URRID()
