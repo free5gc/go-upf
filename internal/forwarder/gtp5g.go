@@ -1041,7 +1041,7 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 		Value: nl.AttrU8(v.Flags),
 	})
 	if v.HasTOVOL() {
-		v.TotalVolume = uint64(v.TotalVolume / 8192.0)
+		v.TotalVolume = uint64(v.TotalVolume * 8192.0)
 
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_TOVOL,
@@ -1049,7 +1049,7 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 		})
 	}
 	if v.HasULVOL() {
-		v.UplinkVolume = uint64(v.UplinkVolume / 8192.0)
+		v.UplinkVolume = uint64(v.UplinkVolume * 8192.0)
 
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_UVOL,
@@ -1057,7 +1057,7 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 		})
 	}
 	if v.HasDLVOL() {
-		v.DownlinkVolume = uint64(v.DownlinkVolume / 8192.0)
+		v.DownlinkVolume = uint64(v.DownlinkVolume * 8192.0)
 
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_DVOL,
