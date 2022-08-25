@@ -26,6 +26,7 @@ import (
 const (
 	expectedGtp5gVersion string = "0.6.5"
 	SOCKPATH             string = "/tmp/free5gc_unix_sock"
+	PERIO_TRIGGER        uint16 = 256
 )
 
 type Gtp5g struct {
@@ -1103,7 +1104,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 				Value: nl.AttrU64(v),
 			})
 
-			if v&256 == 256 {
+			if v&PERIO_TRIGGER == PERIO_TRIGGER {
 				g.AddPeriodReportTimer(lSeid, req)
 			}
 
