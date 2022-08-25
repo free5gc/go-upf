@@ -11,12 +11,11 @@ import (
 )
 
 var (
-	log       *logrus.Logger
-	MainLog   *logrus.Entry
-	CfgLog    *logrus.Entry
-	PfcpLog   *logrus.Entry
-	BuffLog   *logrus.Entry
-	ReportLog *logrus.Entry
+	log     *logrus.Logger
+	MainLog *logrus.Entry
+	CfgLog  *logrus.Entry
+	PfcpLog *logrus.Entry
+	BuffLog *logrus.Entry
 
 	FwderLog *logrus.Entry
 )
@@ -52,7 +51,6 @@ func init() {
 	CfgLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Cfg"})
 	PfcpLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Pfcp"})
 	BuffLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Buff"})
-	ReportLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Report"})
 
 	FwderLog = log.WithFields(logrus.Fields{"component": "UPF"})
 }
