@@ -16,6 +16,11 @@ type Server struct {
 	handler report.Handler
 }
 
+const (
+	TYPE_URR_REPORT uint8 = 1
+	TYPE_BUFFER     uint8 = 2
+)
+
 func OpenServer(wg *sync.WaitGroup, addr string) (*Server, error) {
 	s := new(Server)
 
@@ -76,7 +81,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if s.handler == nil {
 			continue
 		}
-		if msgtype == 1 {
+		if msgtype == TYPE_BUFFER {
 			dldr := report.DLDReport{
 				PDRID:  pdrid,
 				Action: action,
@@ -88,7 +93,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					Reports: []report.Report{dldr},
 				},
 			)
-		} else if msgtype == 2 {
+		} else if msgtype == TYPE_URR_REPORT {
 
 			var usars []report.Report
 			for _, usar := range reports {
@@ -119,7 +124,7 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 	seid := *(*uint64)(unsafe.Pointer(&b[off]))
 	off += 8
 
-	if msgtype == 2 {
+	if msgtype == TYPE_URR_REPORT {
 		report_num := int(*(*uint16)(unsafe.Pointer(&b[off])))
 		off += 2
 		multiusar := []report.USAReport{}
@@ -185,7 +190,7 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 			multiusar = append(multiusar, usar)
 		}
 		return msgtype, seid, 0, 0, nil, multiusar, nil
-	} else if msgtype == 1 {
+	} else if msgtype == TYPE_BUFFER {
 		pdrid := *(*uint16)(unsafe.Pointer(&b[off]))
 		off += 2
 		action := *(*uint16)(unsafe.Pointer(&b[off]))
