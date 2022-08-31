@@ -1,10 +1,11 @@
 package factory
 
 import (
-	"fmt"
 	"io/ioutil"
+	"net"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 
 	"github.com/free5gc/go-upf/internal/logger"
@@ -18,11 +19,11 @@ func InitConfigFactory(f string, cfg *Config) error {
 	}
 
 	if content, err := ioutil.ReadFile(f); err != nil {
-		return fmt.Errorf("[Factory] %+v", err)
+		return errors.Errorf("[Factory] %+v", err)
 	} else {
 		logger.CfgLog.Infof("Read config from [%s]", f)
 		if yamlErr := yaml.Unmarshal(content, cfg); yamlErr != nil {
-			return fmt.Errorf("[Factory] %+v", yamlErr)
+			return errors.Errorf("[Factory] %+v", yamlErr)
 		}
 	}
 
@@ -33,7 +34,7 @@ func ReadConfig(cfgPath string) (*Config, error) {
 	cfg := &Config{}
 	err := InitConfigFactory(cfgPath, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("ReadConfig [%s] Error: %+v", cfgPath, err)
+		return nil, errors.Errorf("ReadConfig [%s] Error: %+v", cfgPath, err)
 	}
 
 	govalidator.TagMap["cidr"] = govalidator.Validator(func(str string) bool {
@@ -43,6 +44,11 @@ func ReadConfig(cfgPath string) (*Config, error) {
 	if err != nil {
 		logger.CfgLog.Errorf("[-- PLEASE REFER TO SAMPLE CONFIG FILE COMMENTS --]")
 		return nil, err
+	}
+
+	_, err = net.ResolveIPAddr("ip4", cfg.Pfcp.NodeID)
+	if err != nil {
+		return nil, errors.Errorf("cfg.Pfcp.NodeID[%s] can't be resolved", cfg.Pfcp.NodeID)
 	}
 
 	cfg.Print()
