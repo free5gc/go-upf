@@ -1005,21 +1005,21 @@ func (g *Gtp5g) newVolumeThreshold(i *ie.IE) (nl.AttrList, error) {
 		Value: nl.AttrU8(v.Flags),
 	})
 	if v.HasTOVOL() {
-		v.TotalVolume = uint64(v.TotalVolume * 8192)
+		v.TotalVolume = uint64(v.TotalVolume * 1024)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_TOVOL,
 			Value: nl.AttrU64(v.TotalVolume),
 		})
 	}
 	if v.HasULVOL() {
-		v.UplinkVolume = uint64(v.UplinkVolume * 8192)
+		v.UplinkVolume = uint64(v.UplinkVolume * 1024)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_UVOL,
 			Value: nl.AttrU64(v.UplinkVolume),
 		})
 	}
 	if v.HasDLVOL() {
-		v.DownlinkVolume = uint64(v.DownlinkVolume * 8192)
+		v.DownlinkVolume = uint64(v.DownlinkVolume * 1024)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_DVOL,
 			Value: nl.AttrU64(v.DownlinkVolume),
@@ -1042,7 +1042,7 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 		Value: nl.AttrU8(v.Flags),
 	})
 	if v.HasTOVOL() {
-		v.TotalVolume = uint64(v.TotalVolume * 8192.0)
+		v.TotalVolume = uint64(v.TotalVolume * 1024.0)
 
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_TOVOL,
@@ -1050,7 +1050,7 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 		})
 	}
 	if v.HasULVOL() {
-		v.UplinkVolume = uint64(v.UplinkVolume * 8192.0)
+		v.UplinkVolume = uint64(v.UplinkVolume * 1024.0)
 
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_UVOL,
@@ -1058,7 +1058,7 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 		})
 	}
 	if v.HasDLVOL() {
-		v.DownlinkVolume = uint64(v.DownlinkVolume * 8192.0)
+		v.DownlinkVolume = uint64(v.DownlinkVolume * 1024.0)
 
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_DVOL,
@@ -1287,9 +1287,9 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 				DLVOL:          (r.VolMeasurement.Flag >> 2) & 1,
 				ULVOL:          (r.VolMeasurement.Flag >> 1) & 1,
 				TOVOL:          r.VolMeasurement.Flag & 1,
-				TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 8192.0),
-				UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 8192.0),
-				DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 8192.0),
+				TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 1024.0),
+				UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 1024.0),
+				DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 1024.0),
 				TotalPktNum:    r.VolMeasurement.TotalPktNum,
 				UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
 				DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
@@ -1494,9 +1494,9 @@ func (g *Gtp5g) GetReport(lSeid uint64, id uint32) ([]report.USAReport, error) {
 				DLVOL:          (r.VolMeasurement.Flag >> 2) & 1,
 				ULVOL:          (r.VolMeasurement.Flag >> 1) & 1,
 				TOVOL:          r.VolMeasurement.Flag & 1,
-				TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 8192.0),
-				UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 8192.0),
-				DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 8192.0),
+				TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 1024.0),
+				UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 1024.0),
+				DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 1024.0),
 				TotalPktNum:    r.VolMeasurement.TotalPktNum,
 				UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
 				DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,

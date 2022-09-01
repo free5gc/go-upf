@@ -17,8 +17,8 @@ type Server struct {
 }
 
 const (
-	TYPE_URR_REPORT uint8 = 1
-	TYPE_BUFFER     uint8 = 2
+	TYPE_BUFFER     uint8 = 1
+	TYPE_URR_REPORT uint8 = 2
 )
 
 func OpenServer(wg *sync.WaitGroup, addr string) (*Server, error) {
@@ -172,11 +172,11 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 				TOVOL: v & 1,
 			}
 			off += 1
-			usar.VolMeasure.TotalVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
+			usar.VolMeasure.TotalVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 1024.0)
 			off += 8
-			usar.VolMeasure.UplinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
+			usar.VolMeasure.UplinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 1024.0)
 			off += 8
-			usar.VolMeasure.DownlinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 8192.0)
+			usar.VolMeasure.DownlinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 1024.0)
 			off += 8
 			usar.VolMeasure.TotalPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
