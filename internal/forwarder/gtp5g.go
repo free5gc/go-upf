@@ -1233,9 +1233,61 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 	}
 
 	oid := gtp5gnl.OID{lSeid, urrid}
-	// TODO: return USAReport
-	err = gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
-	return nil, err
+
+	reports, err := gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var usars []report.USAReport
+	for _, r := range reports {
+		usar := report.USAReport{
+			URRID: r.URRID,
+			USARTrigger: report.UsageReportTrigger{
+				EVEQU: uint8((r.USARTrigger) & 1),
+				TEBUR: uint8((r.USARTrigger >> 1) & 1),
+				IPMJL: uint8((r.USARTrigger >> 2) & 1),
+				QUVTI: uint8((r.USARTrigger >> 3) & 1),
+				EMRRE: uint8((r.USARTrigger >> 4) & 1),
+				VOLQU: uint8((r.USARTrigger >> 8) & 1),
+				TIMQU: uint8((r.USARTrigger >> 9) & 1),
+				LIUSA: uint8((r.USARTrigger >> 10) & 1),
+				TERMR: uint8((r.USARTrigger >> 11) & 1),
+				MONIT: uint8((r.USARTrigger >> 12) & 1),
+				ENVCL: uint8((r.USARTrigger >> 13) & 1),
+				MACAR: uint8((r.USARTrigger >> 14) & 1),
+				EVETH: uint8((r.USARTrigger >> 15) & 1),
+				PERIO: uint8((r.USARTrigger >> 16) & 1),
+				VOLTH: uint8((r.USARTrigger >> 17) & 1),
+				TIMTH: uint8((r.USARTrigger >> 18) & 1),
+				QUHTI: uint8((r.USARTrigger >> 19) & 1),
+				START: uint8((r.USARTrigger >> 20) & 1),
+				STOPT: uint8((r.USARTrigger >> 21) & 1),
+				DROTH: uint8((r.USARTrigger >> 22) & 1),
+				IMMER: uint8((r.USARTrigger >> 23) & 1),
+			},
+			VolMeasure: report.VolumeMeasure{
+				DLNOP:          (r.VolMeasurement.Flag >> 5) & 1,
+				ULNOP:          (r.VolMeasurement.Flag >> 4) & 1,
+				TONOP:          (r.VolMeasurement.Flag >> 3) & 1,
+				DLVOL:          (r.VolMeasurement.Flag >> 2) & 1,
+				ULVOL:          (r.VolMeasurement.Flag >> 1) & 1,
+				TOVOL:          r.VolMeasurement.Flag & 1,
+				TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 1024.0),
+				UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 1024.0),
+				DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 1024.0),
+				TotalPktNum:    r.VolMeasurement.TotalPktNum,
+				UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+				DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+			},
+			QueryUrrRef: r.QueryUrrRef,
+		}
+
+		usars = append(usars, usar)
+	}
+
+	return usars, err
 }
 
 func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) {
