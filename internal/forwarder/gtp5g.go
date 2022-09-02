@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	expectedGtp5gVersion string = "0.6.5"
+	expectedGtp5gVersion string = "0.6.6"
 	SOCKPATH             string = "/tmp/free5gc_unix_sock"
 )
 
