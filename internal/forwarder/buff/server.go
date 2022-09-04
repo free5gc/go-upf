@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/free5gc/go-upf/internal/logger"
@@ -199,6 +200,14 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 			off += 8
 			usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))
 			off += 4
+
+			v := (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.StartTime = time.Unix(0, int64(v))
+			off += 8
+
+			v = (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.EndTime = time.Unix(0, int64(v))
+			off += 8
 
 			multiusar = append(multiusar, usar)
 		}

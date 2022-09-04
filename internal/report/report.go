@@ -59,6 +59,8 @@ type USAReport struct {
 	VolMeasure  VolumeMeasure
 	MeasureRpt  MeasureReport
 	QueryUrrRef uint32
+	StartTime   time.Time
+	EndTime     time.Time
 }
 
 func (r USAReport) Type() ReportType {
@@ -71,6 +73,8 @@ func (r USAReport) IEsWithinSessReportReq() []*ie.IE {
 		ie.NewURSEQN(r.URSEQN),
 		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
 		r.VolMeasure.IE(),
+		ie.NewStartTime(r.StartTime),
+		ie.NewEndTime(r.EndTime),
 	}
 	if r.MeasureRpt != nil {
 		ies = append(ies, r.MeasureRpt.IE())
@@ -84,6 +88,8 @@ func (r USAReport) IEsWithinSessModRsp() []*ie.IE {
 		ie.NewURSEQN(r.URSEQN),
 		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
 		r.VolMeasure.IE(),
+		ie.NewStartTime(r.StartTime),
+		ie.NewEndTime(r.EndTime),
 	}
 	if r.MeasureRpt != nil {
 		ies = append(ies, r.MeasureRpt.IE())
@@ -97,6 +103,8 @@ func (r USAReport) IEsWithinSessDelRsp() []*ie.IE {
 		ie.NewURSEQN(r.URSEQN),
 		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
 		r.VolMeasure.IE(),
+		ie.NewStartTime(r.StartTime),
+		ie.NewEndTime(r.EndTime),
 	}
 	if r.MeasureRpt != nil {
 		ies = append(ies, r.MeasureRpt.IE())
