@@ -162,27 +162,40 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 				IMMER: uint8((r >> 23) & 1),
 			}
 			off += 8
-			v := (*(*uint8)(unsafe.Pointer(&b[off])))
-			usar.VolMeasure = report.VolumeMeasure{
-				DLNOP: (v >> 5) & 1,
-				ULNOP: (v >> 4) & 1,
-				TONOP: (v >> 3) & 1,
-				DLVOL: (v >> 2) & 1,
-				ULVOL: (v >> 1) & 1,
-				TOVOL: v & 1,
-			}
+
+			// For flag in report struct
+			// v := (*(*uint8)(unsafe.Pointer(&b[off])))
 			off += 1
 			usar.VolMeasure.TotalVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 1024.0)
+			if usar.VolMeasure.TotalVolume > 0 {
+				usar.VolMeasure.TOVOL = 1
+			}
 			off += 8
 			usar.VolMeasure.UplinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 1024.0)
+			if usar.VolMeasure.UplinkVolume > 0 {
+				usar.VolMeasure.ULVOL = 1
+			}
 			off += 8
 			usar.VolMeasure.DownlinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 1024.0)
+			if usar.VolMeasure.DownlinkVolume > 0 {
+				usar.VolMeasure.DLVOL = 1
+			}
 			off += 8
 			usar.VolMeasure.TotalPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+			if usar.VolMeasure.TotalPktNum > 0 {
+				usar.VolMeasure.TOVOL = 1
+			}
 			off += 8
 			usar.VolMeasure.UplinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+
+			if usar.VolMeasure.UplinkPktNum > 0 {
+				usar.VolMeasure.ULNOP = 1
+			}
 			off += 8
 			usar.VolMeasure.DownlinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+			if usar.VolMeasure.DownlinkPktNum > 0 {
+				usar.VolMeasure.DLNOP = 1
+			}
 			off += 8
 			usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))
 			off += 4
