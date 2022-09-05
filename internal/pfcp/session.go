@@ -203,12 +203,12 @@ func (s *PfcpServer) handleSessionModificationRequest(
 
 	var usars []report.USAReport
 	for _, i := range req.RemoveURR {
-		rpts, err1 := sess.RemoveURR(i)
+		usar, err1 := sess.RemoveURR(i)
 		if err1 != nil {
 			sess.log.Errorf("Mod RemoveURR error: %+v", err1)
 		}
-		if len(rpts) > 0 {
-			usars = append(usars, rpts...)
+		if usar != nil {
+			usars = append(usars, *usar)
 		}
 	}
 
@@ -241,12 +241,12 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.UpdateURR {
-		rpts, err1 := sess.UpdateURR(i)
+		usar, err1 := sess.UpdateURR(i)
 		if err1 != nil {
 			sess.log.Errorf("Mod UpdateURR error: %+v", err1)
 		}
-		if len(rpts) > 0 {
-			usars = append(usars, rpts...)
+		if usar != nil {
+			usars = append(usars, *usar)
 		}
 	}
 

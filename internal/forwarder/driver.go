@@ -29,8 +29,8 @@ type Driver interface {
 	RemoveQER(uint64, *ie.IE) error
 
 	CreateURR(uint64, *ie.IE) error
-	UpdateURR(uint64, *ie.IE) ([]report.USAReport, error)
-	RemoveURR(uint64, *ie.IE) ([]report.USAReport, error)
+	UpdateURR(uint64, *ie.IE) (*report.USAReport, error)
+	RemoveURR(uint64, *ie.IE) (*report.USAReport, error)
 
 	CreateBAR(uint64, *ie.IE) error
 	UpdateBAR(uint64, *ie.IE) error

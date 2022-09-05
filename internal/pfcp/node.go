@@ -48,16 +48,17 @@ func (s *Sess) Close() []report.USAReport {
 			return nil
 		}
 	}
+
 	var usars []report.USAReport
 	for id := range s.URRIDs {
 		i := ie.NewRemoveURR(ie.NewURRID(id))
-		rpts, err := s.RemoveURR(i)
+		r, err := s.RemoveURR(i)
 		if err != nil {
 			s.log.Errorf("Remove URR err: %+v", err)
 			return nil
 		}
-		if len(rpts) > 0 {
-			usars = append(usars, rpts...)
+		if r != nil {
+			usars = append(usars, *r)
 		}
 	}
 	for id := range s.BARIDs {
@@ -192,28 +193,29 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 	return nil
 }
 
-func (s *Sess) UpdateURR(req *ie.IE) ([]report.USAReport, error) {
-	usars, err := s.rnode.driver.UpdateURR(s.LocalID, req)
+func (s *Sess) UpdateURR(req *ie.IE) (*report.USAReport, error) {
+	usar, err := s.rnode.driver.UpdateURR(s.LocalID, req)
 	if err != nil {
 		return nil, err
 	}
 
 	// assign URSEQN
-	for i := range usars {
-		usars[i].URSEQN = s.URRSeq(usars[i].URRID)
+	if usar != nil {
+		usar.URSEQN = s.URRSeq(usar.URRID)
 	}
-	return usars, nil
+
+	return usar, nil
 }
 
-func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
-	usars, err := s.rnode.driver.RemoveURR(s.LocalID, req)
+func (s *Sess) RemoveURR(req *ie.IE) (*report.USAReport, error) {
+	usar, err := s.rnode.driver.RemoveURR(s.LocalID, req)
 	if err != nil {
 		return nil, err
 	}
 
 	// assign URSEQN before deleting URR
-	for i := range usars {
-		usars[i].URSEQN = s.URRSeq(usars[i].URRID)
+	if usar != nil {
+		usar.URSEQN = s.URRSeq(usar.URRID)
 	}
 
 	id, err := req.URRID()
@@ -222,7 +224,7 @@ func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 	}
 
 	delete(s.URRIDs, id)
-	return usars, nil
+	return usar, nil
 }
 
 func (s *Sess) CreateBAR(req *ie.IE) error {
