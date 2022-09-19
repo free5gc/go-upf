@@ -194,36 +194,46 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 }
 
 func (s *Sess) UpdateURR(req *ie.IE) (*report.USAReport, error) {
-	usar, err := s.rnode.driver.UpdateURR(s.LocalID, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// assign URSEQN
-	if usar != nil {
-		usar.URSEQN = s.URRSeq(usar.URRID)
-	}
-
-	return usar, nil
-}
-
-func (s *Sess) RemoveURR(req *ie.IE) (*report.USAReport, error) {
-	usar, err := s.rnode.driver.RemoveURR(s.LocalID, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// assign URSEQN before deleting URR
-	if usar != nil {
-		usar.URSEQN = s.URRSeq(usar.URRID)
-	}
-
 	id, err := req.URRID()
 	if err != nil {
 		return nil, err
 	}
 
+	usar, err := s.rnode.driver.UpdateURR(s.LocalID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if usar != nil {
+		if id != usar.URRID {
+			return nil, errors.Errorf("USAR URRID [%#x:%#x] not matched", id, usar.URRID)
+		}
+		// assign URSEQN
+		usar.URSEQN = s.URRSeq(usar.URRID)
+	}
+	return usar, nil
+}
+
+func (s *Sess) RemoveURR(req *ie.IE) (*report.USAReport, error) {
+	id, err := req.URRID()
+	if err != nil {
+		return nil, err
+	}
+
+	usar, err := s.rnode.driver.RemoveURR(s.LocalID, req)
+	if err != nil {
+		return nil, err
+	}
+
 	delete(s.URRIDs, id)
+
+	if usar != nil {
+		if id != usar.URRID {
+			return nil, errors.Errorf("USAR URRID [%#x:%#x] not matched", id, usar.URRID)
+		}
+		// assign URSEQN before deleting URR
+		usar.URSEQN = s.URRSeq(usar.URRID)
+	}
 	return usar, nil
 }
 
@@ -246,7 +256,6 @@ func (s *Sess) UpdateBAR(req *ie.IE) error {
 }
 
 func (s *Sess) RemoveBAR(req *ie.IE) error {
-
 	id, err := req.BARID()
 	if err != nil {
 		return err

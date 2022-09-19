@@ -136,12 +136,38 @@ type UsageReportTrigger struct {
 	EMRRE uint8
 }
 
-func (t UsageReportTrigger) ToOctects() []uint8 {
+func (t *UsageReportTrigger) ToOctects() []uint8 {
 	return []uint8{
 		t.PERIO | t.VOLTH<<1 | t.TIMTH<<2 | t.QUHTI<<3 | t.START<<4 | t.STOPT<<5 | t.DROTH<<6 | t.IMMER<<7,
 		t.VOLQU | t.TIMQU<<1 | t.LIUSA<<2 | t.TERMR<<3 | t.MONIT<<4 | t.ENVCL<<5 | t.MACAR<<6 | t.EVETH<<7,
 		t.EVEQU | t.TEBUR<<1 | t.IPMJL<<2 | t.QUVTI<<3 | t.EMRRE<<4,
 	}
+}
+
+func (t *UsageReportTrigger) Unmarshal(v uint32) {
+	t.EVEQU = uint8(v & 1)
+	t.TEBUR = uint8((v >> 1) & 1)
+	t.IPMJL = uint8((v >> 2) & 1)
+	t.QUVTI = uint8((v >> 3) & 1)
+	t.EMRRE = uint8((v >> 4) & 1)
+
+	t.VOLQU = uint8((v >> 8) & 1)
+	t.TIMQU = uint8((v >> 9) & 1)
+	t.LIUSA = uint8((v >> 10) & 1)
+	t.TERMR = uint8((v >> 11) & 1)
+	t.MONIT = uint8((v >> 12) & 1)
+	t.ENVCL = uint8((v >> 13) & 1)
+	t.MACAR = uint8((v >> 14) & 1)
+	t.EVETH = uint8((v >> 15) & 1)
+
+	t.PERIO = uint8((v >> 16) & 1)
+	t.VOLTH = uint8((v >> 17) & 1)
+	t.TIMTH = uint8((v >> 18) & 1)
+	t.QUHTI = uint8((v >> 19) & 1)
+	t.START = uint8((v >> 20) & 1)
+	t.STOPT = uint8((v >> 21) & 1)
+	t.DROTH = uint8((v >> 22) & 1)
+	t.IMMER = uint8((v >> 23) & 1)
 }
 
 type MeasureReport interface {
@@ -150,12 +176,7 @@ type MeasureReport interface {
 }
 
 type VolumeMeasure struct {
-	TOVOL          uint8
-	ULVOL          uint8
-	DLVOL          uint8
-	TONOP          uint8
-	ULNOP          uint8
-	DLNOP          uint8
+	Flags          uint8
 	TotalVolume    uint64
 	UplinkVolume   uint64
 	DownlinkVolume uint64
@@ -164,19 +185,13 @@ type VolumeMeasure struct {
 	DownlinkPktNum uint64
 }
 
-func (m VolumeMeasure) Type() MeasurementType {
+func (m *VolumeMeasure) Type() MeasurementType {
 	return MEASURE_VOLUM
 }
 
-func (m VolumeMeasure) IE() *ie.IE {
-	var flags uint8 = (m.DLNOP<<5 |
-		m.ULNOP<<4 |
-		m.TONOP<<3 |
-		m.DLVOL<<2 |
-		m.ULVOL<<1 |
-		m.TOVOL)
+func (m *VolumeMeasure) IE() *ie.IE {
 	return ie.NewVolumeMeasurement(
-		flags,
+		m.Flags,
 		m.TotalVolume,
 		m.UplinkVolume,
 		m.DownlinkVolume,
@@ -186,15 +201,66 @@ func (m VolumeMeasure) IE() *ie.IE {
 	)
 }
 
+const (
+	TOVOL uint8 = 1 << iota
+	ULVOL
+	DLVOL
+	TONOP
+	ULNOP
+	DLNOP
+)
+
+func (m *VolumeMeasure) SetTotalVolume(v uint64) {
+	if v > 0 {
+		m.Flags |= TOVOL
+		m.TotalVolume = v
+	}
+}
+
+func (m *VolumeMeasure) SetUplinkVolume(v uint64) {
+	if v > 0 {
+		m.Flags |= ULVOL
+		m.UplinkVolume = v
+	}
+}
+
+func (m *VolumeMeasure) SetDownlinkVolume(v uint64) {
+	if v > 0 {
+		m.Flags |= DLVOL
+		m.DownlinkVolume = v
+	}
+}
+
+func (m *VolumeMeasure) SetTotalPktNum(n uint64) {
+	if n > 0 {
+		m.Flags |= TONOP
+		m.TotalPktNum = n
+	}
+}
+
+func (m *VolumeMeasure) SetUplinkPktNum(n uint64) {
+	if n > 0 {
+		m.Flags |= ULNOP
+		m.UplinkPktNum = n
+	}
+}
+
+func (m *VolumeMeasure) SetDownlinkPktNum(n uint64) {
+	if n > 0 {
+		m.Flags |= DLNOP
+		m.DownlinkPktNum = n
+	}
+}
+
 type DurationMeasure struct {
 	DurationValue uint64
 }
 
-func (m DurationMeasure) Type() MeasurementType {
+func (m *DurationMeasure) Type() MeasurementType {
 	return MEASURE_DURAT
 }
 
-func (m DurationMeasure) IE() *ie.IE {
+func (m *DurationMeasure) IE() *ie.IE {
 	return ie.NewDurationMeasurement(time.Duration(m.DurationValue))
 }
 

@@ -3,9 +3,10 @@ package pfcp
 import (
 	"net"
 
-	"github.com/free5gc/go-upf/internal/report"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
+
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 func (s *PfcpServer) handleSessionEstablishmentRequest(
@@ -63,11 +64,9 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 
 	for _, i := range req.CreateURR {
 		err = sess.CreateURR(i)
-
 		if err != nil {
 			sess.log.Errorf("Est CreateURR error: %+v", err)
 		}
-
 	}
 
 	if req.CreateBAR != nil {
@@ -169,7 +168,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	for _, i := range req.CreateURR {
 		err = sess.CreateURR(i)
 		if err != nil {
-			sess.log.Errorf("Mod CreateURR error:  %+v", err)
+			sess.log.Errorf("Mod CreateURR error: %+v", err)
 		}
 	}
 
@@ -206,6 +205,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		usar, err1 := sess.RemoveURR(i)
 		if err1 != nil {
 			sess.log.Errorf("Mod RemoveURR error: %+v", err1)
+			continue
 		}
 		if usar != nil {
 			usars = append(usars, *usar)
@@ -244,6 +244,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		usar, err1 := sess.UpdateURR(i)
 		if err1 != nil {
 			sess.log.Errorf("Mod UpdateURR error: %+v", err1)
+			continue
 		}
 		if usar != nil {
 			usars = append(usars, *usar)

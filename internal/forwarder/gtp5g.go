@@ -16,7 +16,6 @@ import (
 
 	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder/buff"
-
 	"github.com/free5gc/go-upf/internal/gtpv1"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
@@ -48,7 +47,7 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 
 	mux, err := nl.NewMux()
 	if err != nil {
-		return nil, errors.Wrap(err, "new Mux ")
+		return nil, errors.Wrap(err, "new Mux")
 	}
 	wg.Add(1)
 	go func() {
@@ -95,7 +94,10 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 
 	g.TimerList = make(map[uint64](map[uint32]*time.Ticker))
 	g.EndPERIO = make(map[uint64]map[uint32]chan bool)
-	g.PeriodReportServer(wg)
+	err = g.PeriodReportServer(wg)
+	if err != nil {
+		return nil, errors.Wrap(err, "new period report server")
+	}
 	return g, nil
 }
 
@@ -120,7 +122,6 @@ func (g *Gtp5g) Close() {
 			}
 		}
 		g.TimerList = nil
-
 	}
 }
 
@@ -1005,21 +1006,18 @@ func (g *Gtp5g) newVolumeThreshold(i *ie.IE) (nl.AttrList, error) {
 		Value: nl.AttrU8(v.Flags),
 	})
 	if v.HasTOVOL() {
-		v.TotalVolume = uint64(v.TotalVolume * 1024)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_TOVOL,
 			Value: nl.AttrU64(v.TotalVolume),
 		})
 	}
 	if v.HasULVOL() {
-		v.UplinkVolume = uint64(v.UplinkVolume * 1024)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_UVOL,
 			Value: nl.AttrU64(v.UplinkVolume),
 		})
 	}
 	if v.HasDLVOL() {
-		v.DownlinkVolume = uint64(v.DownlinkVolume * 1024)
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_THRESHOLD_DVOL,
 			Value: nl.AttrU64(v.DownlinkVolume),
@@ -1042,24 +1040,18 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 		Value: nl.AttrU8(v.Flags),
 	})
 	if v.HasTOVOL() {
-		v.TotalVolume = uint64(v.TotalVolume * 1024.0)
-
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_TOVOL,
 			Value: nl.AttrU64(v.TotalVolume),
 		})
 	}
 	if v.HasULVOL() {
-		v.UplinkVolume = uint64(v.UplinkVolume * 1024.0)
-
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_UVOL,
 			Value: nl.AttrU64(v.UplinkVolume),
 		})
 	}
 	if v.HasDLVOL() {
-		v.DownlinkVolume = uint64(v.DownlinkVolume * 1024.0)
-
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.URR_VOLUME_QUOTA_DVOL,
 			Value: nl.AttrU64(v.DownlinkVolume),
@@ -1105,9 +1097,11 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 			})
 
 			if v&PERIO_TRIGGER == PERIO_TRIGGER {
-				g.AddPeriodReportTimer(lSeid, req)
+				err = g.AddPeriodReportTimer(lSeid, req)
+				if err != nil {
+					return err
+				}
 			}
-
 		case ie.MeasurementPeriod:
 			v, err := i.MeasurementPeriod()
 			if err != nil {
@@ -1118,7 +1112,6 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 				Type:  gtp5gnl.URR_MEASUREMENT_PERIOD,
 				Value: nl.AttrU64(v),
 			})
-
 		case ie.MeasurementInformation:
 			v, err := i.MeasurementInformation()
 			if err != nil {
@@ -1128,7 +1121,6 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 				Type:  gtp5gnl.URR_MEASUREMENT_INFO,
 				Value: nl.AttrU64(v),
 			})
-
 		case ie.VolumeThreshold:
 			v, err := g.newVolumeThreshold(i)
 			if err != nil {
@@ -1138,7 +1130,6 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 				Type:  gtp5gnl.URR_VOLUME_THRESHOLD,
 				Value: v,
 			})
-
 		case ie.VolumeQuota:
 			v, err := g.newVolumeQuota(i)
 			if err != nil {
@@ -1210,18 +1201,17 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 				Value: nl.AttrU64(v),
 			})
 		case ie.VolumeThreshold:
-			v, err := g.newVolumeThreshold(i)
-			if err != nil {
+			v, err1 := g.newVolumeThreshold(i)
+			if err1 != nil {
 				break
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_VOLUME_THRESHOLD,
 				Value: v,
 			})
-
 		case ie.VolumeQuota:
-			v, err := g.newVolumeQuota(i)
-			if err != nil {
+			v, err1 := g.newVolumeQuota(i)
+			if err1 != nil {
 				break
 			}
 			attrs = append(attrs, nl.Attr{
@@ -1243,49 +1233,20 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	}
 
 	usar := &report.USAReport{
-		URRID: r.URRID,
-		USARTrigger: report.UsageReportTrigger{
-			EVEQU: uint8((r.USARTrigger) & 1),
-			TEBUR: uint8((r.USARTrigger >> 1) & 1),
-			IPMJL: uint8((r.USARTrigger >> 2) & 1),
-			QUVTI: uint8((r.USARTrigger >> 3) & 1),
-			EMRRE: uint8((r.USARTrigger >> 4) & 1),
-			VOLQU: uint8((r.USARTrigger >> 8) & 1),
-			TIMQU: uint8((r.USARTrigger >> 9) & 1),
-			LIUSA: uint8((r.USARTrigger >> 10) & 1),
-			TERMR: uint8((r.USARTrigger >> 11) & 1),
-			MONIT: uint8((r.USARTrigger >> 12) & 1),
-			ENVCL: uint8((r.USARTrigger >> 13) & 1),
-			MACAR: uint8((r.USARTrigger >> 14) & 1),
-			EVETH: uint8((r.USARTrigger >> 15) & 1),
-			PERIO: uint8((r.USARTrigger >> 16) & 1),
-			VOLTH: uint8((r.USARTrigger >> 17) & 1),
-			TIMTH: uint8((r.USARTrigger >> 18) & 1),
-			QUHTI: uint8((r.USARTrigger >> 19) & 1),
-			START: uint8((r.USARTrigger >> 20) & 1),
-			STOPT: uint8((r.USARTrigger >> 21) & 1),
-			DROTH: uint8((r.USARTrigger >> 22) & 1),
-			IMMER: uint8((r.USARTrigger >> 23) & 1),
-		},
-		VolMeasure: report.VolumeMeasure{
-			DLNOP:          (r.VolMeasurement.Flag >> 5) & 1,
-			ULNOP:          (r.VolMeasurement.Flag >> 4) & 1,
-			TONOP:          (r.VolMeasurement.Flag >> 3) & 1,
-			DLVOL:          (r.VolMeasurement.Flag >> 2) & 1,
-			ULVOL:          (r.VolMeasurement.Flag >> 1) & 1,
-			TOVOL:          r.VolMeasurement.Flag & 1,
-			TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 1024.0),
-			UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 1024.0),
-			DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 1024.0),
-			TotalPktNum:    r.VolMeasurement.TotalPktNum,
-			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-		},
+		URRID:       r.URRID,
 		QueryUrrRef: r.QueryUrrRef,
 		StartTime:   r.StartTime,
 		EndTime:     r.EndTime,
 	}
-	return usar, nil
+	usar.USARTrigger.Unmarshal(r.USARTrigger)
+	usar.VolMeasure.SetTotalVolume(r.VolMeasurement.TotalVolume)
+	usar.VolMeasure.SetUplinkVolume(r.VolMeasurement.UplinkVolume)
+	usar.VolMeasure.SetDownlinkVolume(r.VolMeasurement.DownlinkVolume)
+	usar.VolMeasure.SetTotalPktNum(r.VolMeasurement.TotalPktNum)
+	usar.VolMeasure.SetUplinkPktNum(r.VolMeasurement.UplinkPktNum)
+	usar.VolMeasure.SetDownlinkPktNum(r.VolMeasurement.DownlinkPktNum)
+
+	return usar, err
 }
 
 func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
@@ -1306,49 +1267,20 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	}
 
 	usar := &report.USAReport{
-		URRID: r.URRID,
-		USARTrigger: report.UsageReportTrigger{
-			EVEQU: uint8((r.USARTrigger) & 1),
-			TEBUR: uint8((r.USARTrigger >> 1) & 1),
-			IPMJL: uint8((r.USARTrigger >> 2) & 1),
-			QUVTI: uint8((r.USARTrigger >> 3) & 1),
-			EMRRE: uint8((r.USARTrigger >> 4) & 1),
-			VOLQU: uint8((r.USARTrigger >> 8) & 1),
-			TIMQU: uint8((r.USARTrigger >> 9) & 1),
-			LIUSA: uint8((r.USARTrigger >> 10) & 1),
-			TERMR: uint8((r.USARTrigger >> 11) & 1),
-			MONIT: uint8((r.USARTrigger >> 12) & 1),
-			ENVCL: uint8((r.USARTrigger >> 13) & 1),
-			MACAR: uint8((r.USARTrigger >> 14) & 1),
-			EVETH: uint8((r.USARTrigger >> 15) & 1),
-			PERIO: uint8((r.USARTrigger >> 16) & 1),
-			VOLTH: uint8((r.USARTrigger >> 17) & 1),
-			TIMTH: uint8((r.USARTrigger >> 18) & 1),
-			QUHTI: uint8((r.USARTrigger >> 19) & 1),
-			START: uint8((r.USARTrigger >> 20) & 1),
-			STOPT: uint8((r.USARTrigger >> 21) & 1),
-			DROTH: uint8((r.USARTrigger >> 22) & 1),
-			IMMER: uint8((r.USARTrigger >> 23) & 1),
-		},
-		VolMeasure: report.VolumeMeasure{
-			DLNOP:          (r.VolMeasurement.Flag >> 5) & 1,
-			ULNOP:          (r.VolMeasurement.Flag >> 4) & 1,
-			TONOP:          (r.VolMeasurement.Flag >> 3) & 1,
-			DLVOL:          (r.VolMeasurement.Flag >> 2) & 1,
-			ULVOL:          (r.VolMeasurement.Flag >> 1) & 1,
-			TOVOL:          r.VolMeasurement.Flag & 1,
-			TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 1024.0),
-			UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 1024.0),
-			DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 1024.0),
-			TotalPktNum:    r.VolMeasurement.TotalPktNum,
-			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-		},
+		URRID:       r.URRID,
 		QueryUrrRef: r.QueryUrrRef,
 		StartTime:   r.StartTime,
 		EndTime:     r.EndTime,
 	}
-	return usar, nil
+	usar.USARTrigger.Unmarshal(r.USARTrigger)
+	usar.VolMeasure.SetTotalVolume(r.VolMeasurement.TotalVolume)
+	usar.VolMeasure.SetUplinkVolume(r.VolMeasurement.UplinkVolume)
+	usar.VolMeasure.SetDownlinkVolume(r.VolMeasurement.DownlinkVolume)
+	usar.VolMeasure.SetTotalPktNum(r.VolMeasurement.TotalPktNum)
+	usar.VolMeasure.SetUplinkPktNum(r.VolMeasurement.UplinkPktNum)
+	usar.VolMeasure.SetDownlinkPktNum(r.VolMeasurement.DownlinkPktNum)
+
+	return usar, err
 }
 
 func (g *Gtp5g) CreateBAR(lSeid uint64, req *ie.IE) error {
@@ -1471,13 +1403,16 @@ func (g *Gtp5g) PeriodReportServer(wg *sync.WaitGroup) error {
 				for id, timer := range sessTimerList {
 					select {
 					case <-timer.C:
-						wg.Add(1)
-
-						usar, err := g.GetReport(lSeid, id)
+						usar, err := g.GetUSAReport(lSeid, id)
 						if err != nil {
-							g.log.Errorf("Est GetReport error: %+v", err)
+							g.log.Warnf("GetUSAReport error: %+v", err)
+							break
 						}
 
+						if usar == nil {
+							g.log.Warnf("GetUSAReport report is nil")
+							break
+						}
 						usar.USARTrigger.PERIO = 1
 
 						g.bs.SendReport(report.SessReport{
@@ -1497,53 +1432,30 @@ func (g *Gtp5g) PeriodReportServer(wg *sync.WaitGroup) error {
 	return nil
 }
 
-func (g *Gtp5g) GetReport(lSeid uint64, id uint32) (*report.USAReport, error) {
+func (g *Gtp5g) GetUSAReport(lSeid uint64, id uint32) (*report.USAReport, error) {
 	oid := gtp5gnl.OID{lSeid, uint64(id)}
 	r, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
+	if err != nil {
+		return nil, err
+	}
+
+	if r == nil {
+		return nil, nil
+	}
 
 	usar := &report.USAReport{
-		URRID: r.URRID,
-		USARTrigger: report.UsageReportTrigger{
-			EVEQU: uint8((r.USARTrigger) & 1),
-			TEBUR: uint8((r.USARTrigger >> 1) & 1),
-			IPMJL: uint8((r.USARTrigger >> 2) & 1),
-			QUVTI: uint8((r.USARTrigger >> 3) & 1),
-			EMRRE: uint8((r.USARTrigger >> 4) & 1),
-			VOLQU: uint8((r.USARTrigger >> 8) & 1),
-			TIMQU: uint8((r.USARTrigger >> 9) & 1),
-			LIUSA: uint8((r.USARTrigger >> 10) & 1),
-			TERMR: uint8((r.USARTrigger >> 11) & 1),
-			MONIT: uint8((r.USARTrigger >> 12) & 1),
-			ENVCL: uint8((r.USARTrigger >> 13) & 1),
-			MACAR: uint8((r.USARTrigger >> 14) & 1),
-			EVETH: uint8((r.USARTrigger >> 15) & 1),
-			PERIO: uint8((r.USARTrigger >> 16) & 1),
-			VOLTH: uint8((r.USARTrigger >> 17) & 1),
-			TIMTH: uint8((r.USARTrigger >> 18) & 1),
-			QUHTI: uint8((r.USARTrigger >> 19) & 1),
-			START: uint8((r.USARTrigger >> 20) & 1),
-			STOPT: uint8((r.USARTrigger >> 21) & 1),
-			DROTH: uint8((r.USARTrigger >> 22) & 1),
-			IMMER: uint8((r.USARTrigger >> 23) & 1),
-		},
-		VolMeasure: report.VolumeMeasure{
-			DLNOP:          (r.VolMeasurement.Flag >> 5) & 1,
-			ULNOP:          (r.VolMeasurement.Flag >> 4) & 1,
-			TONOP:          (r.VolMeasurement.Flag >> 3) & 1,
-			DLVOL:          (r.VolMeasurement.Flag >> 2) & 1,
-			ULVOL:          (r.VolMeasurement.Flag >> 1) & 1,
-			TOVOL:          r.VolMeasurement.Flag & 1,
-			TotalVolume:    uint64(r.VolMeasurement.TotalVolume / 1024.0),
-			UplinkVolume:   uint64(r.VolMeasurement.UplinkVolume / 1024.0),
-			DownlinkVolume: uint64(r.VolMeasurement.DownlinkVolume / 1024.0),
-			TotalPktNum:    r.VolMeasurement.TotalPktNum,
-			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-		},
+		URRID:       r.URRID,
 		QueryUrrRef: r.QueryUrrRef,
 		StartTime:   r.StartTime,
 		EndTime:     r.EndTime,
 	}
+	usar.USARTrigger.Unmarshal(r.USARTrigger)
+	usar.VolMeasure.SetTotalVolume(r.VolMeasurement.TotalVolume)
+	usar.VolMeasure.SetUplinkVolume(r.VolMeasurement.UplinkVolume)
+	usar.VolMeasure.SetDownlinkVolume(r.VolMeasurement.DownlinkVolume)
+	usar.VolMeasure.SetTotalPktNum(r.VolMeasurement.TotalPktNum)
+	usar.VolMeasure.SetUplinkPktNum(r.VolMeasurement.UplinkPktNum)
+	usar.VolMeasure.SetDownlinkPktNum(r.VolMeasurement.DownlinkPktNum)
 
 	return usar, err
 }

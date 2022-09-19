@@ -54,9 +54,10 @@ func (s *Server) Close() {
 }
 
 func (s *Server) SendReport(sp report.SessReport) {
-	s.handler.NotifySessReport(
-		sp,
-	)
+	if s.handler == nil {
+		return
+	}
+	s.handler.NotifySessReport(sp)
 }
 
 func (s *Server) Handle(handler report.Handler) {
@@ -75,6 +76,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if err != nil {
 			break
 		}
+
 		msgtype, seid, pdrid, action, pkt, reports, err := s.decode(b[:n])
 		if err != nil {
 			continue
@@ -95,7 +97,6 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 				},
 			)
 		} else if msgtype == TYPE_URR_REPORT {
-
 			var usars []report.Report
 			for _, usar := range reports {
 				usars = append(usars, usar)
@@ -110,7 +111,6 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		} else {
 			logger.BuffLog.Warn("Unknow Report Type")
 		}
-
 	}
 }
 
@@ -128,7 +128,7 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 	if msgtype == TYPE_URR_REPORT {
 		report_num := int(*(*uint16)(unsafe.Pointer(&b[off])))
 		off += 2
-		multiusar := []report.USAReport{}
+		usars := []report.USAReport{}
 
 		for i := 0; i < report_num; i++ {
 			usar := report.USAReport{}
@@ -139,65 +139,25 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 			off += 4
 			r := (*(*uint64)(unsafe.Pointer(&b[off])))
 
-			usar.USARTrigger = report.UsageReportTrigger{
-				EVEQU: uint8((r) & 1),
-				TEBUR: uint8((r >> 1) & 1),
-				IPMJL: uint8((r >> 2) & 1),
-				QUVTI: uint8((r >> 3) & 1),
-				EMRRE: uint8((r >> 4) & 1),
-				VOLQU: uint8((r >> 8) & 1),
-				TIMQU: uint8((r >> 9) & 1),
-				LIUSA: uint8((r >> 10) & 1),
-				TERMR: uint8((r >> 11) & 1),
-				MONIT: uint8((r >> 12) & 1),
-				ENVCL: uint8((r >> 13) & 1),
-				MACAR: uint8((r >> 14) & 1),
-				EVETH: uint8((r >> 15) & 1),
-				PERIO: uint8((r >> 16) & 1),
-				VOLTH: uint8((r >> 17) & 1),
-				TIMTH: uint8((r >> 18) & 1),
-				QUHTI: uint8((r >> 19) & 1),
-				START: uint8((r >> 20) & 1),
-				STOPT: uint8((r >> 21) & 1),
-				DROTH: uint8((r >> 22) & 1),
-				IMMER: uint8((r >> 23) & 1),
-			}
+			usar.USARTrigger.Unmarshal(uint32(r))
 			off += 8
 
 			// For flag in report struct
 			// v := (*(*uint8)(unsafe.Pointer(&b[off])))
 			off += 1
-			usar.VolMeasure.TotalVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 1024.0)
-			if usar.VolMeasure.TotalVolume > 0 {
-				usar.VolMeasure.TOVOL = 1
-			}
+			usar.VolMeasure.SetTotalVolume(*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasure.UplinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 1024.0)
-			if usar.VolMeasure.UplinkVolume > 0 {
-				usar.VolMeasure.ULVOL = 1
-			}
+			usar.VolMeasure.SetUplinkVolume(*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasure.DownlinkVolume = uint64((*(*uint64)(unsafe.Pointer(&b[off]))) / 1024.0)
-			if usar.VolMeasure.DownlinkVolume > 0 {
-				usar.VolMeasure.DLVOL = 1
-			}
+			usar.VolMeasure.SetDownlinkVolume(*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasure.TotalPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
-			if usar.VolMeasure.TotalPktNum > 0 {
-				usar.VolMeasure.TOVOL = 1
-			}
+			usar.VolMeasure.SetTotalPktNum(*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasure.UplinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolMeasure.SetUplinkPktNum(*(*uint64)(unsafe.Pointer(&b[off])))
+			off += 8
+			usar.VolMeasure.SetDownlinkPktNum(*(*uint64)(unsafe.Pointer(&b[off])))
+			off += 8
 
-			if usar.VolMeasure.UplinkPktNum > 0 {
-				usar.VolMeasure.ULNOP = 1
-			}
-			off += 8
-			usar.VolMeasure.DownlinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
-			if usar.VolMeasure.DownlinkPktNum > 0 {
-				usar.VolMeasure.DLNOP = 1
-			}
-			off += 8
 			usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))
 			off += 4
 
@@ -209,9 +169,9 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 			usar.EndTime = time.Unix(0, int64(v))
 			off += 8
 
-			multiusar = append(multiusar, usar)
+			usars = append(usars, usar)
 		}
-		return msgtype, seid, 0, 0, nil, multiusar, nil
+		return msgtype, seid, 0, 0, nil, usars, nil
 	} else if msgtype == TYPE_BUFFER {
 		pdrid := *(*uint16)(unsafe.Pointer(&b[off]))
 		off += 2
