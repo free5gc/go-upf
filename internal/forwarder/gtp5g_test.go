@@ -8,8 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/wmnsk/go-pfcp/ie"
 
+	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
@@ -23,6 +25,15 @@ func Test_convertSlice(t *testing.T) {
 	})
 }
 
+type TestHandler struct{}
+
+func (th *TestHandler) NotifySessReport(sessRpt report.SessReport) {
+}
+
+func (th *TestHandler) PopBufPkt(lSeid uint64, pdrid uint16) ([]byte, bool) {
+	return nil, true
+}
+
 func TestGtp5g_CreateRules(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping testing in short mode")
@@ -34,6 +45,8 @@ func TestGtp5g_CreateRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer g.Close()
+
+	g.HandleReport(&TestHandler{})
 
 	lSeid := uint64(0)
 	t.Run("create rules", func(t *testing.T) {
@@ -75,13 +88,27 @@ func TestGtp5g_CreateRules(t *testing.T) {
 
 		urr := ie.NewCreateURR(
 			ie.NewURRID(1),
-			ie.NewMeasurementPeriod(10),
+			ie.NewMeasurementPeriod(1*time.Second),
 			ie.NewMeasurementMethod(0, 1, 0),
+			ie.NewReportingTriggers(PERIO_TRIGGER),
 			ie.NewMeasurementInformation(4),
 			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
 			ie.NewVolumeQuota(7, 40000, 50000, 60000),
 		)
+		err = g.CreateURR(lSeid, urr)
+		if err != nil {
+			t.Fatal(err)
+		}
 
+		urr = ie.NewCreateURR(
+			ie.NewURRID(2),
+			ie.NewMeasurementPeriod(1*time.Second),
+			ie.NewMeasurementMethod(0, 1, 0),
+			ie.NewReportingTriggers(PERIO_TRIGGER),
+			ie.NewMeasurementInformation(4),
+			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
+			ie.NewVolumeQuota(7, 40000, 50000, 60000),
+		)
 		err = g.CreateURR(lSeid, urr)
 		if err != nil {
 			t.Fatal(err)
@@ -112,6 +139,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewFARID(2),
 			ie.NewQERID(1),
 			ie.NewURRID(1),
+			ie.NewURRID(2),
 		)
 
 		err = g.CreatePDR(lSeid, pdr)
@@ -192,4 +220,18 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	})
 
 	time.Sleep(10 * time.Second)
+
+	t.Run("remove rules", func(t *testing.T) {
+		urr := ie.NewRemoveURR(
+			ie.NewURRID(1),
+		)
+
+		r, err1 := g.RemoveURR(lSeid, urr)
+		if err1 != nil {
+			t.Fatal(err1)
+		}
+
+		require.NotNil(t, r)
+		g.log.Infof("Receive final report form URR(%d)", r.URRID)
+	})
 }

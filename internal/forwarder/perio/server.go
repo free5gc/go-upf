@@ -1,0 +1,226 @@
+package perio
+
+import (
+	"sync"
+	"time"
+
+	"github.com/pkg/errors"
+
+	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/free5gc/go-upf/internal/report"
+)
+
+const (
+	EVENT_CHANNEL_LEN = 512
+)
+
+type EventType uint8
+
+const (
+	TYPE_ADD_PERIO_TIMER EventType = iota + 1
+	TYPE_DEL_PERIO_TIMER
+	TYPE_PERIO_TIMER_TIMEOUT
+	TYPE_SERVER_CLOSE
+)
+
+func (t EventType) String() string {
+	s := []string{
+		"", "TYPE_ADD_PERIO_TIMER", "TYPE_DEL_PERIO_TIMER",
+		"TYPE_PERIO_TIMER_TIMEOUT", "TYPE_SERVER_CLOSE",
+	}
+	return s[t]
+}
+
+type Event struct {
+	eType  EventType
+	lSeid  uint64
+	urrid  uint32
+	period time.Duration
+}
+
+type PERIOGroup struct {
+	urrids map[uint64]map[uint32]struct{}
+	period time.Duration
+	ticker *time.Ticker
+	stopCh chan struct{}
+}
+
+func (pg *PERIOGroup) newTicker(wg *sync.WaitGroup, evtCh chan Event) error {
+	if pg.ticker != nil {
+		return errors.Errorf("ticker not nil")
+	}
+
+	pg.ticker = time.NewTicker(pg.period)
+	pg.stopCh = make(chan struct{})
+
+	wg.Add(1)
+	go func(ticker *time.Ticker, period time.Duration, evtCh chan Event) {
+		defer func() {
+			ticker.Stop()
+			wg.Done()
+		}()
+
+		for {
+			select {
+			case <-ticker.C:
+				logger.PerioLog.Debugf("ticker[%v] timeout", period)
+				evtCh <- Event{
+					eType:  TYPE_PERIO_TIMER_TIMEOUT,
+					period: period,
+				}
+			case <-pg.stopCh:
+				logger.PerioLog.Infof("ticker[%v] Stopped", period)
+				return
+			}
+		}
+	}(pg.ticker, pg.period, evtCh)
+
+	return nil
+}
+
+func (pg *PERIOGroup) stopTicker() {
+	pg.stopCh <- struct{}{}
+	close(pg.stopCh)
+}
+
+type Server struct {
+	evtCh        chan Event
+	perioList    map[time.Duration]*PERIOGroup // key: period
+	handler      report.Handler
+	getUSAReport func(uint64, uint32) (*report.USAReport, error)
+}
+
+func OpenServer(wg *sync.WaitGroup) (*Server, error) {
+	s := &Server{
+		evtCh:     make(chan Event, EVENT_CHANNEL_LEN),
+		perioList: make(map[time.Duration]*PERIOGroup),
+	}
+
+	wg.Add(1)
+	go s.Serve(wg)
+	logger.PerioLog.Infof("perio server started")
+
+	return s, nil
+}
+
+func (s *Server) Close() {
+	s.evtCh <- Event{eType: TYPE_SERVER_CLOSE}
+}
+
+func (s *Server) Handle(
+	handler report.Handler,
+	getUSAReport func(uint64, uint32) (*report.USAReport, error),
+) {
+	s.handler = handler
+	s.getUSAReport = getUSAReport
+}
+
+func (s *Server) Serve(wg *sync.WaitGroup) {
+	defer func() {
+		logger.PerioLog.Infof("perio server stopped")
+		close(s.evtCh)
+		wg.Done()
+	}()
+
+	for e := range s.evtCh {
+		logger.PerioLog.Infof("recv event[%s][%+v]", e.eType, e)
+		switch e.eType {
+		case TYPE_ADD_PERIO_TIMER:
+			perioGroup, ok := s.perioList[e.period]
+			if !ok {
+				// New ticker if no this period ticker found
+				perioGroup = &PERIOGroup{
+					urrids: make(map[uint64]map[uint32]struct{}),
+					period: e.period,
+				}
+				err := perioGroup.newTicker(wg, s.evtCh)
+				if err != nil {
+					logger.PerioLog.Errorln(err)
+					continue
+				}
+				s.perioList[e.period] = perioGroup
+			}
+
+			urrids := perioGroup.urrids[e.lSeid]
+			if urrids == nil {
+				perioGroup.urrids[e.lSeid] = make(map[uint32]struct{})
+				perioGroup.urrids[e.lSeid][e.urrid] = struct{}{}
+			} else {
+				_, ok := perioGroup.urrids[e.lSeid][e.urrid]
+				if !ok {
+					perioGroup.urrids[e.lSeid][e.urrid] = struct{}{}
+				}
+			}
+		case TYPE_DEL_PERIO_TIMER:
+			for period, perioGroup := range s.perioList {
+				_, ok := perioGroup.urrids[e.lSeid][e.urrid]
+				if ok {
+					// Stop ticker if no more PERIO URR
+					delete(perioGroup.urrids[e.lSeid], e.urrid)
+					if len(perioGroup.urrids[e.lSeid]) == 0 {
+						delete(perioGroup.urrids, e.lSeid)
+						if len(perioGroup.urrids) == 0 {
+							perioGroup.stopTicker()
+						}
+						delete(s.perioList, period)
+					}
+					break
+				}
+			}
+		case TYPE_PERIO_TIMER_TIMEOUT:
+			perioGroup, ok := s.perioList[e.period]
+			if !ok {
+				logger.PerioLog.Warnf("no periodGroup found for period[%v]", e.period)
+				break
+			}
+
+			for lSeid, urrids := range perioGroup.urrids {
+				var rpts []report.Report
+				for id := range urrids {
+					usar, err := s.getUSAReport(lSeid, id)
+					if err != nil {
+						logger.PerioLog.Warnf("get USAReport[%#x:%#x] error: %v", lSeid, id, err)
+						break
+					}
+
+					if usar == nil {
+						logger.PerioLog.Warnf("USAReport[%#x:%#x] is nil", lSeid, id)
+						continue
+					}
+					usar.USARTrigger.PERIO = 1
+
+					rpts = append(rpts, *usar)
+				}
+
+				s.handler.NotifySessReport(
+					report.SessReport{
+						SEID:    lSeid,
+						Reports: rpts,
+					})
+			}
+		case TYPE_SERVER_CLOSE:
+			for period, perioGroup := range s.perioList {
+				perioGroup.stopTicker()
+				delete(s.perioList, period)
+			}
+			return
+		}
+	}
+}
+
+func (s *Server) AddPeriodReportTimer(lSeid uint64, urrid uint32, period time.Duration) {
+	s.evtCh <- Event{
+		eType:  TYPE_ADD_PERIO_TIMER,
+		lSeid:  lSeid,
+		urrid:  urrid,
+		period: period,
+	}
+}
+
+func (s *Server) DelPeriodReportTimer(lSeid uint64, urrid uint32) {
+	s.evtCh <- Event{
+		eType: TYPE_DEL_PERIO_TIMER,
+		lSeid: lSeid,
+		urrid: urrid,
+	}
+}

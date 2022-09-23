@@ -16,6 +16,7 @@ import (
 
 	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder/buff"
+	"github.com/free5gc/go-upf/internal/forwarder/perio"
 	"github.com/free5gc/go-upf/internal/gtpv1"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
@@ -25,7 +26,7 @@ import (
 const (
 	expectedGtp5gVersion string = "0.6.5"
 	SOCKPATH             string = "/tmp/free5gc_unix_sock"
-	PERIO_TRIGGER        uint16 = 256
+	PERIO_TRIGGER        uint16 = 1 << 8
 )
 
 type Gtp5g struct {
@@ -34,10 +35,8 @@ type Gtp5g struct {
 	conn   *nl.Conn
 	client *gtp5gnl.Client
 	bs     *buff.Server
+	ps     *perio.Server
 	log    *logrus.Entry
-
-	TimerList map[uint64](map[uint32]*time.Ticker)
-	EndPERIO  map[uint64](map[uint32]chan bool)
 }
 
 func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
@@ -92,12 +91,13 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	}
 	g.bs = bs
 
-	g.TimerList = make(map[uint64](map[uint32]*time.Ticker))
-	g.EndPERIO = make(map[uint64]map[uint32]chan bool)
-	err = g.PeriodReportServer(wg)
+	ps, err := perio.OpenServer(wg)
 	if err != nil {
-		return nil, errors.Wrap(err, "new period report server")
+		g.Close()
+		return nil, errors.Wrap(err, "open perio server")
 	}
+	g.ps = ps
+
 	return g, nil
 }
 
@@ -114,14 +114,8 @@ func (g *Gtp5g) Close() {
 	if g.bs != nil {
 		g.bs.Close()
 	}
-
-	if g.TimerList != nil {
-		for lSeid, sessTimerList := range g.TimerList {
-			for id := range sessTimerList {
-				g.TimerList[lSeid][id].Stop()
-			}
-		}
-		g.TimerList = nil
+	if g.ps != nil {
+		g.ps.Close()
 	}
 }
 
@@ -1062,7 +1056,10 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 }
 
 func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
-	var urrid uint64
+	var urrid uint32
+	var measureMethod uint8
+	var rptTriggers uint16
+	var measurePeriod time.Duration
 	var attrs []nl.Attr
 
 	ies, err := req.CreateURR()
@@ -1072,45 +1069,37 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 	for _, i := range ies {
 		switch i.Type {
 		case ie.URRID:
-			v, err := i.URRID()
+			urrid, err = i.URRID()
 			if err != nil {
 				return err
 			}
-			urrid = uint64(v)
 		case ie.MeasurementMethod:
-			v, err := i.MeasurementMethod()
+			measureMethod, err = i.MeasurementMethod()
 			if err != nil {
 				return err
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_METHOD,
-				Value: nl.AttrU64(v),
+				Value: nl.AttrU64(measureMethod),
 			})
 		case ie.ReportingTriggers:
-			v, err := i.ReportingTriggers()
+			rptTriggers, err = i.ReportingTriggers()
 			if err != nil {
 				return err
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
-				Value: nl.AttrU64(v),
+				Value: nl.AttrU64(rptTriggers),
 			})
-
-			if v&PERIO_TRIGGER == PERIO_TRIGGER {
-				err = g.AddPeriodReportTimer(lSeid, req)
-				if err != nil {
-					return err
-				}
-			}
 		case ie.MeasurementPeriod:
-			v, err := i.MeasurementPeriod()
+			measurePeriod, err = i.MeasurementPeriod()
 			if err != nil {
 				return err
 			}
 			// TODO: convert time.Duration -> ?
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_PERIOD,
-				Value: nl.AttrU64(v),
+				Value: nl.AttrU64(measurePeriod),
 			})
 		case ie.MeasurementInformation:
 			v, err := i.MeasurementInformation()
@@ -1143,7 +1132,11 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 		}
 	}
 
-	oid := gtp5gnl.OID{lSeid, urrid}
+	if rptTriggers&PERIO_TRIGGER == PERIO_TRIGGER {
+		g.ps.AddPeriodReportTimer(lSeid, urrid, measurePeriod)
+	}
+
+	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
 	return gtp5gnl.CreateURROID(g.client, g.link.link, oid, attrs)
 }
 
@@ -1255,7 +1248,8 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 		return nil, errors.New("not found URRID")
 	}
 
-	g.EndPERIO[lSeid][v] <- true
+	g.ps.DelPeriodReportTimer(lSeid, v)
+
 	oid := gtp5gnl.OID{lSeid, uint64(v)}
 	r, err := gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
 	if err != nil {
@@ -1376,62 +1370,6 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.RemoveBAROID(g.client, g.link.link, oid)
 }
 
-func (g *Gtp5g) AddPeriodReportTimer(lSeid uint64, req *ie.IE) error {
-	id, err := req.URRID()
-	if err != nil {
-		return err
-	}
-
-	perio, err := req.MeasurementPeriod()
-	if err != nil {
-		g.log.Errorf("Get period err: %+v", err)
-		return err
-	}
-	if g.TimerList[lSeid] == nil {
-		g.TimerList[lSeid] = make(map[uint32]*time.Ticker)
-	}
-	g.TimerList[lSeid][id] = time.NewTicker(perio)
-	return nil
-}
-
-func (g *Gtp5g) PeriodReportServer(wg *sync.WaitGroup) error {
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			for lSeid, sessTimerList := range g.TimerList {
-				for id, timer := range sessTimerList {
-					select {
-					case <-timer.C:
-						usar, err := g.GetUSAReport(lSeid, id)
-						if err != nil {
-							g.log.Warnf("GetUSAReport error: %+v", err)
-							break
-						}
-
-						if usar == nil {
-							g.log.Warnf("GetUSAReport report is nil")
-							break
-						}
-						usar.USARTrigger.PERIO = 1
-
-						g.bs.SendReport(report.SessReport{
-							SEID:    lSeid,
-							Reports: []report.Report{*usar},
-						})
-					case <-g.EndPERIO[lSeid][id]:
-						g.TimerList[lSeid][id].Stop()
-						g.TimerList[lSeid][id] = nil
-						g.EndPERIO[lSeid][id] = nil
-					}
-				}
-			}
-		}
-	}()
-
-	return nil
-}
-
 func (g *Gtp5g) GetUSAReport(lSeid uint64, id uint32) (*report.USAReport, error) {
 	oid := gtp5gnl.OID{lSeid, uint64(id)}
 	r, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
@@ -1462,6 +1400,7 @@ func (g *Gtp5g) GetUSAReport(lSeid uint64, id uint32) (*report.USAReport, error)
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bs.Handle(handler)
+	g.ps.Handle(handler, g.GetUSAReport)
 }
 
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {

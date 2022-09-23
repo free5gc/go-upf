@@ -53,13 +53,6 @@ func (s *Server) Close() {
 	}
 }
 
-func (s *Server) SendReport(sp report.SessReport) {
-	if s.handler == nil {
-		return
-	}
-	s.handler.NotifySessReport(sp)
-}
-
 func (s *Server) Handle(handler report.Handler) {
 	s.handler = handler
 }

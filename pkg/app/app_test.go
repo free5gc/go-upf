@@ -15,6 +15,7 @@ func TestWaitRoutineStopped(t *testing.T) {
 	}
 
 	cfg := &factory.Config{
+		Version: "1.0.3",
 		Pfcp: &factory.Pfcp{
 			Addr:   "127.0.0.1",
 			NodeID: "127.0.0.1",
@@ -35,6 +36,10 @@ func TestWaitRoutineStopped(t *testing.T) {
 				Dnn:  "internet",
 				Cidr: "10.60.0.1/24",
 			},
+		},
+		Logger: &factory.Logger{
+			Enable: true,
+			Level:  "info",
 		},
 	}
 	N := 10
