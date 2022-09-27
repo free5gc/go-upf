@@ -252,6 +252,11 @@ func (s *Sess) UpdateBAR(req *ie.IE) error {
 }
 
 func (s *Sess) RemoveBAR(req *ie.IE) error {
+	err := s.rnode.driver.RemoveBAR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
+
 	id, err := req.BARID()
 	if err != nil {
 		return err

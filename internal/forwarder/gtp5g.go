@@ -1131,7 +1131,6 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 				Type:  gtp5gnl.URR_VOLUME_QUOTA,
 				Value: v,
 			})
-			// TODO: URR_SEQ
 		}
 	}
 
@@ -1214,7 +1213,6 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 				Type:  gtp5gnl.URR_VOLUME_QUOTA,
 				Value: v,
 			})
-			// TODO: URR_SEQ
 		}
 
 		// TODO: should apply PERIO updateURR and receive final report from old URR
