@@ -37,7 +37,6 @@ func (s *Sess) Close() []report.USAReport {
 		err := s.RemoveFAR(i)
 		if err != nil {
 			s.log.Errorf("Remove FAR err: %+v", err)
-			return nil
 		}
 	}
 	for id := range s.QERIDs {
@@ -45,7 +44,6 @@ func (s *Sess) Close() []report.USAReport {
 		err := s.RemoveQER(i)
 		if err != nil {
 			s.log.Errorf("Remove QER err: %+v", err)
-			return nil
 		}
 	}
 
@@ -55,7 +53,7 @@ func (s *Sess) Close() []report.USAReport {
 		r, err := s.RemoveURR(i)
 		if err != nil {
 			s.log.Errorf("Remove URR err: %+v", err)
-			return nil
+			continue
 		}
 		if r != nil {
 			usars = append(usars, *r)
@@ -66,7 +64,6 @@ func (s *Sess) Close() []report.USAReport {
 		err := s.RemoveBAR(i)
 		if err != nil {
 			s.log.Errorf("Remove BAR err: %+v", err)
-			return nil
 		}
 	}
 	for id := range s.PDRIDs {
@@ -74,7 +71,6 @@ func (s *Sess) Close() []report.USAReport {
 		err := s.RemovePDR(i)
 		if err != nil {
 			s.log.Errorf("remove PDR err: %+v", err)
-			return nil
 		}
 	}
 	for _, q := range s.q {
