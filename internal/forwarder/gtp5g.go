@@ -26,7 +26,10 @@ import (
 const (
 	expectedGtp5gVersion string = "0.6.5"
 	SOCKPATH             string = "/tmp/free5gc_unix_sock"
-	PERIO_TRIGGER        uint16 = 1 << 8
+
+	// TODO: upgrade go-pfcp to R16 version
+	PERIO_TRIGGER uint16 = 1 << 8
+	VOLTH_TRIGGER uint16 = 1 << 9
 )
 
 type Gtp5g struct {
@@ -1213,6 +1216,8 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 			})
 			// TODO: URR_SEQ
 		}
+
+		// TODO: should apply PERIO updateURR and receive final report from old URR
 	}
 
 	oid := gtp5gnl.OID{lSeid, urrid}

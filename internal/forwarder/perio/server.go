@@ -17,16 +17,16 @@ const (
 type EventType uint8
 
 const (
-	TYPE_ADD_PERIO_TIMER EventType = iota + 1
-	TYPE_DEL_PERIO_TIMER
-	TYPE_PERIO_TIMER_TIMEOUT
+	TYPE_PERIO_ADD EventType = iota + 1
+	TYPE_PERIO_DEL
+	TYPE_PERIO_TIMEOUT
 	TYPE_SERVER_CLOSE
 )
 
 func (t EventType) String() string {
 	s := []string{
-		"", "TYPE_ADD_PERIO_TIMER", "TYPE_DEL_PERIO_TIMER",
-		"TYPE_PERIO_TIMER_TIMEOUT", "TYPE_SERVER_CLOSE",
+		"", "TYPE_PERIO_ADD", "TYPE_PERIO_DEL",
+		"TYPE_PERIO_TIMEOUT", "TYPE_SERVER_CLOSE",
 	}
 	return s[t]
 }
@@ -65,7 +65,7 @@ func (pg *PERIOGroup) newTicker(wg *sync.WaitGroup, evtCh chan Event) error {
 			case <-ticker.C:
 				logger.PerioLog.Debugf("ticker[%v] timeout", period)
 				evtCh <- Event{
-					eType:  TYPE_PERIO_TIMER_TIMEOUT,
+					eType:  TYPE_PERIO_TIMEOUT,
 					period: period,
 				}
 			case <-pg.stopCh:
@@ -125,7 +125,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 	for e := range s.evtCh {
 		logger.PerioLog.Infof("recv event[%s][%+v]", e.eType, e)
 		switch e.eType {
-		case TYPE_ADD_PERIO_TIMER:
+		case TYPE_PERIO_ADD:
 			perioGroup, ok := s.perioList[e.period]
 			if !ok {
 				// New ticker if no this period ticker found
@@ -151,7 +151,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					perioGroup.urrids[e.lSeid][e.urrid] = struct{}{}
 				}
 			}
-		case TYPE_DEL_PERIO_TIMER:
+		case TYPE_PERIO_DEL:
 			for period, perioGroup := range s.perioList {
 				_, ok := perioGroup.urrids[e.lSeid][e.urrid]
 				if ok {
@@ -167,7 +167,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					break
 				}
 			}
-		case TYPE_PERIO_TIMER_TIMEOUT:
+		case TYPE_PERIO_TIMEOUT:
 			perioGroup, ok := s.perioList[e.period]
 			if !ok {
 				logger.PerioLog.Warnf("no periodGroup found for period[%v]", e.period)
@@ -210,7 +210,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 
 func (s *Server) AddPeriodReportTimer(lSeid uint64, urrid uint32, period time.Duration) {
 	s.evtCh <- Event{
-		eType:  TYPE_ADD_PERIO_TIMER,
+		eType:  TYPE_PERIO_ADD,
 		lSeid:  lSeid,
 		urrid:  urrid,
 		period: period,
@@ -219,7 +219,7 @@ func (s *Server) AddPeriodReportTimer(lSeid uint64, urrid uint32, period time.Du
 
 func (s *Server) DelPeriodReportTimer(lSeid uint64, urrid uint32) {
 	s.evtCh <- Event{
-		eType: TYPE_DEL_PERIO_TIMER,
+		eType: TYPE_PERIO_DEL,
 		lSeid: lSeid,
 		urrid: urrid,
 	}

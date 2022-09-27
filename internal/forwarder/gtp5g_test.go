@@ -25,12 +25,15 @@ func Test_convertSlice(t *testing.T) {
 	})
 }
 
-type TestHandler struct{}
+type testHandler struct{}
 
-func (th *TestHandler) NotifySessReport(sessRpt report.SessReport) {
+var testSessRpts map[uint64]*report.SessReport // key: SEID
+
+func (h *testHandler) NotifySessReport(sessRpt report.SessReport) {
+	testSessRpts[sessRpt.SEID] = &sessRpt
 }
 
-func (th *TestHandler) PopBufPkt(lSeid uint64, pdrid uint16) ([]byte, bool) {
+func (h *testHandler) PopBufPkt(lSeid uint64, pdrid uint16) ([]byte, bool) {
 	return nil, true
 }
 
@@ -46,9 +49,10 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	}
 	defer g.Close()
 
-	g.HandleReport(&TestHandler{})
+	testSessRpts = make(map[uint64]*report.SessReport)
+	g.HandleReport(&testHandler{})
 
-	lSeid := uint64(0)
+	lSeid := uint64(1)
 	t.Run("create rules", func(t *testing.T) {
 		far := ie.NewCreateFAR(
 			ie.NewFARID(2),
@@ -104,7 +108,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(2),
 			ie.NewMeasurementPeriod(1*time.Second),
 			ie.NewMeasurementMethod(0, 1, 0),
-			ie.NewReportingTriggers(PERIO_TRIGGER),
+			ie.NewReportingTriggers(VOLTH_TRIGGER),
 			ie.NewMeasurementInformation(4),
 			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
 			ie.NewVolumeQuota(7, 40000, 50000, 60000),
@@ -170,9 +174,31 @@ func TestGtp5g_CreateRules(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		time.Sleep(1100 * time.Millisecond)
+
+		require.Contains(t, testSessRpts, lSeid)
+		require.Equal(t, len(testSessRpts[lSeid].Reports), 1)
+		require.Equal(t, testSessRpts[lSeid].Reports[0].(report.USAReport).URRID, uint32(1))
 	})
 
 	t.Run("update rules", func(t *testing.T) {
+		urr := ie.NewUpdateURR(
+			ie.NewURRID(1),
+			ie.NewMeasurementPeriod(2*time.Second),
+			ie.NewMeasurementMethod(0, 1, 0),
+			ie.NewReportingTriggers(PERIO_TRIGGER),
+		)
+		r, err := g.UpdateURR(lSeid, urr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// TODO: should apply PERIO updateURR and receive final report from old URR
+		require.Nil(t, r)
+		// require.NotNil(t, r)
+		// require.Equal(t, r.URRID, uint32(1))
+
 		far := ie.NewUpdateFAR(
 			ie.NewFARID(4),
 			ie.NewApplyAction(0x2),
@@ -219,19 +245,26 @@ func TestGtp5g_CreateRules(t *testing.T) {
 		}
 	})
 
-	time.Sleep(10 * time.Second)
-
 	t.Run("remove rules", func(t *testing.T) {
 		urr := ie.NewRemoveURR(
 			ie.NewURRID(1),
 		)
-
 		r, err1 := g.RemoveURR(lSeid, urr)
 		if err1 != nil {
 			t.Fatal(err1)
 		}
 
 		require.NotNil(t, r)
-		g.log.Infof("Receive final report form URR(%d)", r.URRID)
+		g.log.Infof("Receive final report from URR(%d)", r.URRID)
+
+		urr = ie.NewRemoveURR(
+			ie.NewURRID(2),
+		)
+		r, err1 = g.RemoveURR(lSeid, urr)
+		if err1 != nil {
+			t.Fatal(err1)
+		}
+		require.NotNil(t, r)
+		g.log.Infof("Receive final report from URR(%d)", r.URRID)
 	})
 }
