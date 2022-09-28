@@ -84,10 +84,11 @@ func (pg *PERIOGroup) stopTicker() {
 }
 
 type Server struct {
-	evtCh        chan Event
-	perioList    map[time.Duration]*PERIOGroup // key: period
-	handler      report.Handler
-	getUSAReport func(uint64, uint32) (*report.USAReport, error)
+	evtCh     chan Event
+	perioList map[time.Duration]*PERIOGroup // key: period
+
+	handler  report.Handler
+	queryURR func(uint64, uint32) (*report.USAReport, error)
 }
 
 func OpenServer(wg *sync.WaitGroup) (*Server, error) {
@@ -109,10 +110,10 @@ func (s *Server) Close() {
 
 func (s *Server) Handle(
 	handler report.Handler,
-	getUSAReport func(uint64, uint32) (*report.USAReport, error),
+	queryURR func(uint64, uint32) (*report.USAReport, error),
 ) {
 	s.handler = handler
-	s.getUSAReport = getUSAReport
+	s.queryURR = queryURR
 }
 
 func (s *Server) Serve(wg *sync.WaitGroup) {
@@ -177,7 +178,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			for lSeid, urrids := range perioGroup.urrids {
 				var rpts []report.Report
 				for id := range urrids {
-					usar, err := s.getUSAReport(lSeid, id)
+					usar, err := s.queryURR(lSeid, id)
 					if err != nil {
 						logger.PerioLog.Warnf("get USAReport[%#x:%#x] error: %v", lSeid, id, err)
 						break

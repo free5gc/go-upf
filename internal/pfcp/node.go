@@ -268,6 +268,14 @@ func (s *Sess) RemoveURR(req *ie.IE) (*report.USAReport, error) {
 	return usar, nil
 }
 
+func (s *Sess) QueryURR(req *ie.IE) (*report.USAReport, error) {
+	id, err := req.URRID()
+	if err != nil {
+		return nil, err
+	}
+	return s.rnode.driver.QueryURR(s.LocalID, id)
+}
+
 func (s *Sess) CreateBAR(req *ie.IE) error {
 	err := s.rnode.driver.CreateBAR(s.LocalID, req)
 	if err != nil {

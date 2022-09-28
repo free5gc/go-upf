@@ -1375,11 +1375,11 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.RemoveBAROID(g.client, g.link.link, oid)
 }
 
-func (g *Gtp5g) GetUSAReport(lSeid uint64, id uint32) (*report.USAReport, error) {
-	oid := gtp5gnl.OID{lSeid, uint64(id)}
+func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) (*report.USAReport, error) {
+	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
 	r, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "QueryURR")
 	}
 
 	if r == nil {
@@ -1401,13 +1401,13 @@ func (g *Gtp5g) GetUSAReport(lSeid uint64, id uint32) (*report.USAReport, error)
 		UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
 		DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
 	}
-	g.log.Tracef("GetUSAReport: %+v", usar)
+	g.log.Tracef("QueryURR: %+v", usar)
 	return usar, nil
 }
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bs.Handle(handler)
-	g.ps.Handle(handler, g.GetUSAReport)
+	g.ps.Handle(handler, g.QueryURR)
 }
 
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {

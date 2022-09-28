@@ -265,6 +265,17 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 	}
 
+	for _, i := range req.QueryURR {
+		usar, err1 := sess.QueryURR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod QueryURR error: %+v", err1)
+			continue
+		}
+		if usar != nil {
+			usars = append(usars, *usar)
+		}
+	}
+
 	rsp := message.NewSessionModificationResponse(
 		0,             // mp
 		0,             // fo
