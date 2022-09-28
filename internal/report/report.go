@@ -73,8 +73,12 @@ func (r USAReport) IEsWithinSessReportReq() []*ie.IE {
 		ie.NewURSEQN(r.URSEQN),
 		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
 		r.VolMeasure.IE(),
-		ie.NewStartTime(r.StartTime),
-		ie.NewEndTime(r.EndTime),
+	}
+	if r.USARTrigger.START == 0 && r.USARTrigger.STOPT == 0 && r.USARTrigger.MACAR == 0 {
+		// These IEs shall be present, except if the Usage Report
+		// Trigger indicates 'Start of Traffic', 'Stop of Traffic' or 'MAC
+		// Addresses Reporting'.
+		ies = append(ies, ie.NewStartTime(r.StartTime), ie.NewEndTime(r.EndTime))
 	}
 	if r.MeasureRpt != nil {
 		ies = append(ies, r.MeasureRpt.IE())
@@ -88,8 +92,12 @@ func (r USAReport) IEsWithinSessModRsp() []*ie.IE {
 		ie.NewURSEQN(r.URSEQN),
 		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
 		r.VolMeasure.IE(),
-		ie.NewStartTime(r.StartTime),
-		ie.NewEndTime(r.EndTime),
+	}
+	if r.USARTrigger.START == 0 && r.USARTrigger.STOPT == 0 && r.USARTrigger.MACAR == 0 {
+		// These IEs shall be present, except if the Usage Report
+		// Trigger indicates 'Start of Traffic', 'Stop of Traffic' or 'MAC
+		// Addresses Reporting'.
+		ies = append(ies, ie.NewStartTime(r.StartTime), ie.NewEndTime(r.EndTime))
 	}
 	if r.MeasureRpt != nil {
 		ies = append(ies, r.MeasureRpt.IE())
@@ -103,8 +111,12 @@ func (r USAReport) IEsWithinSessDelRsp() []*ie.IE {
 		ie.NewURSEQN(r.URSEQN),
 		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
 		r.VolMeasure.IE(),
-		ie.NewStartTime(r.StartTime),
-		ie.NewEndTime(r.EndTime),
+	}
+	if r.USARTrigger.START == 0 && r.USARTrigger.STOPT == 0 && r.USARTrigger.MACAR == 0 {
+		// These IEs shall be present, except if the Usage Report
+		// Trigger indicates 'Start of Traffic', 'Stop of Traffic' or 'MAC
+		// Addresses Reporting'.
+		ies = append(ies, ie.NewStartTime(r.StartTime), ie.NewEndTime(r.EndTime))
 	}
 	if r.MeasureRpt != nil {
 		ies = append(ies, r.MeasureRpt.IE())
