@@ -274,10 +274,21 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 	for _, r := range usars {
+		urrInfo, ok := sess.URRIDs[r.URRID]
+		if !ok {
+			sess.log.Warnf("Sess Mod: URRInfo[%#x] not found", r.URRID)
+			continue
+		}
+		r.URSEQN = sess.URRSeq(r.URRID)
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionModificationResponse(
-				r.IEsWithinSessModRsp()...,
+				r.IEsWithinSessModRsp(
+					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
 			))
+
+		if urrInfo.removed {
+			delete(sess.URRIDs, r.URRID)
+		}
 	}
 
 	err = s.sendRspTo(rsp, addr)
@@ -327,10 +338,21 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
 	for _, r := range usars {
+		urrInfo, ok := sess.URRIDs[r.URRID]
+		if !ok {
+			sess.log.Warnf("Sess Del: URRInfo[%#x] not found", r.URRID)
+			continue
+		}
+		r.URSEQN = sess.URRSeq(r.URRID)
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionDeletionResponse(
-				r.IEsWithinSessDelRsp()...,
+				r.IEsWithinSessDelRsp(
+					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
 			))
+
+		if urrInfo.removed {
+			delete(sess.URRIDs, r.URRID)
+		}
 	}
 
 	err = s.sendRspTo(rsp, addr)

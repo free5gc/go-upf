@@ -17,6 +17,13 @@ const (
 	BUFFQ_LEN = 512
 )
 
+type URRInfo struct {
+	removed bool
+	SEQN    uint32
+	report.MeasureMethod
+	report.MeasureInformation
+}
+
 type Sess struct {
 	rnode    *RemoteNode
 	LocalID  uint64
@@ -24,7 +31,7 @@ type Sess struct {
 	PDRIDs   map[uint16]struct{}
 	FARIDs   map[uint32]struct{}
 	QERIDs   map[uint32]struct{}
-	URRIDs   map[uint32]uint32 // key: URR_ID, value: SEQN
+	URRIDs   map[uint32]*URRInfo // key: URR_ID
 	BARIDs   map[uint8]struct{}
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
@@ -185,7 +192,28 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 	if err != nil {
 		return err
 	}
-	s.URRIDs[id] = 0
+
+	mInfo := &ie.IE{}
+	for _, x := range req.ChildIEs {
+		if x.Type == ie.MeasurementInformation {
+			mInfo = x
+			break
+		}
+	}
+	s.URRIDs[id] = &URRInfo{
+		MeasureMethod: report.MeasureMethod{
+			DURAT: req.HasDURAT(),
+			VOLUM: req.HasVOLUM(),
+			EVENT: req.HasEVENT(),
+		},
+		MeasureInformation: report.MeasureInformation{
+			MBQE: mInfo.HasMBQE(),
+			INAM: mInfo.HasINAM(),
+			RADI: mInfo.HasRADI(),
+			ISTM: mInfo.HasISTM(),
+			MNOP: mInfo.HasMNOP(),
+		},
+	}
 	return nil
 }
 
@@ -195,17 +223,28 @@ func (s *Sess) UpdateURR(req *ie.IE) (*report.USAReport, error) {
 		return nil, err
 	}
 
+	urrInfo, ok := s.URRIDs[id]
+	if !ok {
+		return nil, errors.Errorf("URRInfo[%#x] not found", id)
+	}
+	for _, x := range req.ChildIEs {
+		switch x.Type {
+		case ie.MeasurementMethod:
+			urrInfo.DURAT = x.HasDURAT()
+			urrInfo.VOLUM = x.HasVOLUM()
+			urrInfo.EVENT = x.HasEVENT()
+		case ie.MeasurementInformation:
+			urrInfo.MBQE = x.HasMBQE()
+			urrInfo.INAM = x.HasINAM()
+			urrInfo.RADI = x.HasRADI()
+			urrInfo.ISTM = x.HasISTM()
+			urrInfo.MNOP = x.HasMNOP()
+		}
+	}
+
 	usar, err := s.rnode.driver.UpdateURR(s.LocalID, req)
 	if err != nil {
 		return nil, err
-	}
-
-	if usar != nil {
-		if id != usar.URRID {
-			return nil, errors.Errorf("USAR URRID [%#x:%#x] not matched", id, usar.URRID)
-		}
-		// assign URSEQN
-		usar.URSEQN = s.URRSeq(usar.URRID)
 	}
 	return usar, nil
 }
@@ -221,15 +260,11 @@ func (s *Sess) RemoveURR(req *ie.IE) (*report.USAReport, error) {
 		return nil, err
 	}
 
-	delete(s.URRIDs, id)
-
-	if usar != nil {
-		if id != usar.URRID {
-			return nil, errors.Errorf("USAR URRID [%#x:%#x] not matched", id, usar.URRID)
-		}
-		// assign URSEQN before deleting URR
-		usar.URSEQN = s.URRSeq(usar.URRID)
+	info, ok := s.URRIDs[id]
+	if !ok {
+		return nil, errors.Errorf("URRInfo[%#x] not found", id)
 	}
+	info.removed = true // remove URRInfo later
 	return usar, nil
 }
 
@@ -305,11 +340,12 @@ func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
 }
 
 func (s *Sess) URRSeq(urrid uint32) uint32 {
-	seq, ok := s.URRIDs[urrid]
+	info, ok := s.URRIDs[urrid]
 	if !ok {
 		return 0
 	}
-	s.URRIDs[urrid] = seq + 1
+	seq := info.SEQN
+	info.SEQN++
 	return seq
 }
 
@@ -422,7 +458,7 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 		PDRIDs:   make(map[uint16]struct{}),
 		FARIDs:   make(map[uint32]struct{}),
 		QERIDs:   make(map[uint32]struct{}),
-		URRIDs:   make(map[uint32]uint32),
+		URRIDs:   make(map[uint32]*URRInfo),
 		BARIDs:   make(map[uint8]struct{}),
 		q:        make(map[uint16]chan []byte),
 		qlen:     qlen,

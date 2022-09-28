@@ -27,14 +27,15 @@ func (h *testHandler) PopBufPkt(lSeid uint64, pdrid uint16) ([]byte, bool) {
 }
 
 func testGetUSAReport(lSeid uint64, id uint32) (*report.USAReport, error) {
-	v := &report.VolumeMeasure{}
-	v.SetUplinkVolume(10)
-	v.SetDownlinkVolume(20)
-	v.SetTotalVolume(30)
+	v := report.VolumeMeasure{
+		UplinkVolume:   10,
+		DownlinkVolume: 20,
+		TotalVolume:    30,
+	}
 	return &report.USAReport{
-		URRID:       id,
-		USARTrigger: report.UsageReportTrigger{PERIO: 1},
-		VolMeasure:  *v,
+		URRID:        id,
+		USARTrigger:  report.UsageReportTrigger{PERIO: 1},
+		VolumMeasure: v,
 	}, nil
 }
 
@@ -78,8 +79,7 @@ func TestServer(t *testing.T) {
 					USARTrigger: report.UsageReportTrigger{
 						PERIO: 1,
 					},
-					VolMeasure: report.VolumeMeasure{
-						Flags:          7,
+					VolumMeasure: report.VolumeMeasure{
 						TotalVolume:    30,
 						UplinkVolume:   10,
 						DownlinkVolume: 20,
@@ -90,8 +90,7 @@ func TestServer(t *testing.T) {
 					USARTrigger: report.UsageReportTrigger{
 						PERIO: 1,
 					},
-					VolMeasure: report.VolumeMeasure{
-						Flags:          7,
+					VolumMeasure: report.VolumeMeasure{
 						TotalVolume:    30,
 						UplinkVolume:   10,
 						DownlinkVolume: 20,
@@ -107,8 +106,7 @@ func TestServer(t *testing.T) {
 					USARTrigger: report.UsageReportTrigger{
 						PERIO: 1,
 					},
-					VolMeasure: report.VolumeMeasure{
-						Flags:          7,
+					VolumMeasure: report.VolumeMeasure{
 						TotalVolume:    30,
 						UplinkVolume:   10,
 						DownlinkVolume: 20,

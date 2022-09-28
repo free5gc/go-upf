@@ -77,19 +77,22 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if s.handler == nil {
 			continue
 		}
-		if msgtype == TYPE_BUFFER {
+
+		switch msgtype {
+		case TYPE_BUFFER:
 			dldr := report.DLDReport{
 				PDRID:  pdrid,
 				Action: action,
 				BufPkt: pkt,
 			}
+
 			s.handler.NotifySessReport(
 				report.SessReport{
 					SEID:    seid,
 					Reports: []report.Report{dldr},
 				},
 			)
-		} else if msgtype == TYPE_URR_REPORT {
+		case TYPE_URR_REPORT:
 			var usars []report.Report
 			for _, usar := range reports {
 				usars = append(usars, usar)
@@ -101,7 +104,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					Reports: usars,
 				},
 			)
-		} else {
+		default:
 			logger.BuffLog.Warn("Unknow Report Type")
 		}
 	}
@@ -137,18 +140,19 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 
 			// For flag in report struct
 			// v := (*(*uint8)(unsafe.Pointer(&b[off])))
+			usar.VolumMeasure = report.VolumeMeasure{}
 			off += 1
-			usar.VolMeasure.SetTotalVolume(*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolumMeasure.TotalVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasure.SetUplinkVolume(*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolumMeasure.UplinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasure.SetDownlinkVolume(*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolumMeasure.DownlinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasure.SetTotalPktNum(*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolumMeasure.TotalPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasure.SetUplinkPktNum(*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolumMeasure.UplinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
-			usar.VolMeasure.SetDownlinkPktNum(*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.VolumMeasure.DownlinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
 
 			usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))

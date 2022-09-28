@@ -24,20 +24,6 @@ func (t ReportType) String() string {
 	return str[t]
 }
 
-type MeasurementType int
-
-// 29244-ga0 8.2.40 Measurement Method
-const (
-	MEASURE_DURAT MeasurementType = iota + 1
-	MEASURE_VOLUM
-	MEASURE_EVENT
-)
-
-func (t MeasurementType) String() string {
-	str := []string{"", "DURATION", "VOLUME", "EVENT"}
-	return str[t]
-}
-
 type Report interface {
 	Type() ReportType
 }
@@ -52,27 +38,45 @@ func (r DLDReport) Type() ReportType {
 	return DLDR
 }
 
+type MeasureMethod struct {
+	DURAT bool
+	VOLUM bool
+	EVENT bool
+}
+
+type MeasureInformation struct {
+	MBQE  bool
+	INAM  bool
+	RADI  bool
+	ISTM  bool
+	MNOP  bool
+	SSPOC bool
+	ASPOC bool
+	CIAM  bool
+}
+
 type USAReport struct {
-	URRID       uint32
-	URSEQN      uint32
-	USARTrigger UsageReportTrigger
-	VolMeasure  VolumeMeasure
-	MeasureRpt  MeasureReport
-	QueryUrrRef uint32
-	StartTime   time.Time
-	EndTime     time.Time
+	URRID        uint32
+	URSEQN       uint32
+	USARTrigger  UsageReportTrigger
+	VolumMeasure VolumeMeasure
+	DuratMeasure DurationMeasure
+	QueryUrrRef  uint32
+	StartTime    time.Time
+	EndTime      time.Time
 }
 
 func (r USAReport) Type() ReportType {
 	return USAR
 }
 
-func (r USAReport) IEsWithinSessReportReq() []*ie.IE {
+func (r USAReport) IEsWithinSessReportReq(
+	method MeasureMethod, info MeasureInformation,
+) []*ie.IE {
 	ies := []*ie.IE{
 		ie.NewURRID(r.URRID),
 		ie.NewURSEQN(r.URSEQN),
 		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
-		r.VolMeasure.IE(),
 	}
 	if r.USARTrigger.START == 0 && r.USARTrigger.STOPT == 0 && r.USARTrigger.MACAR == 0 {
 		// These IEs shall be present, except if the Usage Report
@@ -80,18 +84,23 @@ func (r USAReport) IEsWithinSessReportReq() []*ie.IE {
 		// Addresses Reporting'.
 		ies = append(ies, ie.NewStartTime(r.StartTime), ie.NewEndTime(r.EndTime))
 	}
-	if r.MeasureRpt != nil {
-		ies = append(ies, r.MeasureRpt.IE())
+	if method.VOLUM {
+		r.VolumMeasure.SetFlags(info.MNOP)
+		ies = append(ies, r.VolumMeasure.IE())
+	}
+	if method.DURAT {
+		ies = append(ies, r.DuratMeasure.IE())
 	}
 	return ies
 }
 
-func (r USAReport) IEsWithinSessModRsp() []*ie.IE {
+func (r USAReport) IEsWithinSessModRsp(
+	method MeasureMethod, info MeasureInformation,
+) []*ie.IE {
 	ies := []*ie.IE{
 		ie.NewURRID(r.URRID),
 		ie.NewURSEQN(r.URSEQN),
 		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
-		r.VolMeasure.IE(),
 	}
 	if r.USARTrigger.START == 0 && r.USARTrigger.STOPT == 0 && r.USARTrigger.MACAR == 0 {
 		// These IEs shall be present, except if the Usage Report
@@ -99,18 +108,23 @@ func (r USAReport) IEsWithinSessModRsp() []*ie.IE {
 		// Addresses Reporting'.
 		ies = append(ies, ie.NewStartTime(r.StartTime), ie.NewEndTime(r.EndTime))
 	}
-	if r.MeasureRpt != nil {
-		ies = append(ies, r.MeasureRpt.IE())
+	if method.VOLUM {
+		r.VolumMeasure.SetFlags(info.MNOP)
+		ies = append(ies, r.VolumMeasure.IE())
+	}
+	if method.DURAT {
+		ies = append(ies, r.DuratMeasure.IE())
 	}
 	return ies
 }
 
-func (r USAReport) IEsWithinSessDelRsp() []*ie.IE {
+func (r USAReport) IEsWithinSessDelRsp(
+	method MeasureMethod, info MeasureInformation,
+) []*ie.IE {
 	ies := []*ie.IE{
 		ie.NewURRID(r.URRID),
 		ie.NewURSEQN(r.URSEQN),
 		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
-		r.VolMeasure.IE(),
 	}
 	if r.USARTrigger.START == 0 && r.USARTrigger.STOPT == 0 && r.USARTrigger.MACAR == 0 {
 		// These IEs shall be present, except if the Usage Report
@@ -118,8 +132,12 @@ func (r USAReport) IEsWithinSessDelRsp() []*ie.IE {
 		// Addresses Reporting'.
 		ies = append(ies, ie.NewStartTime(r.StartTime), ie.NewEndTime(r.EndTime))
 	}
-	if r.MeasureRpt != nil {
-		ies = append(ies, r.MeasureRpt.IE())
+	if method.VOLUM {
+		r.VolumMeasure.SetFlags(info.MNOP)
+		ies = append(ies, r.VolumMeasure.IE())
+	}
+	if method.DURAT {
+		ies = append(ies, r.DuratMeasure.IE())
 	}
 	return ies
 }
@@ -182,10 +200,14 @@ func (t *UsageReportTrigger) Unmarshal(v uint32) {
 	t.IMMER = uint8((v >> 23) & 1)
 }
 
-type MeasureReport interface {
-	Type() MeasurementType
-	IE() *ie.IE
-}
+const (
+	TOVOL uint8 = 1 << iota
+	ULVOL
+	DLVOL
+	TONOP
+	ULNOP
+	DLNOP
+)
 
 type VolumeMeasure struct {
 	Flags          uint8
@@ -197,8 +219,11 @@ type VolumeMeasure struct {
 	DownlinkPktNum uint64
 }
 
-func (m *VolumeMeasure) Type() MeasurementType {
-	return MEASURE_VOLUM
+func (m *VolumeMeasure) SetFlags(mnop bool) {
+	m.Flags |= (TOVOL | ULVOL | DLVOL)
+	if mnop {
+		m.Flags |= (TONOP | ULNOP | DLNOP)
+	}
 }
 
 func (m *VolumeMeasure) IE() *ie.IE {
@@ -213,63 +238,8 @@ func (m *VolumeMeasure) IE() *ie.IE {
 	)
 }
 
-const (
-	TOVOL uint8 = 1 << iota
-	ULVOL
-	DLVOL
-	TONOP
-	ULNOP
-	DLNOP
-)
-
-func (m *VolumeMeasure) SetTotalVolume(v uint64) {
-	if v > 0 {
-		m.Flags |= TOVOL
-		m.TotalVolume = v
-	}
-}
-
-func (m *VolumeMeasure) SetUplinkVolume(v uint64) {
-	if v > 0 {
-		m.Flags |= ULVOL
-		m.UplinkVolume = v
-	}
-}
-
-func (m *VolumeMeasure) SetDownlinkVolume(v uint64) {
-	if v > 0 {
-		m.Flags |= DLVOL
-		m.DownlinkVolume = v
-	}
-}
-
-func (m *VolumeMeasure) SetTotalPktNum(n uint64) {
-	if n > 0 {
-		m.Flags |= TONOP
-		m.TotalPktNum = n
-	}
-}
-
-func (m *VolumeMeasure) SetUplinkPktNum(n uint64) {
-	if n > 0 {
-		m.Flags |= ULNOP
-		m.UplinkPktNum = n
-	}
-}
-
-func (m *VolumeMeasure) SetDownlinkPktNum(n uint64) {
-	if n > 0 {
-		m.Flags |= DLNOP
-		m.DownlinkPktNum = n
-	}
-}
-
 type DurationMeasure struct {
 	DurationValue uint64
-}
-
-func (m *DurationMeasure) Type() MeasurementType {
-	return MEASURE_DURAT
 }
 
 func (m *DurationMeasure) IE() *ie.IE {

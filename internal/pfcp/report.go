@@ -106,10 +106,16 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 		ie.NewReportType(0, 0, 1, 0),
 	)
 	for _, r := range usars {
+		urrInfo, ok := sess.URRIDs[r.URRID]
+		if !ok {
+			sess.log.Warnf("serveUSAReport: URRInfo[%#x] not found", r.URRID)
+			continue
+		}
 		r.URSEQN = sess.URRSeq(r.URRID)
 		req.UsageReport = append(req.UsageReport,
 			ie.NewUsageReportWithinSessionReportRequest(
-				r.IEsWithinSessReportReq()...,
+				r.IEsWithinSessReportReq(
+					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
 			))
 	}
 

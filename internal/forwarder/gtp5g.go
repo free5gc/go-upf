@@ -1235,13 +1235,14 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 		EndTime:     r.EndTime,
 	}
 	usar.USARTrigger.Unmarshal(r.USARTrigger)
-	usar.VolMeasure.SetTotalVolume(r.VolMeasurement.TotalVolume)
-	usar.VolMeasure.SetUplinkVolume(r.VolMeasurement.UplinkVolume)
-	usar.VolMeasure.SetDownlinkVolume(r.VolMeasurement.DownlinkVolume)
-	usar.VolMeasure.SetTotalPktNum(r.VolMeasurement.TotalPktNum)
-	usar.VolMeasure.SetUplinkPktNum(r.VolMeasurement.UplinkPktNum)
-	usar.VolMeasure.SetDownlinkPktNum(r.VolMeasurement.DownlinkPktNum)
-
+	usar.VolumMeasure = report.VolumeMeasure{
+		TotalVolume:    r.VolMeasurement.TotalVolume,
+		UplinkVolume:   r.VolMeasurement.UplinkVolume,
+		DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+		TotalPktNum:    r.VolMeasurement.TotalPktNum,
+		UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+		DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+	}
 	return usar, err
 }
 
@@ -1270,13 +1271,14 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 		EndTime:     r.EndTime,
 	}
 	usar.USARTrigger.Unmarshal(r.USARTrigger)
-	usar.VolMeasure.SetTotalVolume(r.VolMeasurement.TotalVolume)
-	usar.VolMeasure.SetUplinkVolume(r.VolMeasurement.UplinkVolume)
-	usar.VolMeasure.SetDownlinkVolume(r.VolMeasurement.DownlinkVolume)
-	usar.VolMeasure.SetTotalPktNum(r.VolMeasurement.TotalPktNum)
-	usar.VolMeasure.SetUplinkPktNum(r.VolMeasurement.UplinkPktNum)
-	usar.VolMeasure.SetDownlinkPktNum(r.VolMeasurement.DownlinkPktNum)
-
+	usar.VolumMeasure = report.VolumeMeasure{
+		TotalVolume:    r.VolMeasurement.TotalVolume,
+		UplinkVolume:   r.VolMeasurement.UplinkVolume,
+		DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+		TotalPktNum:    r.VolMeasurement.TotalPktNum,
+		UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+		DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+	}
 	return usar, err
 }
 
@@ -1391,14 +1393,16 @@ func (g *Gtp5g) GetUSAReport(lSeid uint64, id uint32) (*report.USAReport, error)
 		EndTime:     r.EndTime,
 	}
 	usar.USARTrigger.Unmarshal(r.USARTrigger)
-	usar.VolMeasure.SetTotalVolume(r.VolMeasurement.TotalVolume)
-	usar.VolMeasure.SetUplinkVolume(r.VolMeasurement.UplinkVolume)
-	usar.VolMeasure.SetDownlinkVolume(r.VolMeasurement.DownlinkVolume)
-	usar.VolMeasure.SetTotalPktNum(r.VolMeasurement.TotalPktNum)
-	usar.VolMeasure.SetUplinkPktNum(r.VolMeasurement.UplinkPktNum)
-	usar.VolMeasure.SetDownlinkPktNum(r.VolMeasurement.DownlinkPktNum)
-
-	return usar, err
+	usar.VolumMeasure = report.VolumeMeasure{
+		TotalVolume:    r.VolMeasurement.TotalVolume,
+		UplinkVolume:   r.VolMeasurement.UplinkVolume,
+		DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+		TotalPktNum:    r.VolMeasurement.TotalPktNum,
+		UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+		DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+	}
+	g.log.Tracef("GetUSAReport: %+v", usar)
+	return usar, nil
 }
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {
