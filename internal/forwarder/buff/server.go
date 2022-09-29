@@ -131,17 +131,11 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 
 			usar.URRID = (*(*uint32)(unsafe.Pointer(&b[off])))
 			off += 4
-			usar.URSEQN = (*(*uint32)(unsafe.Pointer(&b[off])))
-			off += 4
 			r := (*(*uint64)(unsafe.Pointer(&b[off])))
 
 			usar.USARTrigger.Unmarshal(uint32(r))
 			off += 8
 
-			// For flag in report struct
-			// v := (*(*uint8)(unsafe.Pointer(&b[off])))
-			usar.VolumMeasure = report.VolumeMeasure{}
-			off += 1
 			usar.VolumMeasure.TotalVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
 			usar.VolumMeasure.UplinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
