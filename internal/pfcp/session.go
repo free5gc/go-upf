@@ -202,13 +202,13 @@ func (s *PfcpServer) handleSessionModificationRequest(
 
 	var usars []report.USAReport
 	for _, i := range req.RemoveURR {
-		usar, err1 := sess.RemoveURR(i)
+		rs, err1 := sess.RemoveURR(i)
 		if err1 != nil {
 			sess.log.Errorf("Mod RemoveURR error: %+v", err1)
 			continue
 		}
-		if usar != nil {
-			usars = append(usars, *usar)
+		if rs != nil {
+			usars = append(usars, rs...)
 		}
 	}
 

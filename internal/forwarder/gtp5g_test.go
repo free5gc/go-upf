@@ -249,22 +249,22 @@ func TestGtp5g_CreateRules(t *testing.T) {
 		urr := ie.NewRemoveURR(
 			ie.NewURRID(1),
 		)
-		r, err1 := g.RemoveURR(lSeid, urr)
+
+		rs, err1 := g.RemoveURR(lSeid, urr)
 		if err1 != nil {
 			t.Fatal(err1)
 		}
-
-		require.NotNil(t, r)
-		g.log.Infof("Receive final report from URR(%d)", r.URRID)
+		require.NotNil(t, rs)
+		g.log.Infof("Receive final report from URR(%d)", rs[0].URRID)
 
 		urr = ie.NewRemoveURR(
 			ie.NewURRID(2),
 		)
-		r, err1 = g.RemoveURR(lSeid, urr)
+		rs, err1 = g.RemoveURR(lSeid, urr)
 		if err1 != nil {
 			t.Fatal(err1)
 		}
-		require.NotNil(t, r)
-		g.log.Infof("Receive final report from URR(%d)", r.URRID)
+		require.NotNil(t, rs)
+		g.log.Infof("Receive final reports from URR(%d)", rs[0].URRID)
 	})
 }

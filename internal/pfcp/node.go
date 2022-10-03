@@ -57,13 +57,13 @@ func (s *Sess) Close() []report.USAReport {
 	var usars []report.USAReport
 	for id := range s.URRIDs {
 		i := ie.NewRemoveURR(ie.NewURRID(id))
-		r, err := s.RemoveURR(i)
+		rs, err := s.RemoveURR(i)
 		if err != nil {
 			s.log.Errorf("Remove URR err: %+v", err)
 			continue
 		}
-		if r != nil {
-			usars = append(usars, *r)
+		if rs != nil {
+			usars = append(usars, rs...)
 		}
 	}
 	for id := range s.BARIDs {
@@ -249,13 +249,13 @@ func (s *Sess) UpdateURR(req *ie.IE) (*report.USAReport, error) {
 	return usar, nil
 }
 
-func (s *Sess) RemoveURR(req *ie.IE) (*report.USAReport, error) {
+func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 	id, err := req.URRID()
 	if err != nil {
 		return nil, err
 	}
 
-	usar, err := s.rnode.driver.RemoveURR(s.LocalID, req)
+	usars, err := s.rnode.driver.RemoveURR(s.LocalID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (s *Sess) RemoveURR(req *ie.IE) (*report.USAReport, error) {
 		return nil, errors.Errorf("URRInfo[%#x] not found", id)
 	}
 	info.removed = true // remove URRInfo later
-	return usar, nil
+	return usars, nil
 }
 
 func (s *Sess) QueryURR(req *ie.IE) (*report.USAReport, error) {

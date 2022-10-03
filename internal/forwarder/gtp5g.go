@@ -1246,7 +1246,9 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	return usar, err
 }
 
-func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
+func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) {
+	var usars []report.USAReport
+
 	v, err := req.URRID()
 	if err != nil {
 		return nil, errors.New("not found URRID")
@@ -1255,31 +1257,39 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	g.ps.DelPeriodReportTimer(lSeid, v)
 
 	oid := gtp5gnl.OID{lSeid, uint64(v)}
-	r, err := gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
+	rs, err := gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
+
 	if err != nil {
 		return nil, err
 	}
 
-	if r == nil {
+	if rs == nil {
 		return nil, nil
 	}
+	g.log.Infof("remove 5")
 
-	usar := &report.USAReport{
-		URRID:       r.URRID,
-		QueryUrrRef: r.QueryUrrRef,
-		StartTime:   r.StartTime,
-		EndTime:     r.EndTime,
+	for _, r := range rs {
+		usar := report.USAReport{
+			URRID:       r.URRID,
+			QueryUrrRef: r.QueryUrrRef,
+			StartTime:   r.StartTime,
+			EndTime:     r.EndTime,
+		}
+
+		usar.USARTrigger.Unmarshal(r.USARTrigger)
+		usar.VolumMeasure = report.VolumeMeasure{
+			TotalVolume:    r.VolMeasurement.TotalVolume,
+			UplinkVolume:   r.VolMeasurement.UplinkVolume,
+			DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+			TotalPktNum:    r.VolMeasurement.TotalPktNum,
+			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+		}
+
+		usars = append(usars, usar)
 	}
-	usar.USARTrigger.Unmarshal(r.USARTrigger)
-	usar.VolumMeasure = report.VolumeMeasure{
-		TotalVolume:    r.VolMeasurement.TotalVolume,
-		UplinkVolume:   r.VolMeasurement.UplinkVolume,
-		DownlinkVolume: r.VolMeasurement.DownlinkVolume,
-		TotalPktNum:    r.VolMeasurement.TotalPktNum,
-		UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-		DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-	}
-	return usar, err
+
+	return usars, err
 }
 
 func (g *Gtp5g) CreateBAR(lSeid uint64, req *ie.IE) error {
