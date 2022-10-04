@@ -273,7 +273,13 @@ func (s *Sess) QueryURR(req *ie.IE) (*report.USAReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.rnode.driver.QueryURR(s.LocalID, id)
+
+	trigger, err1 := req.ReportingTriggers()
+	if err1 != nil {
+		return nil, err1
+	}
+
+	return s.rnode.driver.QueryURR(s.LocalID, id, trigger)
 }
 
 func (s *Sess) CreateBAR(req *ie.IE) error {

@@ -1266,7 +1266,6 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 	if rs == nil {
 		return nil, nil
 	}
-	g.log.Infof("remove 5")
 
 	for _, r := range rs {
 		usar := report.USAReport{
@@ -1385,9 +1384,9 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.RemoveBAROID(g.client, g.link.link, oid)
 }
 
-func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) (*report.USAReport, error) {
+func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32, trigger uint16) (*report.USAReport, error) {
 	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
-	r, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
+	r, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid, trigger)
 	if err != nil {
 		return nil, errors.Wrapf(err, "QueryURR")
 	}
