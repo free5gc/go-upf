@@ -94,7 +94,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(1),
 			ie.NewMeasurementPeriod(1*time.Second),
 			ie.NewMeasurementMethod(0, 1, 0),
-			ie.NewReportingTriggers(PERIO_TRIGGER),
+			ie.NewReportingTriggers(PERIO_TRIGGER+VOLTH_TRIGGER),
 			ie.NewMeasurementInformation(4),
 			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
 			ie.NewVolumeQuota(7, 40000, 50000, 60000),
@@ -187,7 +187,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(1),
 			ie.NewMeasurementPeriod(2*time.Second),
 			ie.NewMeasurementMethod(0, 1, 0),
-			ie.NewReportingTriggers(PERIO_TRIGGER),
+			ie.NewReportingTriggers(PERIO_TRIGGER+VOLTH_TRIGGER),
 		)
 		r, err := g.UpdateURR(lSeid, urr)
 		if err != nil {
@@ -254,6 +254,8 @@ func TestGtp5g_CreateRules(t *testing.T) {
 		if err1 != nil {
 			t.Fatal(err1)
 		}
+		g.log.Infof("Receive final report from URR(%d), rpts: %+v", rs[0].URRID, rs)
+
 		require.NotNil(t, rs)
 		g.log.Infof("Receive final report from URR(%d)", rs[0].URRID)
 
@@ -264,6 +266,9 @@ func TestGtp5g_CreateRules(t *testing.T) {
 		if err1 != nil {
 			t.Fatal(err1)
 		}
+
+		g.log.Infof("Receive final report from URR(%d), rpts: %+v", rs[0].URRID, rs)
+
 		require.NotNil(t, rs)
 		g.log.Infof("Receive final reports from URR(%d)", rs[0].URRID)
 	})
