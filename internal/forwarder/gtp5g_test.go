@@ -94,7 +94,8 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(1),
 			ie.NewMeasurementPeriod(1*time.Second),
 			ie.NewMeasurementMethod(0, 1, 0),
-			ie.NewReportingTriggers(PERIO_TRIGGER+VOLTH_TRIGGER),
+			ie.NewReportingTriggers(
+				report.URR_RPT_TRIGGER_PERIO|report.URR_RPT_TRIGGER_VOLTH),
 			ie.NewMeasurementInformation(4),
 			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
 			ie.NewVolumeQuota(7, 40000, 50000, 60000),
@@ -108,7 +109,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(2),
 			ie.NewMeasurementPeriod(1*time.Second),
 			ie.NewMeasurementMethod(0, 1, 0),
-			ie.NewReportingTriggers(VOLTH_TRIGGER),
+			ie.NewReportingTriggers(report.URR_RPT_TRIGGER_VOLTH),
 			ie.NewMeasurementInformation(4),
 			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
 			ie.NewVolumeQuota(7, 40000, 50000, 60000),
@@ -187,7 +188,8 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(1),
 			ie.NewMeasurementPeriod(2*time.Second),
 			ie.NewMeasurementMethod(0, 1, 0),
-			ie.NewReportingTriggers(PERIO_TRIGGER+VOLTH_TRIGGER),
+			ie.NewReportingTriggers(
+				report.URR_RPT_TRIGGER_PERIO|report.URR_RPT_TRIGGER_VOLTH),
 		)
 		r, err := g.UpdateURR(lSeid, urr)
 		if err != nil {

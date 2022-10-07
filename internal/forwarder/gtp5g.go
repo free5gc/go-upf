@@ -26,10 +26,6 @@ import (
 const (
 	expectedGtp5gVersion string = "0.6.5"
 	SOCKPATH             string = "/tmp/free5gc_unix_sock"
-
-	// TODO: upgrade go-pfcp to R16 version
-	PERIO_TRIGGER uint16 = 1 << 8
-	VOLTH_TRIGGER uint16 = 1 << 9
 )
 
 type Gtp5g struct {
@@ -1134,7 +1130,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 		}
 	}
 
-	if rptTriggers&PERIO_TRIGGER == PERIO_TRIGGER {
+	if rptTriggers&report.URR_RPT_TRIGGER_PERIO != 0 {
 		g.ps.AddPeriodReportTimer(lSeid, urrid, measurePeriod)
 	}
 
@@ -1258,7 +1254,6 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 
 	oid := gtp5gnl.OID{lSeid, uint64(v)}
 	rs, err := gtp5gnl.RemoveURROID(g.client, g.link.link, oid)
-
 	if err != nil {
 		return nil, err
 	}

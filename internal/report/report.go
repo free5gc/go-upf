@@ -142,6 +142,13 @@ func (r USAReport) IEsWithinSessDelRsp(
 	return ies
 }
 
+const (
+	// For go-pfcp Usage Report Trigger IE used
+	// TODO: upgrade go-pfcp this IE to R16 version
+	URR_RPT_TRIGGER_PERIO uint16 = 1 << 8
+	URR_RPT_TRIGGER_VOLTH uint16 = 1 << 9
+)
+
 type UsageReportTrigger struct {
 	PERIO uint8
 	VOLTH uint8

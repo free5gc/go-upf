@@ -17,9 +17,6 @@ const (
 type EventType uint8
 
 const (
-	PERIO_TRIGGER uint16 = 1 << 8
-)
-const (
 	TYPE_PERIO_ADD EventType = iota + 1
 	TYPE_PERIO_DEL
 	TYPE_PERIO_TIMEOUT
@@ -181,7 +178,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			for lSeid, urrids := range perioGroup.urrids {
 				var rpts []report.Report
 				for id := range urrids {
-					usar, err := s.queryURR(lSeid, id, PERIO_TRIGGER)
+					usar, err := s.queryURR(lSeid, id, report.URR_RPT_TRIGGER_PERIO)
 					if err != nil {
 						logger.PerioLog.Warnf("get USAReport[%#x:%#x] error: %v", lSeid, id, err)
 						break
