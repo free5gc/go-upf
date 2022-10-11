@@ -191,13 +191,13 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewReportingTriggers(
 				report.URR_RPT_TRIGGER_PERIO|report.URR_RPT_TRIGGER_VOLTH),
 		)
-		r, err := g.UpdateURR(lSeid, urr)
+		rs, err := g.UpdateURR(lSeid, urr)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		// TODO: should apply PERIO updateURR and receive final report from old URR
-		require.Nil(t, r)
+		require.Nil(t, rs)
 		// require.NotNil(t, r)
 		// require.Equal(t, r.URRID, uint32(1))
 

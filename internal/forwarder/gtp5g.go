@@ -1138,9 +1138,10 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.CreateURROID(g.client, g.link.link, oid, attrs)
 }
 
-func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
+func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) {
 	var urrid uint64
 	var attrs []nl.Attr
+	var usars []report.USAReport
 
 	ies, err := req.UpdateURR()
 	if err != nil {
@@ -1215,31 +1216,37 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) (*report.USAReport, error) {
 	}
 
 	oid := gtp5gnl.OID{lSeid, urrid}
-	r, err := gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
+	rs, err := gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
 	if err != nil {
 		return nil, err
 	}
 
-	if r == nil {
+	if rs == nil {
 		return nil, nil
 	}
 
-	usar := &report.USAReport{
-		URRID:       r.URRID,
-		QueryUrrRef: r.QueryUrrRef,
-		StartTime:   r.StartTime,
-		EndTime:     r.EndTime,
+	for _, r := range rs {
+		usar := report.USAReport{
+			URRID:       r.URRID,
+			QueryUrrRef: r.QueryUrrRef,
+			StartTime:   r.StartTime,
+			EndTime:     r.EndTime,
+		}
+
+		usar.USARTrigger.Unmarshal(r.USARTrigger)
+		usar.VolumMeasure = report.VolumeMeasure{
+			TotalVolume:    r.VolMeasurement.TotalVolume,
+			UplinkVolume:   r.VolMeasurement.UplinkVolume,
+			DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+			TotalPktNum:    r.VolMeasurement.TotalPktNum,
+			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+		}
+
+		usars = append(usars, usar)
 	}
-	usar.USARTrigger.Unmarshal(r.USARTrigger)
-	usar.VolumMeasure = report.VolumeMeasure{
-		TotalVolume:    r.VolMeasurement.TotalVolume,
-		UplinkVolume:   r.VolMeasurement.UplinkVolume,
-		DownlinkVolume: r.VolMeasurement.DownlinkVolume,
-		TotalPktNum:    r.VolMeasurement.TotalPktNum,
-		UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-		DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-	}
-	return usar, err
+
+	return usars, err
 }
 
 func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) {

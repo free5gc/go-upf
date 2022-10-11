@@ -51,7 +51,7 @@ func (Empty) CreateURR(uint64, *ie.IE) error {
 	return nil
 }
 
-func (Empty) UpdateURR(uint64, *ie.IE) (*report.USAReport, error) {
+func (Empty) UpdateURR(uint64, *ie.IE) ([]report.USAReport, error) {
 	return nil, nil
 }
 

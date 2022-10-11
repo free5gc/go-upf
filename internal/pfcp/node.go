@@ -217,7 +217,7 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 	return nil
 }
 
-func (s *Sess) UpdateURR(req *ie.IE) (*report.USAReport, error) {
+func (s *Sess) UpdateURR(req *ie.IE) ([]report.USAReport, error) {
 	id, err := req.URRID()
 	if err != nil {
 		return nil, err
@@ -242,11 +242,11 @@ func (s *Sess) UpdateURR(req *ie.IE) (*report.USAReport, error) {
 		}
 	}
 
-	usar, err := s.rnode.driver.UpdateURR(s.LocalID, req)
+	usars, err := s.rnode.driver.UpdateURR(s.LocalID, req)
 	if err != nil {
 		return nil, err
 	}
-	return usar, nil
+	return usars, nil
 }
 
 func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {

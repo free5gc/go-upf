@@ -241,13 +241,13 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.UpdateURR {
-		usar, err1 := sess.UpdateURR(i)
+		rs, err1 := sess.UpdateURR(i)
 		if err1 != nil {
 			sess.log.Errorf("Mod UpdateURR error: %+v", err1)
 			continue
 		}
-		if usar != nil {
-			usars = append(usars, *usar)
+		if rs != nil {
+			usars = append(usars, rs...)
 		}
 	}
 
