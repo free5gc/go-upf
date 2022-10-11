@@ -268,7 +268,7 @@ func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 	return usars, nil
 }
 
-func (s *Sess) QueryURR(req *ie.IE) (*report.USAReport, error) {
+func (s *Sess) QueryURR(req *ie.IE) ([]report.USAReport, error) {
 	id, err := req.URRID()
 	if err != nil {
 		return nil, err

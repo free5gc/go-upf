@@ -1379,34 +1379,43 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.RemoveBAROID(g.client, g.link.link, oid)
 }
 
-func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32, trigger uint16) (*report.USAReport, error) {
+func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32, trigger uint16) ([]report.USAReport, error) {
+	var usars []report.USAReport
+
 	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
-	r, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid, trigger)
+	rs, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid, trigger)
 	if err != nil {
 		return nil, errors.Wrapf(err, "QueryURR")
 	}
 
-	if r == nil {
+	if rs == nil {
 		return nil, nil
 	}
 
-	usar := &report.USAReport{
-		URRID:       r.URRID,
-		QueryUrrRef: r.QueryUrrRef,
-		StartTime:   r.StartTime,
-		EndTime:     r.EndTime,
+	for _, r := range rs {
+		usar := report.USAReport{
+			URRID:       r.URRID,
+			QueryUrrRef: r.QueryUrrRef,
+			StartTime:   r.StartTime,
+			EndTime:     r.EndTime,
+		}
+
+		usar.USARTrigger.Unmarshal(r.USARTrigger)
+		usar.VolumMeasure = report.VolumeMeasure{
+			TotalVolume:    r.VolMeasurement.TotalVolume,
+			UplinkVolume:   r.VolMeasurement.UplinkVolume,
+			DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+			TotalPktNum:    r.VolMeasurement.TotalPktNum,
+			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+		}
+
+		usars = append(usars, usar)
 	}
-	usar.USARTrigger.Unmarshal(r.USARTrigger)
-	usar.VolumMeasure = report.VolumeMeasure{
-		TotalVolume:    r.VolMeasurement.TotalVolume,
-		UplinkVolume:   r.VolMeasurement.UplinkVolume,
-		DownlinkVolume: r.VolMeasurement.DownlinkVolume,
-		TotalPktNum:    r.VolMeasurement.TotalPktNum,
-		UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-		DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-	}
-	g.log.Tracef("QueryURR: %+v", usar)
-	return usar, nil
+
+	g.log.Tracef("QueryURR: %+v", usars)
+
+	return usars, err
 }
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {

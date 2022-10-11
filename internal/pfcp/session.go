@@ -272,7 +272,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			continue
 		}
 		if usar != nil {
-			usars = append(usars, *usar)
+			usars = append(usars, usar...)
 		}
 	}
 

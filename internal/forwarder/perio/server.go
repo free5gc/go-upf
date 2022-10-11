@@ -88,7 +88,7 @@ type Server struct {
 	perioList map[time.Duration]*PERIOGroup // key: period
 
 	handler  report.Handler
-	queryURR func(uint64, uint32, uint16) (*report.USAReport, error)
+	queryURR func(uint64, uint32, uint16) ([]report.USAReport, error)
 }
 
 func OpenServer(wg *sync.WaitGroup) (*Server, error) {
@@ -110,7 +110,7 @@ func (s *Server) Close() {
 
 func (s *Server) Handle(
 	handler report.Handler,
-	queryURR func(uint64, uint32, uint16) (*report.USAReport, error),
+	queryURR func(uint64, uint32, uint16) ([]report.USAReport, error),
 ) {
 	s.handler = handler
 	s.queryURR = queryURR
@@ -178,19 +178,24 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			for lSeid, urrids := range perioGroup.urrids {
 				var rpts []report.Report
 				for id := range urrids {
-					usar, err := s.queryURR(lSeid, id, report.URR_RPT_TRIGGER_PERIO)
+					usars, err := s.queryURR(lSeid, id, report.URR_RPT_TRIGGER_PERIO)
 					if err != nil {
 						logger.PerioLog.Warnf("get USAReport[%#x:%#x] error: %v", lSeid, id, err)
 						break
 					}
 
-					if usar == nil {
+					if usars == nil {
 						logger.PerioLog.Warnf("USAReport[%#x:%#x] is nil", lSeid, id)
 						continue
 					}
-					usar.USARTrigger.PERIO = 1
 
-					rpts = append(rpts, *usar)
+					if len(usars) > 1 {
+						logger.PerioLog.Warnf("USAReport[%#x:%#x] contain multiple reports instead of one", lSeid, id)
+					}
+
+					usars[0].USARTrigger.PERIO = 1
+
+					rpts = append(rpts, usars[0])
 				}
 
 				s.handler.NotifySessReport(
