@@ -208,6 +208,9 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			continue
 		}
 		if rs != nil {
+			for _, r := range rs {
+				r.USARTrigger.TEBUR = 1
+			}
 			usars = append(usars, rs...)
 		}
 	}
@@ -355,6 +358,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 			continue
 		}
 		r.URSEQN = sess.URRSeq(r.URRID)
+		r.USARTrigger.TERMR = 1
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionDeletionResponse(
 				r.IEsWithinSessDelRsp(
