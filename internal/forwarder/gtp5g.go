@@ -1386,11 +1386,11 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.RemoveBAROID(g.client, g.link.link, oid)
 }
 
-func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32, trigger uint16) ([]report.USAReport, error) {
+func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error) {
 	var usars []report.USAReport
 
 	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
-	rs, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid, trigger)
+	rs, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
 	if err != nil {
 		return nil, errors.Wrapf(err, "QueryURR")
 	}

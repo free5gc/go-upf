@@ -26,7 +26,7 @@ func (h *testHandler) PopBufPkt(lSeid uint64, pdrid uint16) ([]byte, bool) {
 	return nil, true
 }
 
-func testGetUSAReport(lSeid uint64, id uint32, trigger uint16) ([]report.USAReport, error) {
+func testGetUSAReport(lSeid uint64, id uint32) ([]report.USAReport, error) {
 	v := report.VolumeMeasure{
 		UplinkVolume:   10,
 		DownlinkVolume: 20,

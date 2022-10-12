@@ -88,7 +88,7 @@ type Server struct {
 	perioList map[time.Duration]*PERIOGroup // key: period
 
 	handler  report.Handler
-	queryURR func(uint64, uint32, uint16) ([]report.USAReport, error)
+	queryURR func(uint64, uint32) ([]report.USAReport, error)
 }
 
 func OpenServer(wg *sync.WaitGroup) (*Server, error) {
@@ -110,7 +110,7 @@ func (s *Server) Close() {
 
 func (s *Server) Handle(
 	handler report.Handler,
-	queryURR func(uint64, uint32, uint16) ([]report.USAReport, error),
+	queryURR func(uint64, uint32) ([]report.USAReport, error),
 ) {
 	s.handler = handler
 	s.queryURR = queryURR
@@ -178,7 +178,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			for lSeid, urrids := range perioGroup.urrids {
 				var rpts []report.Report
 				for id := range urrids {
-					usars, err := s.queryURR(lSeid, id, report.URR_RPT_TRIGGER_PERIO)
+					usars, err := s.queryURR(lSeid, id)
 					if err != nil {
 						logger.PerioLog.Warnf("get USAReport[%#x:%#x] error: %v", lSeid, id, err)
 						break
