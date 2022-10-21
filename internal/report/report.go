@@ -254,10 +254,19 @@ func (m *DurationMeasure) IE() *ie.IE {
 }
 
 const (
-	DROP = 1 << 0
-	FORW = 1 << 1
-	BUFF = 1 << 2
-	NOCP = 1 << 3
+	DROP = 1 << iota
+	FORW
+	BUFF
+	NOCP
+	DUPL
+	IPMA
+	IPMD
+	DFRT
+	EDRT
+	BDPN
+	DDPN
+	FSSM
+	MBSU
 )
 
 type SessReport struct {

@@ -606,7 +606,7 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
-				Value: nl.AttrU8(v),
+				Value: nl.AttrU16(v),
 			})
 		case ie.ForwardingParameters:
 			xs, err := i.ForwardingParameters()
@@ -662,7 +662,7 @@ func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
-				Value: nl.AttrU8(v),
+				Value: nl.AttrU16(v),
 			})
 			g.applyAction(lSeid, int(farid), v)
 		case ie.UpdateForwardingParameters:
@@ -1430,7 +1430,7 @@ func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.ps.Handle(handler, g.QueryURR)
 }
 
-func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint8) {
+func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint16) {
 	oid := gtp5gnl.OID{lSeid, uint64(farid)}
 	far, err := gtp5gnl.GetFAROID(g.client, g.link.link, oid)
 	if err != nil {
