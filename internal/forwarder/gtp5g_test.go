@@ -56,7 +56,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	t.Run("create rules", func(t *testing.T) {
 		far := ie.NewCreateFAR(
 			ie.NewFARID(2),
-			ie.NewApplyAction(0x2),
+			ie.NewApplyAction(SwitchU16Endian(0x2)),
 			ie.NewForwardingParameters(
 				ie.NewDestinationInterface(ie.DstInterfaceSGiLANN6LAN),
 				ie.NewNetworkInstance("internet"),
@@ -70,7 +70,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 
 		far = ie.NewCreateFAR(
 			ie.NewFARID(4),
-			ie.NewApplyAction(0x2),
+			ie.NewApplyAction(SwitchU16Endian(0x2)),
 		)
 
 		err = g.CreateFAR(lSeid, far)
@@ -203,7 +203,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 
 		far := ie.NewUpdateFAR(
 			ie.NewFARID(4),
-			ie.NewApplyAction(0x2),
+			ie.NewApplyAction(SwitchU16Endian(0x2)),
 			ie.NewUpdateForwardingParameters(
 				ie.NewDestinationInterface(ie.DstInterfaceAccess),
 				ie.NewNetworkInstance("internet"),

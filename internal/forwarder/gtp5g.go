@@ -604,6 +604,7 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 			if err != nil {
 				return err
 			}
+			v = SwitchU16Endian(v)
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
 				Value: nl.AttrU16(v),
@@ -639,6 +640,10 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.CreateFAROID(g.client, g.link.link, oid, attrs)
 }
 
+func SwitchU16Endian(i uint16) uint16 {
+	return (i >> 8) | (i << 8)
+}
+
 func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 	var farid uint64
 	var attrs []nl.Attr
@@ -660,6 +665,7 @@ func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 			if err != nil {
 				return err
 			}
+			v = SwitchU16Endian(v)
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
 				Value: nl.AttrU16(v),
