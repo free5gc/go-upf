@@ -35,7 +35,7 @@ func testGetUSAReport(lSeid uint64, id uint32) ([]report.USAReport, error) {
 	return []report.USAReport{
 		{
 			URRID:        id,
-			USARTrigger:  report.UsageReportTrigger{PERIO: 1},
+			USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
 			VolumMeasure: v,
 		},
 	}, nil
@@ -79,7 +79,7 @@ func TestServer(t *testing.T) {
 				report.USAReport{
 					URRID: 1,
 					USARTrigger: report.UsageReportTrigger{
-						PERIO: 1,
+						Flags: report.USAR_TRIG_PERIO,
 					},
 					VolumMeasure: report.VolumeMeasure{
 						TotalVolume:    30,
@@ -90,7 +90,7 @@ func TestServer(t *testing.T) {
 				report.USAReport{
 					URRID: 2,
 					USARTrigger: report.UsageReportTrigger{
-						PERIO: 1,
+						Flags: report.USAR_TRIG_PERIO,
 					},
 					VolumMeasure: report.VolumeMeasure{
 						TotalVolume:    30,
@@ -106,7 +106,7 @@ func TestServer(t *testing.T) {
 				report.USAReport{
 					URRID: 1,
 					USARTrigger: report.UsageReportTrigger{
-						PERIO: 1,
+						Flags: report.USAR_TRIG_PERIO,
 					},
 					VolumMeasure: report.VolumeMeasure{
 						TotalVolume:    30,

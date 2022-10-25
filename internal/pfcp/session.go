@@ -3,8 +3,8 @@ package pfcp
 import (
 	"net"
 
-	"github.com/wmnsk/go-pfcp/ie"
-	"github.com/wmnsk/go-pfcp/message"
+	"github.com/tim-ywliu/go-pfcp/ie"
+	"github.com/tim-ywliu/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/report"
 )
@@ -209,7 +209,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 		if rs != nil {
 			for _, r := range rs {
-				r.USARTrigger.TEBUR = 1
+				r.USARTrigger.Flags |= report.USAR_TRIG_TEBUR
 			}
 			usars = append(usars, rs...)
 		}
@@ -358,7 +358,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 			continue
 		}
 		r.URSEQN = sess.URRSeq(r.URRID)
-		r.USARTrigger.TERMR = 1
+		r.USARTrigger.Flags |= report.USAR_TRIG_TERMR
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionDeletionResponse(
 				r.IEsWithinSessDelRsp(

@@ -3,8 +3,8 @@ package pfcp
 import (
 	"net"
 
-	"github.com/wmnsk/go-pfcp/ie"
-	"github.com/wmnsk/go-pfcp/message"
+	"github.com/tim-ywliu/go-pfcp/ie"
+	"github.com/tim-ywliu/go-pfcp/message"
 )
 
 func (s *PfcpServer) handleHeartbeatRequest(req *message.HeartbeatRequest, addr net.Addr) {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/wmnsk/go-pfcp/ie"
+	"github.com/tim-ywliu/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"

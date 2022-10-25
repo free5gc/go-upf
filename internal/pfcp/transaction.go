@@ -7,7 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/wmnsk/go-pfcp/message"
+	"github.com/tim-ywliu/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/logger"
 )

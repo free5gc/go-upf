@@ -193,7 +193,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 						logger.PerioLog.Warnf("USAReport[%#x:%#x] contain multiple reports instead of one", lSeid, id)
 					}
 
-					usars[0].USARTrigger.PERIO = 1
+					usars[0].USARTrigger.Flags |= report.USAR_TRIG_PERIO
 
 					rpts = append(rpts, usars[0])
 				}

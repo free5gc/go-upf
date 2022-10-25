@@ -133,7 +133,7 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 			off += 4
 			r := (*(*uint64)(unsafe.Pointer(&b[off])))
 
-			usar.USARTrigger.Unmarshal(uint32(r))
+			usar.USARTrigger.Flags = uint32(r)
 			off += 8
 
 			usar.VolumMeasure.TotalVolume = (*(*uint64)(unsafe.Pointer(&b[off])))

@@ -1,6 +1,7 @@
 package forwarder
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/wmnsk/go-pfcp/ie"
+	"github.com/tim-ywliu/go-pfcp/ie"
 
 	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder/buff"
@@ -1063,7 +1064,7 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 	var urrid uint32
 	var measureMethod uint8
-	var rptTriggers uint16
+	var rptTriggers uint32
 	var measurePeriod time.Duration
 	var attrs []nl.Attr
 
@@ -1088,10 +1089,14 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 				Value: nl.AttrU64(measureMethod),
 			})
 		case ie.ReportingTriggers:
-			rptTriggers, err = i.ReportingTriggers()
+			var v []byte
+			v, err = i.ReportingTriggers()
 			if err != nil {
 				return err
 			}
+			// slice len might be 2 or 3; append 0 to 4 bytes at least
+			v = append(v, 0, 0)
+			rptTriggers = binary.LittleEndian.Uint32(v)
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
 				Value: nl.AttrU64(rptTriggers),
@@ -1136,7 +1141,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 		}
 	}
 
-	if rptTriggers&report.URR_RPT_TRIGGER_PERIO != 0 {
+	if rptTriggers&report.RPT_TRIG_PERIO != 0 {
 		g.ps.AddPeriodReportTimer(lSeid, urrid, measurePeriod)
 	}
 
@@ -1175,9 +1180,12 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 			if err1 != nil {
 				return nil, err1
 			}
+			// slice len might be 2 or 3; append 0 to 4 bytes at least
+			v = append(v, 0, 0)
+			rptTriggers := binary.LittleEndian.Uint32(v)
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
-				Value: nl.AttrU64(v),
+				Value: nl.AttrU64(rptTriggers),
 			})
 		case ie.MeasurementPeriod:
 			v, err1 := i.MeasurementPeriod()
@@ -1239,7 +1247,7 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 			EndTime:     r.EndTime,
 		}
 
-		usar.USARTrigger.Unmarshal(r.USARTrigger)
+		usar.USARTrigger.Flags = r.USARTrigger
 		usar.VolumMeasure = report.VolumeMeasure{
 			TotalVolume:    r.VolMeasurement.TotalVolume,
 			UplinkVolume:   r.VolMeasurement.UplinkVolume,
@@ -1283,7 +1291,7 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 			EndTime:     r.EndTime,
 		}
 
-		usar.USARTrigger.Unmarshal(r.USARTrigger)
+		usar.USARTrigger.Flags = r.USARTrigger
 		usar.VolumMeasure = report.VolumeMeasure{
 			TotalVolume:    r.VolMeasurement.TotalVolume,
 			UplinkVolume:   r.VolMeasurement.UplinkVolume,
@@ -1413,7 +1421,7 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 			EndTime:     r.EndTime,
 		}
 
-		usar.USARTrigger.Unmarshal(r.USARTrigger)
+		usar.USARTrigger.Flags = r.USARTrigger
 		usar.VolumMeasure = report.VolumeMeasure{
 			TotalVolume:    r.VolMeasurement.TotalVolume,
 			UplinkVolume:   r.VolMeasurement.UplinkVolume,

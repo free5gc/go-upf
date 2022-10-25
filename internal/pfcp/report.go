@@ -5,8 +5,8 @@ import (
 	"net"
 
 	"github.com/pkg/errors"
-	"github.com/wmnsk/go-pfcp/ie"
-	"github.com/wmnsk/go-pfcp/message"
+	"github.com/tim-ywliu/go-pfcp/ie"
+	"github.com/tim-ywliu/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"

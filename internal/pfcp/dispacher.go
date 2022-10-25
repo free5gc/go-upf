@@ -4,7 +4,7 @@ import (
 	"net"
 
 	"github.com/pkg/errors"
-	"github.com/wmnsk/go-pfcp/message"
+	"github.com/tim-ywliu/go-pfcp/message"
 )
 
 func (s *PfcpServer) reqDispacher(msg message.Message, addr net.Addr) error {

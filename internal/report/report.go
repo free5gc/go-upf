@@ -1,9 +1,10 @@
 package report
 
 import (
+	"encoding/binary"
 	"time"
 
-	"github.com/wmnsk/go-pfcp/ie"
+	"github.com/tim-ywliu/go-pfcp/ie"
 )
 
 type ReportType int
@@ -76,9 +77,9 @@ func (r USAReport) IEsWithinSessReportReq(
 	ies := []*ie.IE{
 		ie.NewURRID(r.URRID),
 		ie.NewURSEQN(r.URSEQN),
-		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+		r.USARTrigger.IE(),
 	}
-	if r.USARTrigger.START == 0 && r.USARTrigger.STOPT == 0 && r.USARTrigger.MACAR == 0 {
+	if !r.USARTrigger.START() && !r.USARTrigger.STOPT() && !r.USARTrigger.MACAR() {
 		// These IEs shall be present, except if the Usage Report
 		// Trigger indicates 'Start of Traffic', 'Stop of Traffic' or 'MAC
 		// Addresses Reporting'.
@@ -100,9 +101,9 @@ func (r USAReport) IEsWithinSessModRsp(
 	ies := []*ie.IE{
 		ie.NewURRID(r.URRID),
 		ie.NewURSEQN(r.URSEQN),
-		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+		r.USARTrigger.IE(),
 	}
-	if r.USARTrigger.START == 0 && r.USARTrigger.STOPT == 0 && r.USARTrigger.MACAR == 0 {
+	if !r.USARTrigger.START() && !r.USARTrigger.STOPT() && !r.USARTrigger.MACAR() {
 		// These IEs shall be present, except if the Usage Report
 		// Trigger indicates 'Start of Traffic', 'Stop of Traffic' or 'MAC
 		// Addresses Reporting'.
@@ -124,9 +125,9 @@ func (r USAReport) IEsWithinSessDelRsp(
 	ies := []*ie.IE{
 		ie.NewURRID(r.URRID),
 		ie.NewURSEQN(r.URSEQN),
-		ie.NewUsageReportTrigger(r.USARTrigger.ToOctects()...),
+		r.USARTrigger.IE(),
 	}
-	if r.USARTrigger.START == 0 && r.USARTrigger.STOPT == 0 && r.USARTrigger.MACAR == 0 {
+	if !r.USARTrigger.START() && !r.USARTrigger.STOPT() && !r.USARTrigger.MACAR() {
 		// These IEs shall be present, except if the Usage Report
 		// Trigger indicates 'Start of Traffic', 'Stop of Traffic' or 'MAC
 		// Addresses Reporting'.
@@ -142,71 +143,149 @@ func (r USAReport) IEsWithinSessDelRsp(
 	return ies
 }
 
+// Reporting Triggers IE bits definition
 const (
-	// For go-pfcp Usage Report Trigger IE used
-	// TODO: upgrade go-pfcp this IE to R16 version
-	URR_RPT_TRIGGER_PERIO uint16 = 1 << 8
-	URR_RPT_TRIGGER_VOLTH uint16 = 1 << 9
+	RPT_TRIG_PERIO = 1 << iota
+	RPT_TRIG_VOLTH
+	RPT_TRIG_TIMTH
+	RPT_TRIG_QUHTI
+	RPT_TRIG_START
+	RPT_TRIG_STOPT
+	RPT_TRIG_DROTH
+	RPT_TRIG_LIUSA
+	RPT_TRIG_VOLQU
+	RPT_TRIG_TIMQU
+	RPT_TRIG_ENVCL
+	RPT_TRIG_MACAR
+	RPT_TRIG_EVETH
+	RPT_TRIG_EVEQU
+	RPT_TRIG_IPMJL
+	RPT_TRIG_QUVTI
+	RPT_TRIG_REEMR
+	RPT_TRIG_UPINT
+)
+
+// Usage Report Trigger IE bits definition
+const (
+	USAR_TRIG_PERIO = 1 << iota
+	USAR_TRIG_VOLTH
+	USAR_TRIG_TIMTH
+	USAR_TRIG_QUHTI
+	USAR_TRIG_START
+	USAR_TRIG_STOPT
+	USAR_TRIG_DROTH
+	USAR_TRIG_IMMER
+	USAR_TRIG_VOLQU
+	USAR_TRIG_TIMQU
+	USAR_TRIG_LIUSA
+	USAR_TRIG_TERMR
+	USAR_TRIG_MONIT
+	USAR_TRIG_ENVCL
+	USAR_TRIG_MACAR
+	USAR_TRIG_EVETH
+	USAR_TRIG_EVEQU
+	USAR_TRIG_TEBUR
+	USAR_TRIG_IPMJL
+	USAR_TRIG_QUVTI
+	USAR_TRIG_EMRRE
+	USAR_TRIG_UPINT
 )
 
 type UsageReportTrigger struct {
-	PERIO uint8
-	VOLTH uint8
-	TIMTH uint8
-	QUHTI uint8
-	START uint8
-	STOPT uint8
-	DROTH uint8
-	IMMER uint8
-	VOLQU uint8
-	TIMQU uint8
-	LIUSA uint8
-	TERMR uint8
-	MONIT uint8
-	ENVCL uint8
-	MACAR uint8
-	EVETH uint8
-	EVEQU uint8
-	TEBUR uint8
-	IPMJL uint8
-	QUVTI uint8
-	EMRRE uint8
+	Flags uint32
 }
 
-func (t *UsageReportTrigger) ToOctects() []uint8 {
-	return []uint8{
-		t.PERIO | t.VOLTH<<1 | t.TIMTH<<2 | t.QUHTI<<3 | t.START<<4 | t.STOPT<<5 | t.DROTH<<6 | t.IMMER<<7,
-		t.VOLQU | t.TIMQU<<1 | t.LIUSA<<2 | t.TERMR<<3 | t.MONIT<<4 | t.ENVCL<<5 | t.MACAR<<6 | t.EVETH<<7,
-		t.EVEQU | t.TEBUR<<1 | t.IPMJL<<2 | t.QUVTI<<3 | t.EMRRE<<4,
-	}
+func (t *UsageReportTrigger) IE() *ie.IE {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, t.Flags)
+	return ie.NewUsageReportTrigger(b[:3]...)
 }
 
-func (t *UsageReportTrigger) Unmarshal(v uint32) {
-	t.EVEQU = uint8(v & 1)
-	t.TEBUR = uint8((v >> 1) & 1)
-	t.IPMJL = uint8((v >> 2) & 1)
-	t.QUVTI = uint8((v >> 3) & 1)
-	t.EMRRE = uint8((v >> 4) & 1)
-
-	t.VOLQU = uint8((v >> 8) & 1)
-	t.TIMQU = uint8((v >> 9) & 1)
-	t.LIUSA = uint8((v >> 10) & 1)
-	t.TERMR = uint8((v >> 11) & 1)
-	t.MONIT = uint8((v >> 12) & 1)
-	t.ENVCL = uint8((v >> 13) & 1)
-	t.MACAR = uint8((v >> 14) & 1)
-	t.EVETH = uint8((v >> 15) & 1)
-
-	t.PERIO = uint8((v >> 16) & 1)
-	t.VOLTH = uint8((v >> 17) & 1)
-	t.TIMTH = uint8((v >> 18) & 1)
-	t.QUHTI = uint8((v >> 19) & 1)
-	t.START = uint8((v >> 20) & 1)
-	t.STOPT = uint8((v >> 21) & 1)
-	t.DROTH = uint8((v >> 22) & 1)
-	t.IMMER = uint8((v >> 23) & 1)
+func (t *UsageReportTrigger) PERIO() bool {
+	return t.Flags&USAR_TRIG_PERIO != 0
 }
 
+func (t *UsageReportTrigger) VOLTH() bool {
+	return t.Flags&USAR_TRIG_VOLTH != 0
+}
+
+func (t *UsageReportTrigger) TIMTH() bool {
+	return t.Flags&USAR_TRIG_TIMTH != 0
+}
+
+func (t *UsageReportTrigger) QUHTI() bool {
+	return t.Flags&USAR_TRIG_QUHTI != 0
+}
+
+func (t *UsageReportTrigger) START() bool {
+	return t.Flags&USAR_TRIG_START != 0
+}
+
+func (t *UsageReportTrigger) STOPT() bool {
+	return t.Flags&USAR_TRIG_STOPT != 0
+}
+
+func (t *UsageReportTrigger) DROTH() bool {
+	return t.Flags&USAR_TRIG_DROTH != 0
+}
+
+func (t *UsageReportTrigger) IMMER() bool {
+	return t.Flags&USAR_TRIG_IMMER != 0
+}
+
+func (t *UsageReportTrigger) VOLQU() bool {
+	return t.Flags&USAR_TRIG_VOLQU != 0
+}
+
+func (t *UsageReportTrigger) TIMQU() bool {
+	return t.Flags&USAR_TRIG_TIMQU != 0
+}
+
+func (t *UsageReportTrigger) LIUSA() bool {
+	return t.Flags&USAR_TRIG_LIUSA != 0
+}
+
+func (t *UsageReportTrigger) TERMR() bool {
+	return t.Flags&USAR_TRIG_TERMR != 0
+}
+
+func (t *UsageReportTrigger) MONIT() bool {
+	return t.Flags&USAR_TRIG_MONIT != 0
+}
+
+func (t *UsageReportTrigger) ENVCL() bool {
+	return t.Flags&USAR_TRIG_ENVCL != 0
+}
+
+func (t *UsageReportTrigger) MACAR() bool {
+	return t.Flags&USAR_TRIG_MACAR != 0
+}
+
+func (t *UsageReportTrigger) EVETH() bool {
+	return t.Flags&USAR_TRIG_EVETH != 0
+}
+
+func (t *UsageReportTrigger) EVEQU() bool {
+	return t.Flags&USAR_TRIG_EVEQU != 0
+}
+
+func (t *UsageReportTrigger) TEBUR() bool {
+	return t.Flags&USAR_TRIG_TEBUR != 0
+}
+
+func (t *UsageReportTrigger) IPMJL() bool {
+	return t.Flags&USAR_TRIG_IPMJL != 0
+}
+
+func (t *UsageReportTrigger) QUVTI() bool {
+	return t.Flags&USAR_TRIG_QUVTI != 0
+}
+
+func (t *UsageReportTrigger) EMRRE() bool {
+	return t.Flags&USAR_TRIG_EMRRE != 0
+}
+
+// Volume Measurement IE Flag bits definition
 const (
 	TOVOL uint8 = 1 << iota
 	ULVOL
@@ -253,6 +332,7 @@ func (m *DurationMeasure) IE() *ie.IE {
 	return ie.NewDurationMeasurement(time.Duration(m.DurationValue))
 }
 
+// Apply Action IE bits definition
 const (
 	DROP = 1 << iota
 	FORW
