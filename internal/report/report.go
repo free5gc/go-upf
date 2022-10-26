@@ -197,7 +197,7 @@ type UsageReportTrigger struct {
 
 func (t *UsageReportTrigger) IE() *ie.IE {
 	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, t.Flags)
+	binary.LittleEndian.PutUint32(b, t.Flags)
 	return ie.NewUsageReportTrigger(b[:3]...)
 }
 
