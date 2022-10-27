@@ -1086,7 +1086,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_METHOD,
-				Value: nl.AttrU64(measureMethod),
+				Value: nl.AttrU8(measureMethod),
 			})
 		case ie.ReportingTriggers:
 			var v []byte
@@ -1099,7 +1099,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 			rptTriggers = binary.LittleEndian.Uint32(v)
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
-				Value: nl.AttrU64(rptTriggers),
+				Value: nl.AttrU32(rptTriggers),
 			})
 		case ie.MeasurementPeriod:
 			measurePeriod, err = i.MeasurementPeriod()
@@ -1109,7 +1109,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 			// TODO: convert time.Duration -> ?
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_PERIOD,
-				Value: nl.AttrU64(measurePeriod),
+				Value: nl.AttrU32(measurePeriod),
 			})
 		case ie.MeasurementInformation:
 			v, err := i.MeasurementInformation()
@@ -1173,7 +1173,7 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_METHOD,
-				Value: nl.AttrU64(v),
+				Value: nl.AttrU8(v),
 			})
 		case ie.ReportingTriggers:
 			v, err1 := i.ReportingTriggers()
@@ -1185,7 +1185,7 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 			rptTriggers := binary.LittleEndian.Uint32(v)
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
-				Value: nl.AttrU64(rptTriggers),
+				Value: nl.AttrU32(rptTriggers),
 			})
 		case ie.MeasurementPeriod:
 			v, err1 := i.MeasurementPeriod()
@@ -1195,7 +1195,7 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 			// TODO: convert time.Duration -> ?
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_MEASUREMENT_PERIOD,
-				Value: nl.AttrU64(v),
+				Value: nl.AttrU32(v),
 			})
 		case ie.MeasurementInformation:
 			v, err1 := i.MeasurementInformation()
