@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"time"
 
-	"github.com/tim-ywliu/go-pfcp/ie"
+	"github.com/wmnsk/go-pfcp/ie"
 )
 
 type ReportType int

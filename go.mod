@@ -15,7 +15,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
-	github.com/tim-ywliu/go-pfcp v0.0.17
 	github.com/urfave/cli v1.22.5
+	github.com/wmnsk/go-pfcp v0.0.17-0.20221027122420-36112307f93a
 	gopkg.in/yaml.v2 v2.4.0
 )
