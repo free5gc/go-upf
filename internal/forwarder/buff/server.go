@@ -122,8 +122,8 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 	off += 8
 
 	if msgtype == TYPE_URR_REPORT {
-		report_num := int(*(*uint16)(unsafe.Pointer(&b[off])))
-		off += 2
+		report_num := int(*(*uint32)(unsafe.Pointer(&b[off])))
+		off += 4
 		usars := []report.USAReport{}
 
 		for i := 0; i < report_num; i++ {
@@ -131,10 +131,8 @@ func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []repo
 
 			usar.URRID = (*(*uint32)(unsafe.Pointer(&b[off])))
 			off += 4
-			r := (*(*uint64)(unsafe.Pointer(&b[off])))
-
-			usar.USARTrigger.Flags = uint32(r)
-			off += 8
+			usar.USARTrigger.Flags = (*(*uint32)(unsafe.Pointer(&b[off])))
+			off += 4
 
 			usar.VolumMeasure.TotalVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
 			off += 8
