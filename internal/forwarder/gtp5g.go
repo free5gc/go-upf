@@ -1421,7 +1421,7 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 			EndTime:     r.EndTime,
 		}
 
-		usar.USARTrigger.Flags = r.USARTrigger
+		usar.USARTrigger.Flags = report.USAR_TRIG_IMMER
 		usar.VolumMeasure = report.VolumeMeasure{
 			TotalVolume:    r.VolMeasurement.TotalVolume,
 			UplinkVolume:   r.VolMeasurement.UplinkVolume,
