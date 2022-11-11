@@ -195,6 +195,84 @@ type UsageReportTrigger struct {
 	Flags uint32
 }
 
+type ReportingTrigger struct {
+	Flags uint32
+}
+
+func (r *ReportingTrigger) IE() *ie.IE {
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(b, r.Flags)
+	return ie.NewReportingTriggers(b[:3]...)
+}
+
+func (r *ReportingTrigger) PERIO() bool {
+	return r.Flags&RPT_TRIG_PERIO != 0
+}
+
+func (r *ReportingTrigger) VOLTH() bool {
+	return r.Flags&RPT_TRIG_VOLTH != 0
+}
+
+func (r *ReportingTrigger) TIMTH() bool {
+	return r.Flags&RPT_TRIG_TIMTH != 0
+}
+
+func (r *ReportingTrigger) QUHTI() bool {
+	return r.Flags&RPT_TRIG_QUHTI != 0
+}
+
+func (r *ReportingTrigger) START() bool {
+	return r.Flags&RPT_TRIG_START != 0
+}
+
+func (r *ReportingTrigger) STOPT() bool {
+	return r.Flags&RPT_TRIG_STOPT != 0
+}
+
+func (r *ReportingTrigger) DROTH() bool {
+	return r.Flags&RPT_TRIG_DROTH != 0
+}
+
+func (r *ReportingTrigger) LIUSA() bool {
+	return r.Flags&RPT_TRIG_LIUSA != 0
+}
+
+func (r *ReportingTrigger) VOLQU() bool {
+	return r.Flags&RPT_TRIG_VOLQU != 0
+}
+
+func (r *ReportingTrigger) TIMQU() bool {
+	return r.Flags&RPT_TRIG_TIMQU != 0
+}
+
+func (r *ReportingTrigger) ENVCL() bool {
+	return r.Flags&RPT_TRIG_ENVCL != 0
+}
+
+func (r *ReportingTrigger) MACAR() bool {
+	return r.Flags&RPT_TRIG_MACAR != 0
+}
+
+func (r *ReportingTrigger) EVETH() bool {
+	return r.Flags&RPT_TRIG_EVETH != 0
+}
+
+func (r *ReportingTrigger) EVEQU() bool {
+	return r.Flags&RPT_TRIG_EVEQU != 0
+}
+
+func (r *ReportingTrigger) IPMJL() bool {
+	return r.Flags&RPT_TRIG_IPMJL != 0
+}
+
+func (r *ReportingTrigger) QUVTI() bool {
+	return r.Flags&RPT_TRIG_QUVTI != 0
+}
+
+func (r *ReportingTrigger) REEMR() bool {
+	return r.Flags&RPT_TRIG_REEMR != 0
+}
+
 func (t *UsageReportTrigger) IE() *ie.IE {
 	b := make([]byte, 4)
 	binary.LittleEndian.PutUint32(b, t.Flags)
