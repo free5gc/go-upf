@@ -1,7 +1,6 @@
 package forwarder
 
 import (
-	"encoding/binary"
 	"fmt"
 	"net"
 	"sync"
@@ -1064,7 +1063,7 @@ func (g *Gtp5g) newVolumeQuota(i *ie.IE) (nl.AttrList, error) {
 func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 	var urrid uint32
 	var measureMethod uint8
-	var rptTriggers uint32
+	var rptTrig report.ReportingTrigger
 	var measurePeriod time.Duration
 	var attrs []nl.Attr
 
@@ -1094,12 +1093,13 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 			if err != nil {
 				return err
 			}
-			// slice len might be 2 or 3; append 0 to 4 bytes at least
-			v = append(v, 0, 0)
-			rptTriggers = binary.LittleEndian.Uint32(v)
+			err = rptTrig.Unmarshal(v)
+			if err != nil {
+				return err
+			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
-				Value: nl.AttrU32(rptTriggers),
+				Value: nl.AttrU32(rptTrig.Flags),
 			})
 		case ie.MeasurementPeriod:
 			measurePeriod, err = i.MeasurementPeriod()
@@ -1141,7 +1141,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 		}
 	}
 
-	if rptTriggers&report.RPT_TRIG_PERIO != 0 {
+	if rptTrig.PERIO() {
 		g.ps.AddPeriodReportTimer(lSeid, urrid, measurePeriod)
 	}
 
@@ -1180,12 +1180,14 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 			if err1 != nil {
 				return nil, err1
 			}
-			// slice len might be 2 or 3; append 0 to 4 bytes at least
-			v = append(v, 0, 0)
-			rptTriggers := binary.LittleEndian.Uint32(v)
+			var rptTrig report.ReportingTrigger
+			err1 = rptTrig.Unmarshal(v)
+			if err1 != nil {
+				return nil, err1
+			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_REPORTING_TRIGGER,
-				Value: nl.AttrU32(rptTriggers),
+				Value: nl.AttrU32(rptTrig.Flags),
 			})
 		case ie.MeasurementPeriod:
 			v, err1 := i.MeasurementPeriod()

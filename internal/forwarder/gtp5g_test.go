@@ -90,14 +90,15 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		rpt := report.ReportingTrigger{}
-		rpt.Flags = report.RPT_TRIG_PERIO
+		rptTrig := report.ReportingTrigger{
+			Flags: report.RPT_TRIG_PERIO,
+		}
 
 		urr := ie.NewCreateURR(
 			ie.NewURRID(1),
 			ie.NewMeasurementPeriod(1*time.Second),
 			ie.NewMeasurementMethod(0, 1, 0),
-			rpt.IE(),
+			rptTrig.IE(),
 			ie.NewMeasurementInformation(4),
 		)
 		err = g.CreateURR(lSeid, urr)
@@ -105,11 +106,11 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		rpt.Flags = report.RPT_TRIG_VOLTH | report.RPT_TRIG_VOLQU
+		rptTrig.Flags = report.RPT_TRIG_VOLTH | report.RPT_TRIG_VOLQU
 		urr = ie.NewCreateURR(
 			ie.NewURRID(2),
 			ie.NewMeasurementMethod(0, 1, 0),
-			rpt.IE(),
+			rptTrig.IE(),
 			ie.NewMeasurementInformation(4),
 			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
 			ie.NewVolumeQuota(7, 40000, 50000, 60000),
@@ -184,8 +185,9 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	})
 
 	t.Run("update rules", func(t *testing.T) {
-		rpt := report.ReportingTrigger{}
-		rpt.Flags = report.RPT_TRIG_PERIO
+		rpt := report.ReportingTrigger{
+			Flags: report.RPT_TRIG_PERIO,
+		}
 
 		urr := ie.NewUpdateURR(
 			ie.NewURRID(1),

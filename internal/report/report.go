@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 )
 
@@ -165,38 +166,18 @@ const (
 	RPT_TRIG_UPINT
 )
 
-// Usage Report Trigger IE bits definition
-const (
-	USAR_TRIG_PERIO = 1 << iota
-	USAR_TRIG_VOLTH
-	USAR_TRIG_TIMTH
-	USAR_TRIG_QUHTI
-	USAR_TRIG_START
-	USAR_TRIG_STOPT
-	USAR_TRIG_DROTH
-	USAR_TRIG_IMMER
-	USAR_TRIG_VOLQU
-	USAR_TRIG_TIMQU
-	USAR_TRIG_LIUSA
-	USAR_TRIG_TERMR
-	USAR_TRIG_MONIT
-	USAR_TRIG_ENVCL
-	USAR_TRIG_MACAR
-	USAR_TRIG_EVETH
-	USAR_TRIG_EVEQU
-	USAR_TRIG_TEBUR
-	USAR_TRIG_IPMJL
-	USAR_TRIG_QUVTI
-	USAR_TRIG_EMRRE
-	USAR_TRIG_UPINT
-)
-
-type UsageReportTrigger struct {
+type ReportingTrigger struct {
 	Flags uint32
 }
 
-type ReportingTrigger struct {
-	Flags uint32
+func (r *ReportingTrigger) Unmarshal(b []byte) error {
+	if len(b) < 2 {
+		return errors.Errorf("ReportingTrigger Unmarshal: less than 2 bytes")
+	}
+	// slice len might be 2 or 3; append 0 to 4 bytes at least
+	b = append(b, 0, 0)
+	r.Flags = binary.LittleEndian.Uint32(b)
+	return nil
 }
 
 func (r *ReportingTrigger) IE() *ie.IE {
@@ -271,6 +252,40 @@ func (r *ReportingTrigger) QUVTI() bool {
 
 func (r *ReportingTrigger) REEMR() bool {
 	return r.Flags&RPT_TRIG_REEMR != 0
+}
+
+func (r *ReportingTrigger) UPINT() bool {
+	return r.Flags&RPT_TRIG_UPINT != 0
+}
+
+// Usage Report Trigger IE bits definition
+const (
+	USAR_TRIG_PERIO = 1 << iota
+	USAR_TRIG_VOLTH
+	USAR_TRIG_TIMTH
+	USAR_TRIG_QUHTI
+	USAR_TRIG_START
+	USAR_TRIG_STOPT
+	USAR_TRIG_DROTH
+	USAR_TRIG_IMMER
+	USAR_TRIG_VOLQU
+	USAR_TRIG_TIMQU
+	USAR_TRIG_LIUSA
+	USAR_TRIG_TERMR
+	USAR_TRIG_MONIT
+	USAR_TRIG_ENVCL
+	USAR_TRIG_MACAR
+	USAR_TRIG_EVETH
+	USAR_TRIG_EVEQU
+	USAR_TRIG_TEBUR
+	USAR_TRIG_IPMJL
+	USAR_TRIG_QUVTI
+	USAR_TRIG_EMRRE
+	USAR_TRIG_UPINT
+)
+
+type UsageReportTrigger struct {
+	Flags uint32
 }
 
 func (t *UsageReportTrigger) IE() *ie.IE {
@@ -361,6 +376,10 @@ func (t *UsageReportTrigger) QUVTI() bool {
 
 func (t *UsageReportTrigger) EMRRE() bool {
 	return t.Flags&USAR_TRIG_EMRRE != 0
+}
+
+func (t *UsageReportTrigger) UPINT() bool {
+	return t.Flags&USAR_TRIG_UPINT != 0
 }
 
 // Volume Measurement IE Flag bits definition
