@@ -51,12 +51,12 @@ func (Empty) CreateURR(uint64, *ie.IE) error {
 	return nil
 }
 
-func (Empty) UpdateURR(uint64, *ie.IE) error {
-	return nil
+func (Empty) UpdateURR(uint64, *ie.IE) ([]report.USAReport, error) {
+	return nil, nil
 }
 
-func (Empty) RemoveURR(uint64, *ie.IE) error {
-	return nil
+func (Empty) RemoveURR(uint64, *ie.IE) ([]report.USAReport, error) {
+	return nil, nil
 }
 
 func (Empty) CreateBAR(uint64, *ie.IE) error {
@@ -69,6 +69,10 @@ func (Empty) UpdateBAR(uint64, *ie.IE) error {
 
 func (Empty) RemoveBAR(uint64, *ie.IE) error {
 	return nil
+}
+
+func (Empty) QueryURR(uint64, uint32) ([]report.USAReport, error) {
+	return nil, nil
 }
 
 func (Empty) HandleReport(report.Handler) {

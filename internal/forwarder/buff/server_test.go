@@ -32,8 +32,8 @@ func (h *testHandler) NotifySessReport(sr report.SessReport) {
 	if !ok {
 		return
 	}
-	for _, rep := range sr.Reports {
-		switch r := rep.(type) {
+	for _, rpt := range sr.Reports {
+		switch r := rpt.(type) {
 		case report.DLDReport:
 			if r.Action&report.BUFF != 0 && len(r.BufPkt) > 0 {
 				q, ok := s[r.PDRID]
@@ -107,10 +107,15 @@ func TestServer(t *testing.T) {
 	}()
 
 	pkt := []byte{
+		TYPE_BUFFER,
+		// SEID
 		0x06, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00,
+		// PDRID
 		0x03, 0x00,
+		// Action
 		0x0c, 0x00,
+		// Buff pkt
 		0xee, 0xbb,
 		0xdd, 0xcc,
 	}

@@ -10,11 +10,19 @@ import (
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 const (
 	BUFFQ_LEN = 512
 )
+
+type URRInfo struct {
+	removed bool
+	SEQN    uint32
+	report.MeasureMethod
+	report.MeasureInformation
+}
 
 type Sess struct {
 	rnode    *RemoteNode
@@ -23,14 +31,14 @@ type Sess struct {
 	PDRIDs   map[uint16]struct{}
 	FARIDs   map[uint32]struct{}
 	QERIDs   map[uint32]struct{}
-	URRIDs   map[uint32]struct{}
+	URRIDs   map[uint32]*URRInfo // key: URR_ID
 	BARIDs   map[uint8]struct{}
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
 	log      *logrus.Entry
 }
 
-func (s *Sess) Close() {
+func (s *Sess) Close() []report.USAReport {
 	for id := range s.FARIDs {
 		i := ie.NewRemoveFAR(ie.NewFARID(id))
 		err := s.RemoveFAR(i)
@@ -45,11 +53,17 @@ func (s *Sess) Close() {
 			s.log.Errorf("Remove QER err: %+v", err)
 		}
 	}
+
+	var usars []report.USAReport
 	for id := range s.URRIDs {
 		i := ie.NewRemoveURR(ie.NewURRID(id))
-		err := s.RemoveURR(i)
+		rs, err := s.RemoveURR(i)
 		if err != nil {
 			s.log.Errorf("Remove URR err: %+v", err)
+			continue
+		}
+		if rs != nil {
+			usars = append(usars, rs...)
 		}
 	}
 	for id := range s.BARIDs {
@@ -69,6 +83,7 @@ func (s *Sess) Close() {
 	for _, q := range s.q {
 		close(q)
 	}
+	return usars
 }
 
 func (s *Sess) CreatePDR(req *ie.IE) error {
@@ -177,26 +192,89 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 	if err != nil {
 		return err
 	}
-	s.URRIDs[id] = struct{}{}
+
+	mInfo := &ie.IE{}
+	for _, x := range req.ChildIEs {
+		if x.Type == ie.MeasurementInformation {
+			mInfo = x
+			break
+		}
+	}
+	s.URRIDs[id] = &URRInfo{
+		MeasureMethod: report.MeasureMethod{
+			DURAT: req.HasDURAT(),
+			VOLUM: req.HasVOLUM(),
+			EVENT: req.HasEVENT(),
+		},
+		MeasureInformation: report.MeasureInformation{
+			MBQE: mInfo.HasMBQE(),
+			INAM: mInfo.HasINAM(),
+			RADI: mInfo.HasRADI(),
+			ISTM: mInfo.HasISTM(),
+			MNOP: mInfo.HasMNOP(),
+		},
+	}
 	return nil
 }
 
-func (s *Sess) UpdateURR(req *ie.IE) error {
-	return s.rnode.driver.UpdateURR(s.LocalID, req)
-}
-
-func (s *Sess) RemoveURR(req *ie.IE) error {
-	err := s.rnode.driver.RemoveURR(s.LocalID, req)
-	if err != nil {
-		return err
-	}
-
+func (s *Sess) UpdateURR(req *ie.IE) ([]report.USAReport, error) {
 	id, err := req.URRID()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	delete(s.URRIDs, id)
-	return nil
+
+	urrInfo, ok := s.URRIDs[id]
+	if !ok {
+		return nil, errors.Errorf("URRInfo[%#x] not found", id)
+	}
+	for _, x := range req.ChildIEs {
+		switch x.Type {
+		case ie.MeasurementMethod:
+			urrInfo.DURAT = x.HasDURAT()
+			urrInfo.VOLUM = x.HasVOLUM()
+			urrInfo.EVENT = x.HasEVENT()
+		case ie.MeasurementInformation:
+			urrInfo.MBQE = x.HasMBQE()
+			urrInfo.INAM = x.HasINAM()
+			urrInfo.RADI = x.HasRADI()
+			urrInfo.ISTM = x.HasISTM()
+			urrInfo.MNOP = x.HasMNOP()
+		}
+	}
+
+	usars, err := s.rnode.driver.UpdateURR(s.LocalID, req)
+	if err != nil {
+		return nil, err
+	}
+	return usars, nil
+}
+
+func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
+	id, err := req.URRID()
+	if err != nil {
+		return nil, err
+	}
+
+	usars, err := s.rnode.driver.RemoveURR(s.LocalID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	info, ok := s.URRIDs[id]
+	if !ok {
+		return nil, errors.Errorf("URRInfo[%#x] not found", id)
+	}
+	info.removed = true // remove URRInfo later
+	return usars, nil
+}
+
+func (s *Sess) QueryURR(req *ie.IE) ([]report.USAReport, error) {
+	id, err := req.URRID()
+	if err != nil {
+		return nil, err
+	}
+
+	return s.rnode.driver.QueryURR(s.LocalID, id)
 }
 
 func (s *Sess) CreateBAR(req *ie.IE) error {
@@ -270,6 +348,16 @@ func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
 	}
 }
 
+func (s *Sess) URRSeq(urrid uint32) uint32 {
+	info, ok := s.URRIDs[urrid]
+	if !ok {
+		return 0
+	}
+	seq := info.SEQN
+	info.SEQN++
+	return seq
+}
+
 type RemoteNode struct {
 	ID     string
 	addr   net.Addr
@@ -320,16 +408,18 @@ func (n *RemoteNode) NewSess(rSeid uint64) *Sess {
 	return s
 }
 
-func (n *RemoteNode) DeleteSess(lSeid uint64) {
+func (n *RemoteNode) DeleteSess(lSeid uint64) []report.USAReport {
 	_, ok := n.sess[lSeid]
 	if !ok {
-		return
+		return nil
 	}
 	delete(n.sess, lSeid)
-	err := n.local.DeleteSess(lSeid)
+	usars, err := n.local.DeleteSess(lSeid)
 	if err != nil {
 		n.log.Warnln(err)
+		return nil
 	}
+	return usars
 }
 
 type LocalNode struct {
@@ -377,7 +467,7 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 		PDRIDs:   make(map[uint16]struct{}),
 		FARIDs:   make(map[uint32]struct{}),
 		QERIDs:   make(map[uint32]struct{}),
-		URRIDs:   make(map[uint32]struct{}),
+		URRIDs:   make(map[uint32]*URRInfo),
 		BARIDs:   make(map[uint8]struct{}),
 		q:        make(map[uint16]chan []byte),
 		qlen:     qlen,
@@ -394,20 +484,20 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 	return s
 }
 
-func (n *LocalNode) DeleteSess(lSeid uint64) error {
+func (n *LocalNode) DeleteSess(lSeid uint64) ([]report.USAReport, error) {
 	if lSeid == 0 {
-		return errors.New("DeleteSess: invalid lSeid:0")
+		return nil, errors.New("DeleteSess: invalid lSeid:0")
 	}
 	i := int(lSeid) - 1
 	if i >= len(n.sess) {
-		return errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
+		return nil, errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
 	}
 	if n.sess[i] == nil {
-		return errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
+		return nil, errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
 	}
 	n.sess[i].log.Infoln("sess deleted")
-	n.sess[i].Close()
+	usars := n.sess[i].Close()
 	n.sess[i] = nil
 	n.free = append(n.free, lSeid)
-	return nil
+	return usars, nil
 }

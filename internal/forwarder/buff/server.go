@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/free5gc/go-upf/internal/logger"
@@ -15,6 +16,11 @@ type Server struct {
 	conn    *net.UnixConn
 	handler report.Handler
 }
+
+const (
+	TYPE_BUFFER     uint8 = 1
+	TYPE_URR_REPORT uint8 = 2
+)
 
 func OpenServer(wg *sync.WaitGroup, addr string) (*Server, error) {
 	s := new(Server)
@@ -63,41 +69,107 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		if err != nil {
 			break
 		}
-		seid, pdrid, action, pkt, err := s.decode(b[:n])
+
+		msgtype, seid, pdrid, action, pkt, reports, err := s.decode(b[:n])
 		if err != nil {
 			continue
 		}
-
 		if s.handler == nil {
 			continue
 		}
-		dldr := report.DLDReport{
-			PDRID:  pdrid,
-			Action: action,
-			BufPkt: pkt,
+
+		switch msgtype {
+		case TYPE_BUFFER:
+			dldr := report.DLDReport{
+				PDRID:  pdrid,
+				Action: action,
+				BufPkt: pkt,
+			}
+
+			s.handler.NotifySessReport(
+				report.SessReport{
+					SEID:    seid,
+					Reports: []report.Report{dldr},
+				},
+			)
+		case TYPE_URR_REPORT:
+			var usars []report.Report
+			for _, usar := range reports {
+				usars = append(usars, usar)
+			}
+
+			s.handler.NotifySessReport(
+				report.SessReport{
+					SEID:    seid,
+					Reports: usars,
+				},
+			)
+		default:
+			logger.BuffLog.Warn("Unknow Report Type")
 		}
-		s.handler.NotifySessReport(
-			report.SessReport{
-				SEID:    seid,
-				Reports: []report.Report{dldr},
-			},
-		)
 	}
 }
 
-func (s *Server) decode(b []byte) (uint64, uint16, uint16, []byte, error) {
+func (s *Server) decode(b []byte) (uint8, uint64, uint16, uint16, []byte, []report.USAReport, error) {
 	n := len(b)
 	if n < 12 {
-		return 0, 0, 0, nil, io.ErrUnexpectedEOF
+		return 0, 0, 0, 0, nil, nil, io.ErrUnexpectedEOF
 	}
 	var off int
+	msgtype := *(*uint8)(unsafe.Pointer(&b[off]))
+	off += 1
 	seid := *(*uint64)(unsafe.Pointer(&b[off]))
 	off += 8
-	pdrid := *(*uint16)(unsafe.Pointer(&b[off]))
-	off += 2
-	action := *(*uint16)(unsafe.Pointer(&b[off]))
-	off += 2
-	return seid, pdrid, action, b[off:], nil
+
+	if msgtype == TYPE_URR_REPORT {
+		report_num := int(*(*uint32)(unsafe.Pointer(&b[off])))
+		off += 4
+		usars := []report.USAReport{}
+
+		for i := 0; i < report_num; i++ {
+			usar := report.USAReport{}
+
+			usar.URRID = (*(*uint32)(unsafe.Pointer(&b[off])))
+			off += 4
+			usar.USARTrigger.Flags = (*(*uint32)(unsafe.Pointer(&b[off])))
+			off += 4
+
+			usar.VolumMeasure.TotalVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
+			off += 8
+			usar.VolumMeasure.UplinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
+			off += 8
+			usar.VolumMeasure.DownlinkVolume = (*(*uint64)(unsafe.Pointer(&b[off])))
+			off += 8
+			usar.VolumMeasure.TotalPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+			off += 8
+			usar.VolumMeasure.UplinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+			off += 8
+			usar.VolumMeasure.DownlinkPktNum = (*(*uint64)(unsafe.Pointer(&b[off])))
+			off += 8
+
+			usar.QueryUrrRef = (*(*uint32)(unsafe.Pointer(&b[off])))
+			off += 4
+
+			v := (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.StartTime = time.Unix(0, int64(v))
+			off += 8
+
+			v = (*(*uint64)(unsafe.Pointer(&b[off])))
+			usar.EndTime = time.Unix(0, int64(v))
+			off += 8
+
+			usars = append(usars, usar)
+		}
+		return msgtype, seid, 0, 0, nil, usars, nil
+	} else if msgtype == TYPE_BUFFER {
+		pdrid := *(*uint16)(unsafe.Pointer(&b[off]))
+		off += 2
+		action := *(*uint16)(unsafe.Pointer(&b[off]))
+		off += 2
+		return msgtype, seid, pdrid, action, b[off:], nil, nil
+	} else {
+		return msgtype, seid, 0, 0, b[off:], nil, nil
+	}
 }
 
 func (s *Server) Pop(seid uint64, pdrid uint16) ([]byte, bool) {

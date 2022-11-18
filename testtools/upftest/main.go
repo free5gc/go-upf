@@ -8,6 +8,8 @@ import (
 
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
+
+	"github.com/free5gc/go-upf/internal/forwarder"
 )
 
 func main() {
@@ -116,7 +118,7 @@ func main() {
 		),
 		ie.NewCreateFAR(
 			ie.NewFARID(1),
-			ie.NewApplyAction(2 /* 2: FORW(Forward) */),
+			ie.NewApplyAction(forwarder.SwitchU16Endian(2) /* 2: FORW(Forward) */),
 			ie.NewForwardingParameters(
 				ie.NewDestinationInterface(ie.DstInterfaceSGiLANN6LAN),
 				ie.NewNetworkInstance("internet"),
@@ -124,7 +126,7 @@ func main() {
 		),
 		ie.NewCreateFAR(
 			ie.NewFARID(2),
-			ie.NewApplyAction(2 /* 2: FORW(Forward) */),
+			ie.NewApplyAction(forwarder.SwitchU16Endian(2) /* 2: FORW(Forward) */),
 			ie.NewForwardingParameters(
 				ie.NewDestinationInterface(ie.DstInterfaceAccess),
 				ie.NewNetworkInstance("internet"),

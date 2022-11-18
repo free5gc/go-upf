@@ -5,6 +5,8 @@ import (
 
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
+
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 func (s *PfcpServer) handleSessionEstablishmentRequest(
@@ -198,10 +200,18 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 	}
 
+	var usars []report.USAReport
 	for _, i := range req.RemoveURR {
-		err = sess.RemoveURR(i)
-		if err != nil {
-			sess.log.Errorf("Mod RemoveURR error: %+v", err)
+		rs, err1 := sess.RemoveURR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod RemoveURR error: %+v", err1)
+			continue
+		}
+		if rs != nil {
+			for _, r := range rs {
+				r.USARTrigger.Flags |= report.USAR_TRIG_TEBUR
+			}
+			usars = append(usars, rs...)
 		}
 	}
 
@@ -234,9 +244,13 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.UpdateURR {
-		err = sess.UpdateURR(i)
-		if err != nil {
-			sess.log.Errorf("Mod UpdateURR error: %+v", err)
+		rs, err1 := sess.UpdateURR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod UpdateURR error: %+v", err1)
+			continue
+		}
+		if rs != nil {
+			usars = append(usars, rs...)
 		}
 	}
 
@@ -254,6 +268,17 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 	}
 
+	for _, i := range req.QueryURR {
+		usar, err1 := sess.QueryURR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod QueryURR error: %+v", err1)
+			continue
+		}
+		if usar != nil {
+			usars = append(usars, usar...)
+		}
+	}
+
 	rsp := message.NewSessionModificationResponse(
 		0,             // mp
 		0,             // fo
@@ -262,6 +287,23 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
+	for _, r := range usars {
+		urrInfo, ok := sess.URRIDs[r.URRID]
+		if !ok {
+			sess.log.Warnf("Sess Mod: URRInfo[%#x] not found", r.URRID)
+			continue
+		}
+		r.URSEQN = sess.URRSeq(r.URRID)
+		rsp.UsageReport = append(rsp.UsageReport,
+			ie.NewUsageReportWithinSessionModificationResponse(
+				r.IEsWithinSessModRsp(
+					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
+			))
+
+		if urrInfo.removed {
+			delete(sess.URRIDs, r.URRID)
+		}
+	}
 
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
@@ -277,7 +319,8 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 	// TODO: error response
 	s.log.Infoln("handleSessionDeletionRequest")
 
-	sess, err := s.lnode.Sess(req.SEID())
+	lSeid := req.SEID()
+	sess, err := s.lnode.Sess(lSeid)
 	if err != nil {
 		s.log.Errorf("handleSessionDeletionRequest: %v", err)
 		rsp := message.NewSessionDeletionResponse(
@@ -287,6 +330,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 			req.Header.SequenceNumber,
 			0, // pri
 			ie.NewCause(ie.CauseSessionContextNotFound),
+			ie.NewReportType(0, 0, 1, 0),
 		)
 
 		err = s.sendRspTo(rsp, addr)
@@ -297,7 +341,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		return
 	}
 
-	sess.rnode.DeleteSess(req.SEID())
+	usars := sess.rnode.DeleteSess(lSeid)
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -307,6 +351,24 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
+	for _, r := range usars {
+		urrInfo, ok := sess.URRIDs[r.URRID]
+		if !ok {
+			sess.log.Warnf("Sess Del: URRInfo[%#x] not found", r.URRID)
+			continue
+		}
+		r.URSEQN = sess.URRSeq(r.URRID)
+		r.USARTrigger.Flags |= report.USAR_TRIG_TERMR
+		rsp.UsageReport = append(rsp.UsageReport,
+			ie.NewUsageReportWithinSessionDeletionResponse(
+				r.IEsWithinSessDelRsp(
+					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
+			))
+
+		if urrInfo.removed {
+			delete(sess.URRIDs, r.URRID)
+		}
+	}
 
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
