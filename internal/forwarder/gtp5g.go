@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	expectedGtp5gVersion string = "0.6.6"
-	SOCKPATH             string = "/tmp/free5gc_unix_sock"
+	expectedMinGtp5gVersion string = "0.6.6"
+	expectedMaxGtp5gVersion string = "0.6.6"
+	SOCKPATH                string = "/tmp/free5gc_unix_sock"
 )
 
 type Gtp5g struct {
@@ -113,18 +114,22 @@ func (g *Gtp5g) checkVersion() error {
 	}
 
 	// compare version
-	expVer, err := version.NewVersion(expectedGtp5gVersion)
+	expMinVer, err := version.NewVersion(expectedMinGtp5gVersion)
 	if err != nil {
-		return errors.Wrapf(err, "parse expectedGtp5gVersion err")
+		return errors.Wrapf(err, "parse expectedMinGtp5gVersion err")
+	}
+	expMaxVer, err := version.NewVersion(expectedMaxGtp5gVersion)
+	if err != nil {
+		return errors.Wrapf(err, "parse expectedMaxGtp5gVersion err")
 	}
 	nowVer, err := version.NewVersion(gtp5gVer)
 	if err != nil {
 		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", nowVer)
 	}
-	if nowVer.LessThan(expVer) {
+	if nowVer.LessThan(expMinVer) || nowVer.GreaterThan(expMaxVer) {
 		return errors.Errorf(
-			"gtp5g version should be >= %s, please upgrade it",
-			expectedGtp5gVersion)
+			"gtp5g version should be %s >= verion >= %s , please update it",
+			expectedMaxGtp5gVersion, expectedMinGtp5gVersion)
 	}
 
 	return nil
