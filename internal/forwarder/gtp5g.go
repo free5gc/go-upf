@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	expectedMinGtp5gVersion string = "0.6.6"
-	expectedMaxGtp5gVersion string = "0.6.6"
+	expectedMinGtp5gVersion string = "0.7.0"
+	expectedMaxGtp5gVersion string = "0.7.0"
 	SOCKPATH                string = "/tmp/free5gc_unix_sock"
 )
 
