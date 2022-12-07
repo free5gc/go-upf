@@ -143,9 +143,9 @@ func (s *Sess) UpdatePDR(req *ie.IE) ([]report.USAReport, error) {
 		}
 
 		if deassociateUrr && lastUrrAssotiation(curUrr, s.RelativedURRIDs) {
-			usar, err := s.rnode.driver.QueryURR(s.LocalID, prevUrr)
-			if err != nil {
-				return nil, err
+			usar, err2 := s.rnode.driver.QueryURR(s.LocalID, prevUrr)
+			if err2 != nil {
+				return nil, err2
 			}
 
 			usars = append(usars, usar...)
