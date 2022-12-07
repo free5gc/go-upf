@@ -223,9 +223,9 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.RemovePDR {
-		rs, err := sess.RemovePDR(i)
-		if err != nil {
-			sess.log.Errorf("Mod RemovePDR error: %+v", err)
+		rs, err1 := sess.RemovePDR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod RemovePDR error: %+v", err1)
 		}
 		if rs != nil {
 			for _, r := range rs {
@@ -268,9 +268,9 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.UpdatePDR {
-		usar, err := sess.UpdatePDR(i)
-		if err != nil {
-			sess.log.Errorf("Mod UpdatePDR error: %+v", err)
+		usar, err1 := sess.UpdatePDR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod UpdatePDR error: %+v", err1)
 		}
 		if usar != nil {
 			usars = append(usars, usar...)

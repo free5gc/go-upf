@@ -127,9 +127,9 @@ func (s *Sess) UpdatePDR(req *ie.IE) ([]report.USAReport, error) {
 		return nil, err
 	}
 
-	id, err := req.PDRID()
-	if err != nil {
-		return nil, err
+	id, err1 := req.PDRID()
+	if err1 != nil {
+		return nil, err1
 	}
 
 	for _, prevUrr := range s.RelativedURRIDs[id] {
