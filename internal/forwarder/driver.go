@@ -16,9 +16,9 @@ import (
 type Driver interface {
 	Close()
 
-	CreatePDR(uint64, *ie.IE) error
-	UpdatePDR(uint64, *ie.IE) error
-	RemovePDR(uint64, *ie.IE) error
+	CreatePDR(uint64, *ie.IE) ([]uint32, error)
+	UpdatePDR(uint64, *ie.IE) ([]uint32, error)
+	RemovePDR(uint64, *ie.IE) ([]uint32, error)
 
 	CreateFAR(uint64, *ie.IE) error
 	UpdateFAR(uint64, *ie.IE) error

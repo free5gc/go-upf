@@ -33,9 +33,11 @@ type Sess struct {
 	QERIDs   map[uint32]struct{}
 	URRIDs   map[uint32]*URRInfo // key: URR_ID
 	BARIDs   map[uint8]struct{}
-	q        map[uint16]chan []byte // key: PDR_ID
-	qlen     int
-	log      *logrus.Entry
+
+	RelativedURRIDs map[uint16][]uint32
+	q               map[uint16]chan []byte // key: PDR_ID
+	qlen            int
+	log             *logrus.Entry
 }
 
 func (s *Sess) Close() []report.USAReport {
@@ -75,9 +77,12 @@ func (s *Sess) Close() []report.USAReport {
 	}
 	for id := range s.PDRIDs {
 		i := ie.NewRemovePDR(ie.NewPDRID(id))
-		err := s.RemovePDR(i)
+		rs, err := s.RemovePDR(i)
 		if err != nil {
 			s.log.Errorf("remove PDR err: %+v", err)
+		}
+		if rs != nil {
+			usars = append(usars, rs...)
 		}
 	}
 	for _, q := range s.q {
@@ -87,7 +92,7 @@ func (s *Sess) Close() []report.USAReport {
 }
 
 func (s *Sess) CreatePDR(req *ie.IE) error {
-	err := s.rnode.driver.CreatePDR(s.LocalID, req)
+	urrids, err := s.rnode.driver.CreatePDR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
@@ -97,25 +102,90 @@ func (s *Sess) CreatePDR(req *ie.IE) error {
 		return err
 	}
 	s.PDRIDs[id] = struct{}{}
+	s.RelativedURRIDs[id] = urrids
 	return nil
 }
 
-func (s *Sess) UpdatePDR(req *ie.IE) error {
-	return s.rnode.driver.UpdatePDR(s.LocalID, req)
+func lastUrrAssotiation(curUrr uint32, relativedURRIDs map[uint16][]uint32) bool {
+	for _, pdrRelativeUrr := range relativedURRIDs {
+		for _, urrid := range pdrRelativeUrr {
+			if curUrr == urrid {
+				return false
+			}
+		}
+	}
+	// Last associated PDR for this urr, should return report
+	return true
 }
 
-func (s *Sess) RemovePDR(req *ie.IE) error {
-	err := s.rnode.driver.RemovePDR(s.LocalID, req)
+func (s *Sess) UpdatePDR(req *ie.IE) ([]report.USAReport, error) {
+	var usars []report.USAReport
+	var curUrr uint32
+
+	urrIds, err := s.rnode.driver.UpdatePDR(s.LocalID, req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	id, err := req.PDRID()
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	for _, prevUrr := range s.RelativedURRIDs[id] {
+		deassociateUrr := true
+
+		for _, curUrr := range urrIds {
+			if curUrr == prevUrr {
+				deassociateUrr = false
+				break
+			}
+		}
+
+		if deassociateUrr && lastUrrAssotiation(curUrr, s.RelativedURRIDs) {
+			usar, err := s.rnode.driver.QueryURR(s.LocalID, prevUrr)
+			if err != nil {
+				return nil, err
+			}
+
+			usars = append(usars, usar...)
+		}
+	}
+
+	s.RelativedURRIDs[id] = urrIds
+
+	return usars, err
+}
+
+func (s *Sess) RemovePDR(req *ie.IE) ([]report.USAReport, error) {
+	urrIds, err := s.rnode.driver.RemovePDR(s.LocalID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := req.PDRID()
+	if err != nil {
+		return nil, err
+	}
+
 	delete(s.PDRIDs, id)
-	return nil
+
+	for _, prevUrr := range s.RelativedURRIDs[id] {
+		deasociate := true
+		for _, curUrr := range urrIds {
+			if curUrr == prevUrr {
+				deasociate = false
+			}
+		}
+
+		if deasociate {
+			delete(s.RelativedURRIDs, id)
+			return s.rnode.driver.QueryURR(s.LocalID, prevUrr)
+		}
+	}
+
+	delete(s.RelativedURRIDs, id)
+	return nil, nil
 }
 
 func (s *Sess) CreateFAR(req *ie.IE) error {
@@ -463,14 +533,15 @@ func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
 
 func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 	s := &Sess{
-		RemoteID: rSeid,
-		PDRIDs:   make(map[uint16]struct{}),
-		FARIDs:   make(map[uint32]struct{}),
-		QERIDs:   make(map[uint32]struct{}),
-		URRIDs:   make(map[uint32]*URRInfo),
-		BARIDs:   make(map[uint8]struct{}),
-		q:        make(map[uint16]chan []byte),
-		qlen:     qlen,
+		RemoteID:        rSeid,
+		PDRIDs:          make(map[uint16]struct{}),
+		FARIDs:          make(map[uint32]struct{}),
+		QERIDs:          make(map[uint32]struct{}),
+		URRIDs:          make(map[uint32]*URRInfo),
+		BARIDs:          make(map[uint8]struct{}),
+		RelativedURRIDs: map[uint16][]uint32{},
+		q:               make(map[uint16]chan []byte),
+		qlen:            qlen,
 	}
 	last := len(n.free) - 1
 	if last >= 0 {

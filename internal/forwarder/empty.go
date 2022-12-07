@@ -11,16 +11,16 @@ type Empty struct{}
 func (Empty) Close() {
 }
 
-func (Empty) CreatePDR(uint64, *ie.IE) error {
-	return nil
+func (Empty) CreatePDR(uint64, *ie.IE) ([]uint32, error) {
+	return nil, nil
 }
 
-func (Empty) UpdatePDR(uint64, *ie.IE) error {
-	return nil
+func (Empty) UpdatePDR(uint64, *ie.IE) ([]uint32, error) {
+	return nil, nil
 }
 
-func (Empty) RemovePDR(uint64, *ie.IE) error {
-	return nil
+func (Empty) RemovePDR(uint64, *ie.IE) ([]uint32, error) {
+	return nil, nil
 }
 
 func (Empty) CreateFAR(uint64, *ie.IE) error {

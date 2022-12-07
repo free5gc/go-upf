@@ -148,7 +148,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(2),
 		)
 
-		err = g.CreatePDR(lSeid, pdr)
+		_, err = g.CreatePDR(lSeid, pdr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +172,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(1),
 		)
 
-		err = g.CreatePDR(lSeid, pdr)
+		_, err = g.CreatePDR(lSeid, pdr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -244,10 +244,11 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewFARID(4),
 		)
 
-		err = g.UpdatePDR(lSeid, pdr)
+		urrids, err := g.UpdatePDR(lSeid, pdr)
 		if err != nil {
 			t.Fatal(err)
 		}
+		g.log.Infof("New relatived Urr Ids %v", urrids)
 	})
 
 	t.Run("remove rules", func(t *testing.T) {
