@@ -436,7 +436,7 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 	// Not in 3GPP spec, just used for buffering
 	attrs = append(attrs, nl.Attr{
 		Type:  gtp5gnl.PDR_UNIX_SOCKET_PATH,
-		Value: nl.AttrString("/"),
+		Value: nl.AttrString(gtp5gnl.PdrAddrForNetlink),
 	})
 
 	oid := gtp5gnl.OID{lSeid, pdrid}

@@ -21,14 +21,6 @@ type Server struct {
 
 var native binary.ByteOrder = gtp5gnl.NativeEndian()
 
-const (
-	BUFFER_PAD = iota + 3
-	BUFFER_PACKET
-	BUFFER_ID
-	BUFFER_SEID
-	BUFFER_ACTION
-)
-
 func OpenServer(wg *sync.WaitGroup, client *nl.Client, mux *nl.Mux) (*Server, error) {
 	s := &Server{
 		client: client,
@@ -40,7 +32,7 @@ func OpenServer(wg *sync.WaitGroup, client *nl.Client, mux *nl.Mux) (*Server, er
 		return nil, errors.Wrap(err, "get family")
 	}
 
-	s.conn, err = nl.Open(syscall.NETLINK_GENERIC, int(f.Groups[0].ID))
+	s.conn, err = nl.Open(syscall.NETLINK_GENERIC, int(f.Groups[gtp5gnl.GENL_MCGRP].ID))
 	if err != nil {
 		return nil, errors.Wrap(err, "open netlink")
 	}
@@ -77,13 +69,13 @@ func (s *Server) ServeMsg(msg *nl.Msg) bool {
 			return false
 		}
 		switch hdr.MaskedType() {
-		case BUFFER_ID:
+		case gtp5gnl.BUFFER_ID:
 			pdrid = native.Uint16(b[n:])
-		case BUFFER_ACTION:
+		case gtp5gnl.BUFFER_ACTION:
 			action = native.Uint16(b[n:])
-		case BUFFER_SEID:
+		case gtp5gnl.BUFFER_SEID:
 			seid = native.Uint64(b[n:])
-		case BUFFER_PACKET:
+		case gtp5gnl.BUFFER_PACKET:
 			pkt = b[n:int(hdr.Len)]
 		}
 		b = b[hdr.Len.Align():]
