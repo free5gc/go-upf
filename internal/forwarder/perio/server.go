@@ -184,8 +184,8 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 						break
 					}
 
-					if usars == nil {
-						logger.PerioLog.Warnf("USAReport[%#x:%#x] is nil", lSeid, id)
+					if len(usars) == 0 {
+						logger.PerioLog.Warnf("no PERIO USAReport[%#x:%#x]", lSeid, id)
 						continue
 					}
 

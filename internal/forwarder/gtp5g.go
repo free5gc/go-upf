@@ -337,14 +337,13 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	return attrs, nil
 }
 
-func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) ([]uint32, error) {
+func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 	var pdrid uint64
 	var attrs []nl.Attr
-	var urrIds []uint32
 
 	ies, err := req.CreatePDR()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, i := range ies {
@@ -408,7 +407,6 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) ([]uint32, error) {
 			if err != nil {
 				break
 			}
-			urrIds = append(urrIds, v)
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_URR_ID,
 				Value: nl.AttrU32(v),
@@ -430,16 +428,16 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) ([]uint32, error) {
 	})
 
 	oid := gtp5gnl.OID{lSeid, pdrid}
-	return urrIds, gtp5gnl.CreatePDROID(g.client, g.link.link, oid, attrs)
+	return gtp5gnl.CreatePDROID(g.client, g.link.link, oid, attrs)
 }
 
-func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) ([]uint32, error) {
+func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 	var pdrid uint64
 	var attrs []nl.Attr
-	var urrIds []uint32
+
 	ies, err := req.UpdatePDR()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, i := range ies {
@@ -503,7 +501,6 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) ([]uint32, error) {
 			if err != nil {
 				break
 			}
-			urrIds = append(urrIds, v)
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_URR_ID,
 				Value: nl.AttrU32(v),
@@ -512,34 +509,16 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) ([]uint32, error) {
 	}
 
 	oid := gtp5gnl.OID{lSeid, pdrid}
-	return urrIds, gtp5gnl.UpdatePDROID(g.client, g.link.link, oid, attrs)
+	return gtp5gnl.UpdatePDROID(g.client, g.link.link, oid, attrs)
 }
 
-func (g *Gtp5g) RemovePDR(lSeid uint64, req *ie.IE) ([]uint32, error) {
-	var urrIds []uint32
-
+func (g *Gtp5g) RemovePDR(lSeid uint64, req *ie.IE) error {
 	v, err := req.PDRID()
 	if err != nil {
-		return nil, errors.New("not found PDRID")
-	}
-
-	ies, err := req.RemovePDR()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, i := range ies {
-		switch i.Type {
-		case ie.URRID:
-			v, err := i.URRID()
-			if err != nil {
-				break
-			}
-			urrIds = append(urrIds, v)
-		}
+		return errors.New("not found PDRID")
 	}
 	oid := gtp5gnl.OID{lSeid, uint64(v)}
-	return urrIds, gtp5gnl.RemovePDROID(g.client, g.link.link, oid)
+	return gtp5gnl.RemovePDROID(g.client, g.link.link, oid)
 }
 
 func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {

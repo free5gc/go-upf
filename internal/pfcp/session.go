@@ -207,10 +207,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			sess.log.Errorf("Mod RemoveURR error: %+v", err1)
 			continue
 		}
-		if rs != nil {
-			for _, r := range rs {
-				r.USARTrigger.Flags |= report.USAR_TRIG_TEBUR
-			}
+		if len(rs) > 0 {
 			usars = append(usars, rs...)
 		}
 	}
@@ -227,10 +224,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod RemovePDR error: %+v", err1)
 		}
-		if rs != nil {
-			for _, r := range rs {
-				r.USARTrigger.Flags |= report.USAR_TRIG_TEBUR
-			}
+		if len(rs) > 0 {
 			usars = append(usars, rs...)
 		}
 	}
@@ -255,7 +249,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			sess.log.Errorf("Mod UpdateURR error: %+v", err1)
 			continue
 		}
-		if rs != nil {
+		if len(rs) > 0 {
 			usars = append(usars, rs...)
 		}
 	}
@@ -268,23 +262,23 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.UpdatePDR {
-		usar, err1 := sess.UpdatePDR(i)
+		rs, err1 := sess.UpdatePDR(i)
 		if err1 != nil {
 			sess.log.Errorf("Mod UpdatePDR error: %+v", err1)
 		}
-		if usar != nil {
-			usars = append(usars, usar...)
+		if len(rs) > 0 {
+			usars = append(usars, rs...)
 		}
 	}
 
 	for _, i := range req.QueryURR {
-		usar, err1 := sess.QueryURR(i)
+		rs, err1 := sess.QueryURR(i)
 		if err1 != nil {
 			sess.log.Errorf("Mod QueryURR error: %+v", err1)
 			continue
 		}
-		if usar != nil {
-			usars = append(usars, usar...)
+		if len(rs) > 0 {
+			usars = append(usars, rs...)
 		}
 	}
 
