@@ -189,14 +189,10 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 						continue
 					}
 
-					if len(usars) > 1 {
-						logger.PerioLog.Warnf("PERIO USAReport[%#x:%#x] contain multiple reports instead of one",
-							lSeid, id)
+					for i := range usars {
+						usars[i].USARTrigger.Flags |= report.USAR_TRIG_PERIO
+						rpts = append(rpts, usars[i])
 					}
-
-					usars[0].USARTrigger.Flags |= report.USAR_TRIG_PERIO
-
-					rpts = append(rpts, usars[0])
 				}
 
 				s.handler.NotifySessReport(

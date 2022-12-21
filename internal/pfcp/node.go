@@ -59,7 +59,6 @@ func (s *Sess) Close() []report.USAReport {
 		}
 	}
 
-	// usage report being reported for a URR due to the termination of the PFCP session
 	var usars []report.USAReport
 	for id := range s.URRIDs {
 		i := ie.NewRemoveURR(ie.NewURRID(id))
@@ -145,18 +144,15 @@ func (s *Sess) diassociateURR(urrid uint32) []report.USAReport {
 	if urrInfo.refPdrNum > 0 {
 		urrInfo.refPdrNum--
 		if urrInfo.refPdrNum == 0 {
-			// usage report being reported for a URR due to dissociated from the last PDR
+			// indicates usage report being reported for a URR due to dissociated from the last PDR
 			usars, err := s.rnode.driver.QueryURR(s.LocalID, urrid)
 			if err != nil {
 				return nil
 			}
-			if len(usars) > 0 {
-				if len(usars) > 1 {
-					s.log.Warnf("diassociateURR: USAReport[%#x] contain multiple reports instead of one", urrid)
-				}
-				usars[0].USARTrigger.Flags |= report.USAR_TRIG_TERMR
-				return []report.USAReport{usars[0]}
+			for i := range usars {
+				usars[i].USARTrigger.Flags |= report.USAR_TRIG_TERMR
 			}
+			return usars
 		}
 	} else {
 		s.log.Warnf("diassociateURR: wrong refPdrNum(%d)", urrInfo.refPdrNum)
@@ -419,15 +415,11 @@ func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 		return nil, err
 	}
 
-	// usage report being reported for a URR due to the removal of the URR
-	if len(usars) > 0 {
-		if len(usars) > 1 {
-			s.log.Warnf("RemoveURR: USAReport[%#x] contain multiple reports instead of one", id)
-		}
-		usars[0].USARTrigger.Flags |= report.USAR_TRIG_TERMR
-		return []report.USAReport{usars[0]}, nil
+	// indicates usage report being reported for a URR due to the removal of the URR
+	for i := range usars {
+		usars[i].USARTrigger.Flags |= report.USAR_TRIG_TERMR
 	}
-	return nil, nil
+	return usars, nil
 }
 
 func (s *Sess) QueryURR(req *ie.IE) ([]report.USAReport, error) {
@@ -446,14 +438,11 @@ func (s *Sess) QueryURR(req *ie.IE) ([]report.USAReport, error) {
 		return nil, err
 	}
 
-	if len(usars) > 0 {
-		if len(usars) > 1 {
-			s.log.Warnf("QueryURR: USAReport[%#x] contain multiple reports instead of one", id)
-		}
-		usars[0].USARTrigger.Flags |= report.USAR_TRIG_IMMER
-		return []report.USAReport{usars[0]}, nil
+	// indicates an immediate report reported on CP function demand
+	for i := range usars {
+		usars[i].USARTrigger.Flags |= report.USAR_TRIG_IMMER
 	}
-	return nil, nil
+	return usars, nil
 }
 
 func (s *Sess) CreateBAR(req *ie.IE) error {

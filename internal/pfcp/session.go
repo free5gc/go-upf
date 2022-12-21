@@ -361,6 +361,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 			continue
 		}
 		r.URSEQN = sess.URRSeq(r.URRID)
+		// indicates usage report being reported for a URR due to the termination of the PFCP session
 		r.USARTrigger.Flags |= report.USAR_TRIG_TERMR
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionDeletionResponse(
