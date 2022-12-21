@@ -190,7 +190,8 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					}
 
 					if len(usars) > 1 {
-						logger.PerioLog.Warnf("USAReport[%#x:%#x] contain multiple reports instead of one", lSeid, id)
+						logger.PerioLog.Warnf("PERIO USAReport[%#x:%#x] contain multiple reports instead of one",
+							lSeid, id)
 					}
 
 					usars[0].USARTrigger.Flags |= report.USAR_TRIG_PERIO

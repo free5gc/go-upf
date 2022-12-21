@@ -152,7 +152,7 @@ func (s *Sess) diassociateURR(urrid uint32) []report.USAReport {
 			}
 			if len(usars) > 0 {
 				if len(usars) > 1 {
-					s.log.Warnf("USAReport[%#x] contain multiple reports instead of one", urrid)
+					s.log.Warnf("diassociateURR: USAReport[%#x] contain multiple reports instead of one", urrid)
 				}
 				usars[0].USARTrigger.Flags |= report.USAR_TRIG_TERMR
 				return []report.USAReport{usars[0]}
@@ -422,7 +422,7 @@ func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 	// usage report being reported for a URR due to the removal of the URR
 	if len(usars) > 0 {
 		if len(usars) > 1 {
-			s.log.Warnf("USAReport[%#x] contain multiple reports instead of one", id)
+			s.log.Warnf("RemoveURR: USAReport[%#x] contain multiple reports instead of one", id)
 		}
 		usars[0].USARTrigger.Flags |= report.USAR_TRIG_TERMR
 		return []report.USAReport{usars[0]}, nil
@@ -440,7 +440,20 @@ func (s *Sess) QueryURR(req *ie.IE) ([]report.USAReport, error) {
 	if !ok {
 		return nil, errors.Errorf("QueryURR: URR[%#x] not found", id)
 	}
-	return s.rnode.driver.QueryURR(s.LocalID, id)
+
+	usars, err := s.rnode.driver.QueryURR(s.LocalID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(usars) > 0 {
+		if len(usars) > 1 {
+			s.log.Warnf("QueryURR: USAReport[%#x] contain multiple reports instead of one", id)
+		}
+		usars[0].USARTrigger.Flags |= report.USAR_TRIG_IMMER
+		return []report.USAReport{usars[0]}, nil
+	}
+	return nil, nil
 }
 
 func (s *Sess) CreateBAR(req *ie.IE) error {
