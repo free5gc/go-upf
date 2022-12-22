@@ -17,22 +17,27 @@ const (
 	BUFFQ_LEN = 512
 )
 
+type PDRInfo struct {
+	RelatedURRIDs map[uint32]struct{}
+}
+
 type URRInfo struct {
 	removed bool
 	SEQN    uint32
 	report.MeasureMethod
 	report.MeasureInformation
+	refPdrNum uint16
 }
 
 type Sess struct {
 	rnode    *RemoteNode
 	LocalID  uint64
 	RemoteID uint64
-	PDRIDs   map[uint16]struct{}
-	FARIDs   map[uint32]struct{}
-	QERIDs   map[uint32]struct{}
-	URRIDs   map[uint32]*URRInfo // key: URR_ID
-	BARIDs   map[uint8]struct{}
+	PDRIDs   map[uint16]*PDRInfo    // key: PDR_ID
+	FARIDs   map[uint32]struct{}    // key: FAR_ID
+	QERIDs   map[uint32]struct{}    // key: QER_ID
+	URRIDs   map[uint32]*URRInfo    // key: URR_ID
+	BARIDs   map[uint8]struct{}     // key: BAR_ID
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
 	log      *logrus.Entry
@@ -75,9 +80,12 @@ func (s *Sess) Close() []report.USAReport {
 	}
 	for id := range s.PDRIDs {
 		i := ie.NewRemovePDR(ie.NewPDRID(id))
-		err := s.RemovePDR(i)
+		rs, err := s.RemovePDR(i)
 		if err != nil {
 			s.log.Errorf("remove PDR err: %+v", err)
+		}
+		if rs != nil {
+			usars = append(usars, rs...)
 		}
 	}
 	for _, q := range s.q {
@@ -87,107 +95,243 @@ func (s *Sess) Close() []report.USAReport {
 }
 
 func (s *Sess) CreatePDR(req *ie.IE) error {
-	err := s.rnode.driver.CreatePDR(s.LocalID, req)
+	ies, err := req.CreatePDR()
 	if err != nil {
 		return err
 	}
 
-	id, err := req.PDRID()
+	var pdrid uint16
+	urrids := make(map[uint32]struct{})
+	for _, i := range ies {
+		switch i.Type {
+		case ie.PDRID:
+			v, err1 := i.PDRID()
+			if err1 != nil {
+				break
+			}
+			pdrid = v
+		case ie.URRID:
+			v, err1 := i.URRID()
+			if err1 != nil {
+				break
+			}
+			urrids[v] = struct{}{}
+			urrInfo, ok := s.URRIDs[v]
+			if ok {
+				urrInfo.refPdrNum++
+			}
+		}
+	}
+
+	s.PDRIDs[pdrid] = &PDRInfo{
+		RelatedURRIDs: urrids,
+	}
+
+	err = s.rnode.driver.CreatePDR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
-	s.PDRIDs[id] = struct{}{}
+
 	return nil
 }
 
-func (s *Sess) UpdatePDR(req *ie.IE) error {
-	return s.rnode.driver.UpdatePDR(s.LocalID, req)
+func (s *Sess) diassociateURR(urrid uint32) []report.USAReport {
+	urrInfo, ok := s.URRIDs[urrid]
+	if !ok {
+		return nil
+	}
+
+	if urrInfo.refPdrNum > 0 {
+		urrInfo.refPdrNum--
+		if urrInfo.refPdrNum == 0 {
+			// indicates usage report being reported for a URR due to dissociated from the last PDR
+			usars, err := s.rnode.driver.QueryURR(s.LocalID, urrid)
+			if err != nil {
+				return nil
+			}
+			for i := range usars {
+				usars[i].USARTrigger.Flags |= report.USAR_TRIG_TERMR
+			}
+			return usars
+		}
+	} else {
+		s.log.Warnf("diassociateURR: wrong refPdrNum(%d)", urrInfo.refPdrNum)
+	}
+	return nil
 }
 
-func (s *Sess) RemovePDR(req *ie.IE) error {
-	err := s.rnode.driver.RemovePDR(s.LocalID, req)
+func (s *Sess) UpdatePDR(req *ie.IE) ([]report.USAReport, error) {
+	ies, err := req.UpdatePDR()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	id, err := req.PDRID()
-	if err != nil {
-		return err
+	var pdrid uint16
+	newUrrids := make(map[uint32]struct{})
+	for _, i := range ies {
+		switch i.Type {
+		case ie.PDRID:
+			v, err1 := i.PDRID()
+			if err1 != nil {
+				break
+			}
+			pdrid = v
+		case ie.URRID:
+			v, err1 := i.URRID()
+			if err1 != nil {
+				break
+			}
+			newUrrids[v] = struct{}{}
+		}
 	}
-	delete(s.PDRIDs, id)
-	return nil
+
+	pdrInfo, ok := s.PDRIDs[pdrid]
+	if !ok {
+		return nil, errors.Errorf("UpdatePDR: PDR(%#x) not found", pdrid)
+	}
+
+	err = s.rnode.driver.UpdatePDR(s.LocalID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var usars []report.USAReport
+	for urrid := range pdrInfo.RelatedURRIDs {
+		_, ok = newUrrids[urrid]
+		if !ok {
+			usar := s.diassociateURR(urrid)
+			if len(usar) > 0 {
+				usars = append(usars, usar...)
+			}
+		}
+	}
+	pdrInfo.RelatedURRIDs = newUrrids
+
+	return usars, err
+}
+
+func (s *Sess) RemovePDR(req *ie.IE) ([]report.USAReport, error) {
+	pdrid, err := req.PDRID()
+	if err != nil {
+		return nil, err
+	}
+
+	pdrInfo, ok := s.PDRIDs[pdrid]
+	if !ok {
+		return nil, errors.Errorf("RemovePDR: PDR(%#x) not found", pdrid)
+	}
+
+	err = s.rnode.driver.RemovePDR(s.LocalID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var usars []report.USAReport
+	for urrid := range pdrInfo.RelatedURRIDs {
+		usar := s.diassociateURR(urrid)
+		if len(usar) > 0 {
+			usars = append(usars, usar...)
+		}
+	}
+	delete(s.PDRIDs, pdrid)
+	return usars, nil
 }
 
 func (s *Sess) CreateFAR(req *ie.IE) error {
-	err := s.rnode.driver.CreateFAR(s.LocalID, req)
-	if err != nil {
-		return err
-	}
-
 	id, err := req.FARID()
 	if err != nil {
 		return err
 	}
 	s.FARIDs[id] = struct{}{}
+
+	err = s.rnode.driver.CreateFAR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *Sess) UpdateFAR(req *ie.IE) error {
-	return s.rnode.driver.UpdateFAR(s.LocalID, req)
-}
-
-func (s *Sess) RemoveFAR(req *ie.IE) error {
-	err := s.rnode.driver.RemoveFAR(s.LocalID, req)
-	if err != nil {
-		return err
-	}
-
 	id, err := req.FARID()
 	if err != nil {
 		return err
 	}
+
+	_, ok := s.FARIDs[id]
+	if !ok {
+		return errors.Errorf("UpdateFAR: FAR(%#x) not found", id)
+	}
+	return s.rnode.driver.UpdateFAR(s.LocalID, req)
+}
+
+func (s *Sess) RemoveFAR(req *ie.IE) error {
+	id, err := req.FARID()
+	if err != nil {
+		return err
+	}
+
+	_, ok := s.FARIDs[id]
+	if !ok {
+		return errors.Errorf("RemoveFAR: FAR(%#x) not found", id)
+	}
+
+	err = s.rnode.driver.RemoveFAR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
+
 	delete(s.FARIDs, id)
 	return nil
 }
 
 func (s *Sess) CreateQER(req *ie.IE) error {
-	err := s.rnode.driver.CreateQER(s.LocalID, req)
-	if err != nil {
-		return err
-	}
-
 	id, err := req.QERID()
 	if err != nil {
 		return err
 	}
 	s.QERIDs[id] = struct{}{}
+
+	err = s.rnode.driver.CreateQER(s.LocalID, req)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *Sess) UpdateQER(req *ie.IE) error {
-	return s.rnode.driver.UpdateQER(s.LocalID, req)
-}
-
-func (s *Sess) RemoveQER(req *ie.IE) error {
-	err := s.rnode.driver.RemoveQER(s.LocalID, req)
-	if err != nil {
-		return err
-	}
-
 	id, err := req.QERID()
 	if err != nil {
 		return err
 	}
+
+	_, ok := s.QERIDs[id]
+	if !ok {
+		return errors.Errorf("UpdateQER: QER(%#x) not found", id)
+	}
+	return s.rnode.driver.UpdateQER(s.LocalID, req)
+}
+
+func (s *Sess) RemoveQER(req *ie.IE) error {
+	id, err := req.QERID()
+	if err != nil {
+		return err
+	}
+
+	_, ok := s.QERIDs[id]
+	if !ok {
+		return errors.Errorf("RemoveQER: QER(%#x) not found", id)
+	}
+
+	err = s.rnode.driver.RemoveQER(s.LocalID, req)
+	if err != nil {
+		return err
+	}
+
 	delete(s.QERIDs, id)
 	return nil
 }
 
 func (s *Sess) CreateURR(req *ie.IE) error {
-	err := s.rnode.driver.CreateURR(s.LocalID, req)
-	if err != nil {
-		return err
-	}
-
 	id, err := req.URRID()
 	if err != nil {
 		return err
@@ -214,6 +358,11 @@ func (s *Sess) CreateURR(req *ie.IE) error {
 			MNOP: mInfo.HasMNOP(),
 		},
 	}
+
+	err = s.rnode.driver.CreateURR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -225,7 +374,7 @@ func (s *Sess) UpdateURR(req *ie.IE) ([]report.USAReport, error) {
 
 	urrInfo, ok := s.URRIDs[id]
 	if !ok {
-		return nil, errors.Errorf("URRInfo[%#x] not found", id)
+		return nil, errors.Errorf("UpdateURR: URR[%#x] not found", id)
 	}
 	for _, x := range req.ChildIEs {
 		switch x.Type {
@@ -255,16 +404,21 @@ func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 		return nil, err
 	}
 
+	info, ok := s.URRIDs[id]
+	if !ok {
+		return nil, errors.Errorf("RemoveURR: URR[%#x] not found", id)
+	}
+	info.removed = true // remove URRInfo later
+
 	usars, err := s.rnode.driver.RemoveURR(s.LocalID, req)
 	if err != nil {
 		return nil, err
 	}
 
-	info, ok := s.URRIDs[id]
-	if !ok {
-		return nil, errors.Errorf("URRInfo[%#x] not found", id)
+	// indicates usage report being reported for a URR due to the removal of the URR
+	for i := range usars {
+		usars[i].USARTrigger.Flags |= report.USAR_TRIG_TERMR
 	}
-	info.removed = true // remove URRInfo later
 	return usars, nil
 }
 
@@ -274,37 +428,66 @@ func (s *Sess) QueryURR(req *ie.IE) ([]report.USAReport, error) {
 		return nil, err
 	}
 
-	return s.rnode.driver.QueryURR(s.LocalID, id)
+	_, ok := s.URRIDs[id]
+	if !ok {
+		return nil, errors.Errorf("QueryURR: URR[%#x] not found", id)
+	}
+
+	usars, err := s.rnode.driver.QueryURR(s.LocalID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// indicates an immediate report reported on CP function demand
+	for i := range usars {
+		usars[i].USARTrigger.Flags |= report.USAR_TRIG_IMMER
+	}
+	return usars, nil
 }
 
 func (s *Sess) CreateBAR(req *ie.IE) error {
-	err := s.rnode.driver.CreateBAR(s.LocalID, req)
-	if err != nil {
-		return err
-	}
-
 	id, err := req.BARID()
 	if err != nil {
 		return err
 	}
 	s.BARIDs[id] = struct{}{}
+
+	err = s.rnode.driver.CreateBAR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *Sess) UpdateBAR(req *ie.IE) error {
-	return s.rnode.driver.UpdateBAR(s.LocalID, req)
-}
-
-func (s *Sess) RemoveBAR(req *ie.IE) error {
-	err := s.rnode.driver.RemoveBAR(s.LocalID, req)
-	if err != nil {
-		return err
-	}
-
 	id, err := req.BARID()
 	if err != nil {
 		return err
 	}
+
+	_, ok := s.BARIDs[id]
+	if !ok {
+		return errors.Errorf("UpdateBAR: BAR(%#x) not found", id)
+	}
+	return s.rnode.driver.UpdateBAR(s.LocalID, req)
+}
+
+func (s *Sess) RemoveBAR(req *ie.IE) error {
+	id, err := req.BARID()
+	if err != nil {
+		return err
+	}
+
+	_, ok := s.BARIDs[id]
+	if !ok {
+		return errors.Errorf("RemoveBAR: BAR(%#x) not found", id)
+	}
+
+	err = s.rnode.driver.RemoveBAR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
+
 	delete(s.BARIDs, id)
 	return nil
 }
@@ -464,7 +647,7 @@ func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
 func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 	s := &Sess{
 		RemoteID: rSeid,
-		PDRIDs:   make(map[uint16]struct{}),
+		PDRIDs:   make(map[uint16]*PDRInfo),
 		FARIDs:   make(map[uint32]struct{}),
 		QERIDs:   make(map[uint32]struct{}),
 		URRIDs:   make(map[uint32]*URRInfo),

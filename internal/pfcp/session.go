@@ -207,10 +207,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			sess.log.Errorf("Mod RemoveURR error: %+v", err1)
 			continue
 		}
-		if rs != nil {
-			for _, r := range rs {
-				r.USARTrigger.Flags |= report.USAR_TRIG_TEBUR
-			}
+		if len(rs) > 0 {
 			usars = append(usars, rs...)
 		}
 	}
@@ -223,9 +220,12 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.RemovePDR {
-		err = sess.RemovePDR(i)
-		if err != nil {
-			sess.log.Errorf("Mod RemovePDR error: %+v", err)
+		rs, err1 := sess.RemovePDR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod RemovePDR error: %+v", err1)
+		}
+		if len(rs) > 0 {
+			usars = append(usars, rs...)
 		}
 	}
 
@@ -249,7 +249,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			sess.log.Errorf("Mod UpdateURR error: %+v", err1)
 			continue
 		}
-		if rs != nil {
+		if len(rs) > 0 {
 			usars = append(usars, rs...)
 		}
 	}
@@ -262,20 +262,23 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.UpdatePDR {
-		err = sess.UpdatePDR(i)
-		if err != nil {
-			sess.log.Errorf("Mod UpdatePDR error: %+v", err)
+		rs, err1 := sess.UpdatePDR(i)
+		if err1 != nil {
+			sess.log.Errorf("Mod UpdatePDR error: %+v", err1)
+		}
+		if len(rs) > 0 {
+			usars = append(usars, rs...)
 		}
 	}
 
 	for _, i := range req.QueryURR {
-		usar, err1 := sess.QueryURR(i)
+		rs, err1 := sess.QueryURR(i)
 		if err1 != nil {
 			sess.log.Errorf("Mod QueryURR error: %+v", err1)
 			continue
 		}
-		if usar != nil {
-			usars = append(usars, usar...)
+		if len(rs) > 0 {
+			usars = append(usars, rs...)
 		}
 	}
 
@@ -358,6 +361,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 			continue
 		}
 		r.URSEQN = sess.URRSeq(r.URRID)
+		// indicates usage report being reported for a URR due to the termination of the PFCP session
 		r.USARTrigger.Flags |= report.USAR_TRIG_TERMR
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionDeletionResponse(
