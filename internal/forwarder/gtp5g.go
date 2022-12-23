@@ -25,7 +25,7 @@ import (
 
 const (
 	expectedMinGtp5gVersion string = "0.7.0"
-	expectedMaxGtp5gVersion string = "0.7.0"
+	expectedMaxGtp5gVersion string = "0.8.0"
 	SOCKPATH                string = "/tmp/free5gc_unix_sock"
 )
 
@@ -81,6 +81,7 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 
 	err = g.checkVersion()
 	if err != nil {
+		g.Close()
 		return nil, errors.Wrap(err, "version mismatch")
 	}
 
@@ -137,12 +138,12 @@ func (g *Gtp5g) checkVersion() error {
 	}
 	nowVer, err := version.NewVersion(gtp5gVer)
 	if err != nil {
-		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", nowVer)
+		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", gtp5gVer)
 	}
-	if nowVer.LessThan(expMinVer) || nowVer.GreaterThan(expMaxVer) {
+	if nowVer.LessThan(expMinVer) || nowVer.GreaterThanOrEqual(expMaxVer) {
 		return errors.Errorf(
-			"gtp5g version should be %s >= verion >= %s , please update it",
-			expectedMaxGtp5gVersion, expectedMinGtp5gVersion)
+			"gtp5g version(%v) should be %s <= verion < %s , please update it",
+			nowVer, expectedMinGtp5gVersion, expectedMaxGtp5gVersion)
 	}
 
 	return nil
