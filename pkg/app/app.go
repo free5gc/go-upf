@@ -16,7 +16,7 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
-type UPF struct {
+type UpfApp struct {
 	ctx        context.Context
 	wg         sync.WaitGroup
 	cfg        *factory.Config
@@ -24,33 +24,44 @@ type UPF struct {
 	pfcpServer *pfcp.PfcpServer
 }
 
-func NewUpf(cfg *factory.Config) (*UPF, error) {
-	upf := &UPF{
+func NewApp(cfg *factory.Config) (*UpfApp, error) {
+	upf := &UpfApp{
 		cfg: cfg,
 	}
-	upf.SetLogLevel(cfg.Logger.Level, cfg.Logger.ReportCaller)
+	upf.SetLogLevel(cfg.Logger.Level)
+	upf.SetLogReportCaller(cfg.Logger.ReportCaller)
 	return upf, nil
 }
 
-func (u *UPF) Config() *factory.Config {
+func (u *UpfApp) Config() *factory.Config {
 	return u.cfg
 }
 
-func (u *UPF) SetLogLevel(lvl string, caller bool) {
-	level := logrus.InfoLevel
-	if lvl != "" {
-		var err error
-		level, err = logrus.ParseLevel(lvl)
-		if err != nil {
-			logger.MainLog.Warnln(err)
-		}
+func (a *UpfApp) SetLogLevel(level string) {
+	lvl, err := logrus.ParseLevel(level)
+	if err != nil {
+		logger.MainLog.Warnf("Log level [%s] is invalid", level)
+		return
 	}
-	logger.MainLog.Infof("Log level is set to [%s] level", level)
-	logger.SetLogLevel(level)
-	logger.SetReportCaller(caller)
+
+	logger.MainLog.Infof("Log level is set to [%s]", level)
+	if lvl == logger.Log.GetLevel() {
+		return
+	}
+
+	logger.Log.SetLevel(lvl)
 }
 
-func (u *UPF) Run() error {
+func (a *UpfApp) SetLogReportCaller(reportCaller bool) {
+	logger.MainLog.Infof("Report Caller is set to [%v]", reportCaller)
+	if reportCaller == logger.Log.ReportCaller {
+		return
+	}
+
+	logger.Log.SetReportCaller(reportCaller)
+}
+
+func (u *UpfApp) Run() error {
 	var cancel context.CancelFunc
 	u.ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
@@ -86,7 +97,7 @@ func (u *UPF) Run() error {
 	return nil
 }
 
-func (u *UPF) listenShutdownEvent() {
+func (u *UpfApp) listenShutdownEvent() {
 	defer func() {
 		if p := recover(); p != nil {
 			// Print stack for panic to log. Fatalf() will let program exit.
@@ -105,18 +116,18 @@ func (u *UPF) listenShutdownEvent() {
 	}
 }
 
-func (u *UPF) WaitRoutineStopped() {
+func (u *UpfApp) WaitRoutineStopped() {
 	u.wg.Wait()
 	u.Terminate()
 }
 
-func (u *UPF) Start() {
+func (u *UpfApp) Start() {
 	if err := u.Run(); err != nil {
 		logger.MainLog.Errorf("UPF Run err: %v", err)
 	}
 }
 
-func (u *UPF) Terminate() {
+func (u *UpfApp) Terminate() {
 	logger.MainLog.Infof("Terminating UPF...")
 	logger.MainLog.Infof("UPF terminated")
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/free5gc/go-upf/internal/logger"
 	upfapp "github.com/free5gc/go-upf/pkg/app"
 	"github.com/free5gc/go-upf/pkg/factory"
+	logger_util "github.com/free5gc/util/logger"
 	"github.com/free5gc/util/version"
 )
 
@@ -31,13 +32,9 @@ func main() {
 			Name:  "config, c",
 			Usage: "Load configuration from `FILE`",
 		},
-		cli.StringFlag{
+		cli.StringSliceFlag{
 			Name:  "log, l",
 			Usage: "Output NF log to `FILE`",
-		},
-		cli.StringFlag{
-			Name:  "log5gc, lc",
-			Usage: "Output free5gc log to `FILE`",
 		},
 	}
 
@@ -49,7 +46,7 @@ func main() {
 }
 
 func action(cliCtx *cli.Context) error {
-	err := logger.LogFileHook(cliCtx.String("log"), cliCtx.String("log5gc"))
+	err := initLogFile(cliCtx.StringSlice("log"))
 	if err != nil {
 		return err
 	}
@@ -61,7 +58,7 @@ func action(cliCtx *cli.Context) error {
 		return err
 	}
 
-	upf, err := upfapp.NewUpf(cfg)
+	upf, err := upfapp.NewApp(cfg)
 	if err != nil {
 		return err
 	}
@@ -70,5 +67,14 @@ func action(cliCtx *cli.Context) error {
 		return err
 	}
 
+	return nil
+}
+
+func initLogFile(logNfPath []string) error {
+	for _, path := range logNfPath {
+		if err := logger_util.LogFileHook(logger.Log, path); err != nil {
+			return err
+		}
+	}
 	return nil
 }

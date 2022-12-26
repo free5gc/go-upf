@@ -45,7 +45,7 @@ func TestWaitRoutineStopped(t *testing.T) {
 	N := 10
 	for i := 0; i < N; i++ {
 		var wg sync.WaitGroup
-		upf, err := NewUpf(cfg)
+		upf, err := NewApp(cfg)
 		if err != nil {
 			t.Fatal(err)
 		}

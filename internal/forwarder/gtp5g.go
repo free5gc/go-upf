@@ -21,6 +21,7 @@ import (
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
+	logger_util "github.com/free5gc/util/logger"
 )
 
 const (
@@ -41,7 +42,7 @@ type Gtp5g struct {
 
 func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	g := &Gtp5g{
-		log: logger.FwderLog.WithField(logger.FieldCategory, "Gtp5g"),
+		log: logger.FwderLog.WithField(logger_util.FieldCategory, "Gtp5g"),
 	}
 
 	mux, err := nl.NewMux()
@@ -99,6 +100,7 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	}
 	g.ps = ps
 
+	g.log.Infof("Forwarder started")
 	return g, nil
 }
 
