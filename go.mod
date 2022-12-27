@@ -19,3 +19,5 @@ require (
 	github.com/wmnsk/go-pfcp v0.0.17-0.20221027122420-36112307f93a
 	gopkg.in/yaml.v2 v2.4.0
 )
+
+replace github.com/free5gc/go-gtp5gnl => /home/free5gc/free5gc/go-gtp5gnl

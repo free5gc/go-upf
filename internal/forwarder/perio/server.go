@@ -20,13 +20,17 @@ const (
 	TYPE_PERIO_ADD EventType = iota + 1
 	TYPE_PERIO_DEL
 	TYPE_PERIO_TIMEOUT
+	TYPE_EXPIRY_ADD
+	TYPE_EXPIRY_DEL
+	TYPE_EXPIRY_TIMEOUT
 	TYPE_SERVER_CLOSE
 )
 
 func (t EventType) String() string {
 	s := []string{
-		"", "TYPE_PERIO_ADD", "TYPE_PERIO_DEL",
-		"TYPE_PERIO_TIMEOUT", "TYPE_SERVER_CLOSE",
+		"", "TYPE_PERIO_ADD", "TYPE_PERIO_DEL", "TYPE_PERIO_TIMEOUT",
+		"TYPE_EXPIRY_ADD", "TYPE_EXPIRY_DEL", "TYPE_EXPIRY_TIMEOUT",
+		"TYPE_SERVER_CLOSE",
 	}
 	return s[t]
 }
@@ -36,6 +40,7 @@ type Event struct {
 	lSeid  uint64
 	urrid  uint32
 	period time.Duration
+	expiry time.Duration
 }
 
 type PERIOGroup struct {
@@ -43,6 +48,46 @@ type PERIOGroup struct {
 	period time.Duration
 	ticker *time.Ticker
 	stopCh chan struct{}
+}
+
+type Expiry struct {
+	lSeid  uint64
+	urrid  uint32
+	expiry time.Duration
+	timer  *time.Timer
+}
+
+func (ex *Expiry) newTimer(wg *sync.WaitGroup, evtCh chan Event) error {
+	if ex.timer != nil {
+		return errors.Errorf("timer not nil")
+	}
+
+	ex.timer = time.NewTimer(ex.expiry)
+	logger.PerioLog.Warnf("expiry[%v]", ex.expiry)
+
+	wg.Add(1)
+	go func(timer *time.Timer, expiry time.Duration, urrid uint32, lSeid uint64, evtCh chan Event) {
+		defer func() {
+			timer.Stop()
+			wg.Done()
+		}()
+
+		for {
+			select {
+			case <-timer.C:
+				logger.PerioLog.Debugf("timer[%v] timeout", expiry)
+				evtCh <- Event{
+					eType:  TYPE_EXPIRY_TIMEOUT,
+					expiry: expiry,
+					urrid:  urrid,
+					lSeid:  lSeid,
+				}
+				timer.Stop()
+			}
+		}
+	}(ex.timer, ex.expiry, ex.urrid, ex.lSeid, evtCh)
+
+	return nil
 }
 
 func (pg *PERIOGroup) newTicker(wg *sync.WaitGroup, evtCh chan Event) error {
@@ -84,17 +129,18 @@ func (pg *PERIOGroup) stopTicker() {
 }
 
 type Server struct {
-	evtCh     chan Event
-	perioList map[time.Duration]*PERIOGroup // key: period
-
-	handler  report.Handler
-	queryURR func(uint64, uint32) ([]report.USAReport, error)
+	evtCh      chan Event
+	perioList  map[time.Duration]*PERIOGroup // key: period
+	expiryList map[uint64](map[uint32]*Expiry)
+	handler    report.Handler
+	queryURR   func(uint64, uint32) ([]report.USAReport, error)
 }
 
 func OpenServer(wg *sync.WaitGroup) (*Server, error) {
 	s := &Server{
-		evtCh:     make(chan Event, EVENT_CHANNEL_LEN),
-		perioList: make(map[time.Duration]*PERIOGroup),
+		evtCh:      make(chan Event, EVENT_CHANNEL_LEN),
+		perioList:  make(map[time.Duration]*PERIOGroup),
+		expiryList: make(map[uint64]map[uint32]*Expiry),
 	}
 
 	wg.Add(1)
@@ -126,6 +172,30 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 	for e := range s.evtCh {
 		logger.PerioLog.Infof("recv event[%s][%+v]", e.eType, e)
 		switch e.eType {
+		case TYPE_EXPIRY_ADD:
+			expiry, ok := s.expiryList[e.lSeid][e.urrid]
+			if !ok {
+				// New Timer if no this period ticker found
+				expiry = &Expiry{
+					urrid:  e.urrid,
+					expiry: e.expiry,
+					lSeid:  e.lSeid,
+				}
+				if s.expiryList[e.lSeid] == nil {
+					s.expiryList[e.lSeid] = map[uint32]*Expiry{}
+				}
+
+				err := expiry.newTimer(wg, s.evtCh)
+				if err != nil {
+					logger.PerioLog.Errorln(err)
+					continue
+				}
+
+				s.expiryList[e.lSeid][e.urrid] = expiry
+			} else {
+				expiry.timer.Reset(e.expiry)
+			}
+
 		case TYPE_PERIO_ADD:
 			perioGroup, ok := s.perioList[e.period]
 			if !ok {
@@ -168,6 +238,39 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					break
 				}
 			}
+		case TYPE_EXPIRY_TIMEOUT:
+			expiry, ok := s.expiryList[e.lSeid][e.urrid]
+			if !ok {
+				logger.PerioLog.Warnf("no expiry found for urr[%v]", e.urrid)
+				break
+			}
+
+			expiry.timer.Stop()
+
+			var rpts []report.Report
+
+			usars, err := s.queryURR(e.lSeid, e.urrid)
+			if err != nil {
+				logger.PerioLog.Warnf("get USAReport[%#x:%#x] error: %v", e.lSeid, e.urrid, err)
+				break
+			}
+
+			if len(usars) == 0 {
+				logger.PerioLog.Warnf("no expiry USAReport[%#x:%#x]", e.lSeid, e.urrid)
+				continue
+			}
+
+			for i := range usars {
+				usars[i].USARTrigger.Flags |= report.USAR_TRIG_QUVTI
+				rpts = append(rpts, usars[i])
+			}
+
+			s.handler.NotifySessReport(
+				report.SessReport{
+					SEID:    e.lSeid,
+					Reports: rpts,
+				})
+
 		case TYPE_PERIO_TIMEOUT:
 			perioGroup, ok := s.perioList[e.period]
 			if !ok {
@@ -201,6 +304,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 						Reports: rpts,
 					})
 			}
+
 		case TYPE_SERVER_CLOSE:
 			for period, perioGroup := range s.perioList {
 				perioGroup.stopTicker()
@@ -208,6 +312,23 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			}
 			return
 		}
+	}
+}
+
+func (s *Server) AddExpiryTimer(lSeid uint64, urrid uint32, expiry time.Duration) {
+	s.evtCh <- Event{
+		eType:  TYPE_EXPIRY_ADD,
+		lSeid:  lSeid,
+		urrid:  urrid,
+		expiry: expiry,
+	}
+}
+
+func (s *Server) DelExpiryTimer(lSeid uint64, urrid uint32) {
+	s.evtCh <- Event{
+		eType: TYPE_EXPIRY_DEL,
+		lSeid: lSeid,
+		urrid: urrid,
 	}
 }
 

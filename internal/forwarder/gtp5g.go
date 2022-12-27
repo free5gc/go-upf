@@ -1070,6 +1070,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 	var measureMethod uint8
 	var rptTrig report.ReportingTrigger
 	var measurePeriod time.Duration
+	var quotaValidityTime time.Time
 	var attrs []nl.Attr
 
 	ies, err := req.CreateURR()
@@ -1116,6 +1117,17 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 				Type:  gtp5gnl.URR_MEASUREMENT_PERIOD,
 				Value: nl.AttrU32(measurePeriod),
 			})
+		case ie.QuotaValidityTime:
+			quotaValidityTime, err = i.QuotaValidityTime()
+			if err != nil {
+				return err
+			}
+			// TODO: convert time.Duration -> ?
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_QUOTA_VALIDITY_TIME,
+				Value: nl.AttrU32(quotaValidityTime.Unix()),
+			})
+
 		case ie.MeasurementInformation:
 			v, err := i.MeasurementInformation()
 			if err != nil {
@@ -1150,6 +1162,13 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 		g.ps.AddPeriodReportTimer(lSeid, urrid, measurePeriod)
 	}
 
+	if rptTrig.QUVTI() {
+		g.log.Errorf("quotaValidityTime: %+v", quotaValidityTime)
+		g.log.Errorf("time now: %+v", time.Now())
+		g.log.Errorf("until : %+v", time.Until(quotaValidityTime))
+
+		g.ps.AddExpiryTimer(lSeid, urrid, time.Until(quotaValidityTime))
+	}
 	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
 	return gtp5gnl.CreateURROID(g.client, g.link.link, oid, attrs)
 }
@@ -1409,7 +1428,6 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 
 func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error) {
 	var usars []report.USAReport
-
 	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
 	rs, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
 	if err != nil {
