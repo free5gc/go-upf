@@ -422,6 +422,29 @@ func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 	return usars, nil
 }
 
+func (s *Sess) QueryAllURR() ([]report.USAReport, error) {
+
+	var allUsars []report.USAReport
+	for id, ok := range s.URRIDs {
+		if ok == nil {
+			return nil, errors.Errorf("QueryAllURR: URR[%#x] not found", id)
+		}
+		usars, err := s.rnode.driver.QueryURR(s.LocalID, id)
+		if err != nil {
+			return nil, err
+		}
+
+		// indicates an immediate report reported on CP function demand
+		for i := range usars {
+			usars[i].USARTrigger.Flags |= report.USAR_TRIG_IMMER
+		}
+
+		allUsars = append(allUsars, usars...)
+	}
+
+	return allUsars, nil
+}
+
 func (s *Sess) QueryURR(req *ie.IE) ([]report.USAReport, error) {
 	id, err := req.URRID()
 	if err != nil {

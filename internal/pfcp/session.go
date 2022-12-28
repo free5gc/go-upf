@@ -282,6 +282,18 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 	}
 
+	if req.PFCPSMReqFlags != nil {
+		if req.PFCPSMReqFlags.HasQAURR() {
+			rs, err1 := sess.QueryAllURR()
+			if err1 != nil {
+				sess.log.Errorf("Mod QueryURR error: %+v", err1)
+			}
+			if len(rs) > 0 {
+				usars = append(usars, rs...)
+			}
+		}
+	}
+
 	rsp := message.NewSessionModificationResponse(
 		0,             // mp
 		0,             // fo
