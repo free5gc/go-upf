@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/free5gc/go-upf/internal/report"
-
 	"github.com/khirono/go-genl"
 	"github.com/khirono/go-nl"
+
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 type testHandler struct {
@@ -120,7 +120,12 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer syscall.Close(fd)
+	defer func() {
+		errClose := syscall.Close(fd)
+		if errClose != nil {
+			t.Fatal(errClose)
+		}
+	}()
 
 	seid := uint64(6)
 	h.q[seid] = make(map[uint16]chan []byte)
