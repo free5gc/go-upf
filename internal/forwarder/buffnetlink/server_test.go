@@ -72,6 +72,10 @@ func (h *testHandler) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
 }
 
 func TestServer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping testing in short mode")
+	}
+
 	var wg sync.WaitGroup
 
 	mux, err := nl.NewMux()
