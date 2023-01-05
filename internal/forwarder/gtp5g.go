@@ -22,11 +22,12 @@ import (
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
+	logger_util "github.com/free5gc/util/logger"
 )
 
 const (
 	expectedMinGtp5gVersion string = "0.7.0"
-	expectedMaxGtp5gVersion string = "0.7.0"
+	expectedMaxGtp5gVersion string = "0.8.0"
 	SOCKPATH                string = "/tmp/free5gc_unix_sock"
 )
 
@@ -43,7 +44,7 @@ type Gtp5g struct {
 
 func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	g := &Gtp5g{
-		log: logger.FwderLog.WithField(logger.FieldCategory, "Gtp5g"),
+		log: logger.FwderLog.WithField(logger_util.FieldCategory, "Gtp5g"),
 	}
 
 	mux, err := nl.NewMux()
@@ -83,6 +84,7 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 
 	err = g.checkVersion()
 	if err != nil {
+		g.Close()
 		return nil, errors.Wrap(err, "version mismatch")
 	}
 
@@ -107,6 +109,7 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	}
 	g.ps = ps
 
+	g.log.Infof("Forwarder started")
 	return g, nil
 }
 
@@ -149,12 +152,12 @@ func (g *Gtp5g) checkVersion() error {
 	}
 	nowVer, err := version.NewVersion(gtp5gVer)
 	if err != nil {
-		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", nowVer)
+		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", gtp5gVer)
 	}
-	if nowVer.LessThan(expMinVer) || nowVer.GreaterThan(expMaxVer) {
+	if nowVer.LessThan(expMinVer) || nowVer.GreaterThanOrEqual(expMaxVer) {
 		return errors.Errorf(
-			"gtp5g version should be %s >= verion >= %s , please update it",
-			expectedMaxGtp5gVersion, expectedMinGtp5gVersion)
+			"gtp5g version(%v) should be %s <= verion < %s , please update it",
+			nowVer, expectedMinGtp5gVersion, expectedMaxGtp5gVersion)
 	}
 
 	return nil
@@ -1440,7 +1443,6 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 			EndTime:     r.EndTime,
 		}
 
-		usar.USARTrigger.Flags = report.USAR_TRIG_IMMER
 		usar.VolumMeasure = report.VolumeMeasure{
 			TotalVolume:    r.VolMeasurement.TotalVolume,
 			UplinkVolume:   r.VolMeasurement.UplinkVolume,

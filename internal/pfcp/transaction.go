@@ -9,7 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/message"
 
-	"github.com/free5gc/go-upf/internal/logger"
+	logger_util "github.com/free5gc/util/logger"
 )
 
 type TxTransaction struct {
@@ -42,15 +42,16 @@ func NewTxTransaction(
 	raddr net.Addr,
 	seq uint32,
 ) *TxTransaction {
-	return &TxTransaction{
+	tx := &TxTransaction{
 		server:         server,
 		raddr:          raddr,
 		seq:            seq,
 		id:             fmt.Sprintf("%s-%d", raddr, seq),
 		retransTimeout: server.cfg.Pfcp.RetransTimeout,
 		maxRetrans:     server.cfg.Pfcp.MaxRetrans,
-		log:            server.log.WithField(logger.FieldTransction, fmt.Sprintf("TxTr:%s(%d)", raddr, seq)),
 	}
+	tx.log = server.log.WithField(logger_util.FieldPFCPTxTransaction, tx.id)
+	return tx
 }
 
 func (tx *TxTransaction) send(req message.Message) error {
@@ -129,8 +130,8 @@ func NewRxTransaction(
 		seq:     seq,
 		id:      fmt.Sprintf("%s-%d", raddr, seq),
 		timeout: server.cfg.Pfcp.RetransTimeout * time.Duration(server.cfg.Pfcp.MaxRetrans+1),
-		log:     server.log.WithField(logger.FieldTransction, fmt.Sprintf("RxTr:%s(%d)", raddr, seq)),
 	}
+	rx.log = server.log.WithField(logger_util.FieldPFCPRxTransaction, rx.id)
 	// Start rx timer to delete rx
 	rx.timer = rx.startTimer()
 	return rx

@@ -5,6 +5,7 @@ import (
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
+	logger_util "github.com/free5gc/util/logger"
 )
 
 func TestNode(t *testing.T) {
@@ -13,7 +14,7 @@ func TestNode(t *testing.T) {
 		nil,
 		&LocalNode{},
 		forwarder.Empty{},
-		logger.PfcpLog.WithField(logger.FieldRemoteNodeID, "rNodeID:smf1"),
+		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 	)
 	t.Run("delete 0 no effect", func(t *testing.T) {
 		n.DeleteSess(0)
@@ -147,14 +148,14 @@ func TestNode_multipleSMF(t *testing.T) {
 		nil,
 		&lnode,
 		forwarder.Empty{},
-		logger.PfcpLog.WithField(logger.FieldRemoteNodeID, "rNodeID:smf1"),
+		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 	)
 	n2 := NewRemoteNode(
 		"smf2",
 		nil,
 		&lnode,
 		forwarder.Empty{},
-		logger.PfcpLog.WithField(logger.FieldRemoteNodeID, "rNodeID:smf2"),
+		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf2"),
 	)
 	t.Run("new smf1 r-SEID=10", func(t *testing.T) {
 		sess := n1.NewSess(10)
