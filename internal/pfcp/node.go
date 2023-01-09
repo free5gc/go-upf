@@ -9,8 +9,8 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
-	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
+	logger_util "github.com/free5gc/util/logger"
 )
 
 const (
@@ -609,7 +609,11 @@ func (n *RemoteNode) NewSess(rSeid uint64) *Sess {
 	s := n.local.NewSess(rSeid, BUFFQ_LEN)
 	n.sess[s.LocalID] = struct{}{}
 	s.rnode = n
-	s.log = n.log.WithField(logger.FieldSessionID, fmt.Sprintf("SEID:L(%#x),R(%#x)", s.LocalID, rSeid))
+	s.log = n.log.WithFields(
+		logrus.Fields{
+			logger_util.FieldUserPlaneSEID:    fmt.Sprintf("%#x", s.LocalID),
+			logger_util.FieldControlPlaneSEID: fmt.Sprintf("%#x", rSeid),
+		})
 	s.log.Infoln("New session")
 	return s
 }

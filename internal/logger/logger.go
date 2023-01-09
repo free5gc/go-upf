@@ -1,17 +1,14 @@
 package logger
 
 import (
-	"os"
-	"time"
-
-	formatter "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/sirupsen/logrus"
 
 	logger_util "github.com/free5gc/util/logger"
 )
 
 var (
-	log      *logrus.Logger
+	Log      *logrus.Logger
+	NfLog    *logrus.Entry
 	MainLog  *logrus.Entry
 	CfgLog   *logrus.Entry
 	PfcpLog  *logrus.Entry
@@ -20,71 +17,23 @@ var (
 	FwderLog *logrus.Entry
 )
 
-const (
-	FieldCategory     string = "category"
-	FieldListenAddr   string = "listen_addr"
-	FieldRemoteNodeID string = "rnode_id"
-	FieldSessionID    string = "session_id"
-	FieldTransction   string = "transaction"
-)
-
 func init() {
-	log = logrus.New()
-	log.SetReportCaller(false)
-
-	log.Formatter = &formatter.Formatter{
-		TimestampFormat: time.RFC3339Nano,
-		TrimMessages:    true,
-		NoFieldsSpace:   true,
-		HideKeys:        true,
-		FieldsOrder: []string{
-			"component",
-			"category",
-			FieldListenAddr,
-			FieldRemoteNodeID,
-			FieldSessionID,
-			FieldTransction,
-		},
+	fieldsOrder := []string{
+		logger_util.FieldNF,
+		logger_util.FieldCategory,
+		logger_util.FieldListenAddr,
+		logger_util.FieldPFCPTxTransaction,
+		logger_util.FieldPFCPRxTransaction,
+		logger_util.FieldControlPlaneNodeID,
+		logger_util.FieldControlPlaneSEID,
+		logger_util.FieldUserPlaneSEID,
 	}
-
-	MainLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Main"})
-	CfgLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Cfg"})
-	PfcpLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Pfcp"})
-	BuffLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Buff"})
-	PerioLog = log.WithFields(logrus.Fields{"component": "UPF", FieldCategory: "Perio"})
-	FwderLog = log.WithFields(logrus.Fields{"component": "UPF"})
-}
-
-func LogFileHook(logNfPath string, log5gcPath string) error {
-	if fullPath, err := logger_util.CreateFree5gcLogFile(log5gcPath); err == nil {
-		if fullPath != "" {
-			free5gcLogHook, hookErr := logger_util.NewFileHook(fullPath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o666)
-			if err != nil {
-				return hookErr
-			}
-			log.Hooks.Add(free5gcLogHook)
-		}
-	} else {
-		return err
-	}
-
-	if fullPath, err := logger_util.CreateNfLogFile(logNfPath, "upf.log"); err == nil {
-		selfLogHook, hookErr := logger_util.NewFileHook(fullPath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o666)
-		if err != nil {
-			return hookErr
-		}
-		log.Hooks.Add(selfLogHook)
-	} else {
-		return err
-	}
-
-	return nil
-}
-
-func SetLogLevel(level logrus.Level) {
-	log.SetLevel(level)
-}
-
-func SetReportCaller(enable bool) {
-	log.SetReportCaller(enable)
+	Log = logger_util.New(fieldsOrder)
+	NfLog = Log.WithField(logger_util.FieldNF, "UPF")
+	MainLog = NfLog.WithField(logger_util.FieldCategory, "Main")
+	CfgLog = NfLog.WithField(logger_util.FieldCategory, "CFG")
+	PfcpLog = NfLog.WithField(logger_util.FieldCategory, "PFCP")
+	BuffLog = NfLog.WithField(logger_util.FieldCategory, "BUFF")
+	PerioLog = NfLog.WithField(logger_util.FieldCategory, "Perio")
+	FwderLog = NfLog.WithField(logger_util.FieldCategory, "FWD")
 }

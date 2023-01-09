@@ -16,6 +16,7 @@ import (
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
+	logger_util "github.com/free5gc/util/logger"
 )
 
 const (
@@ -74,7 +75,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		rnodes:       make(map[string]*RemoteNode),
 		txTrans:      make(map[string]*TxTransaction),
 		rxTrans:      make(map[string]*RxTransaction),
-		log:          logger.PfcpLog.WithField(logger.FieldListenAddr, listen),
+		log:          logger.PfcpLog.WithField(logger_util.FieldListenAddr, listen),
 	}
 }
 
@@ -238,7 +239,7 @@ func (s *PfcpServer) NewNode(id string, addr net.Addr, driver forwarder.Driver) 
 		addr,
 		&s.lnode,
 		driver,
-		s.log.WithField(logger.FieldRemoteNodeID, "rNodeID:"+id),
+		s.log.WithField(logger_util.FieldControlPlaneNodeID, id),
 	)
 	n.log.Infoln("New node")
 	return n
@@ -248,7 +249,7 @@ func (s *PfcpServer) UpdateNodeID(n *RemoteNode, newId string) {
 	s.log.Infof("Update nodeId %q to %q", n.ID, newId)
 	delete(s.rnodes, n.ID)
 	n.ID = newId
-	n.log = s.log.WithField(logger.FieldRemoteNodeID, "rNodeID:"+newId)
+	n.log = s.log.WithField(logger_util.FieldControlPlaneNodeID, newId)
 	s.rnodes[newId] = n
 }
 
