@@ -1127,7 +1127,6 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 				Type:  gtp5gnl.URR_QUOTA_VALIDITY_TIME,
 				Value: nl.AttrU32(quotaValidityTime.Unix()),
 			})
-
 		case ie.MeasurementInformation:
 			v, err := i.MeasurementInformation()
 			if err != nil {
@@ -1177,6 +1176,8 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 	var urrid uint64
 	var attrs []nl.Attr
 	var usars []report.USAReport
+	var rptTrig report.ReportingTrigger
+	var quotaValidityTime time.Time
 
 	ies, err := req.UpdateURR()
 	if err != nil {
@@ -1204,7 +1205,6 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 			if err1 != nil {
 				return nil, err1
 			}
-			var rptTrig report.ReportingTrigger
 			err1 = rptTrig.Unmarshal(v)
 			if err1 != nil {
 				return nil, err1
@@ -1250,9 +1250,27 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 				Type:  gtp5gnl.URR_VOLUME_QUOTA,
 				Value: v,
 			})
+		case ie.QuotaValidityTime:
+			quotaValidityTime, err = i.QuotaValidityTime()
+			if err != nil {
+				break
+			}
+			// TODO: convert time.Duration -> ?
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_QUOTA_VALIDITY_TIME,
+				Value: nl.AttrU32(quotaValidityTime.Unix()),
+			})
 		}
 
 		// TODO: should apply PERIO updateURR and receive final report from old URR
+	}
+
+	if rptTrig.QUVTI() {
+		g.log.Errorf("quotaValidityTime: %+v", quotaValidityTime)
+		g.log.Errorf("time now: %+v", time.Now())
+		g.log.Errorf("until : %+v", time.Until(quotaValidityTime))
+
+		g.ps.AddExpiryTimer(lSeid, uint32(urrid), time.Until(quotaValidityTime))
 	}
 
 	oid := gtp5gnl.OID{lSeid, urrid}
