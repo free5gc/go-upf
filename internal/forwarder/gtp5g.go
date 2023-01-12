@@ -32,14 +32,15 @@ const (
 )
 
 type Gtp5g struct {
-	mux    *nl.Mux
-	link   *Gtp5gLink
-	conn   *nl.Conn
-	client *gtp5gnl.Client
-	bs     *buff.Server
-	bsnl   *buffnetlink.Server
-	ps     *perio.Server
-	log    *logrus.Entry
+	mux       *nl.Mux
+	link      *Gtp5gLink
+	conn      *nl.Conn
+	client    *gtp5gnl.Client
+	urrClient *gtp5gnl.Client
+	bs        *buff.Server
+	bsnl      *buffnetlink.Server
+	ps        *perio.Server
+	log       *logrus.Entry
 }
 
 func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
@@ -81,6 +82,19 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 		return nil, errors.Wrap(err, "new client")
 	}
 	g.client = c
+
+	urrconn, err := nl.Open(syscall.NETLINK_GENERIC)
+	if err != nil {
+		g.Close()
+		return nil, errors.Wrap(err, "open urr netlink")
+	}
+
+	urrc, err := gtp5gnl.NewClient(urrconn, mux)
+	if err != nil {
+		g.Close()
+		return nil, errors.Wrap(err, "new urr client")
+	}
+	g.urrClient = urrc
 
 	err = g.checkVersion()
 	if err != nil {
@@ -1426,7 +1440,7 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 	var usars []report.USAReport
 
 	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
-	rs, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
+	rs, err := gtp5gnl.GetReportOID(g.urrClient, g.link.link, oid)
 	if err != nil {
 		return nil, errors.Wrapf(err, "QueryURR")
 	}
