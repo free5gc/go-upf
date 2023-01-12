@@ -41,6 +41,25 @@ func testGetUSAReport(lSeid uint64, id uint32) ([]report.USAReport, error) {
 	}, nil
 }
 
+func testGetMultiSessUSAReport(lSeids []uint64, ids []uint32) (map[uint64][]report.USAReport, error) {
+	sessReports := make(map[uint64][]report.USAReport)
+	v := report.VolumeMeasure{
+		UplinkVolume:   10,
+		DownlinkVolume: 20,
+		TotalVolume:    30,
+	}
+
+	for i, lSeid := range lSeids {
+		sessReports[lSeid] = append(sessReports[lSeid], report.USAReport{
+			URRID:        ids[i],
+			USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
+			VolumMeasure: v,
+		})
+	}
+
+	return sessReports, nil
+}
+
 func TestServer(t *testing.T) {
 	var wg sync.WaitGroup
 	s, err := OpenServer(&wg)
@@ -54,7 +73,7 @@ func TestServer(t *testing.T) {
 
 	testSessRpts = make(map[uint64]*report.SessReport)
 	h := NewTestHandler()
-	s.Handle(h, testGetUSAReport)
+	s.Handle(h, testGetUSAReport, testGetMultiSessUSAReport)
 
 	// 1. Add 3 PERIO URRs
 	s.AddPeriodReportTimer(

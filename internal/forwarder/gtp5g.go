@@ -1478,10 +1478,70 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 	return usars, err
 }
 
+func (g *Gtp5g) QueryMultiSessURRs(lSeids []uint64, urrids []uint32) (map[uint64][]report.USAReport, error) {
+	var usars map[uint64][]report.USAReport
+	var attrs []nl.Attr
+
+	urr_num := len(urrids)
+	if urr_num != len(lSeids) {
+		return nil, errors.New("Unequal number of urr ids and seids")
+	}
+
+	for i, seid := range lSeids {
+		attrs = append(attrs, nl.Attr{
+			Type: gtp5gnl.SESS_URRS,
+			Value: nl.AttrList{
+				{
+					Type:  gtp5gnl.URR_ID,
+					Value: nl.AttrU32(urrids[i]),
+				},
+				{
+					Type:  gtp5gnl.URR_SEID,
+					Value: nl.AttrU64(seid),
+				},
+			},
+		})
+	}
+
+	rs, err := gtp5gnl.GetMultiSessReport(g.client, g.link.link, urr_num, attrs)
+	if err != nil {
+		return nil, errors.Wrapf(err, "QueryURR")
+	}
+
+	if rs == nil {
+		return nil, nil
+	}
+
+	usars = make(map[uint64][]report.USAReport)
+	for _, r := range rs {
+		usar := report.USAReport{
+			URRID:       r.URRID,
+			QueryUrrRef: r.QueryUrrRef,
+			StartTime:   r.StartTime,
+			EndTime:     r.EndTime,
+		}
+
+		usar.VolumMeasure = report.VolumeMeasure{
+			TotalVolume:    r.VolMeasurement.TotalVolume,
+			UplinkVolume:   r.VolMeasurement.UplinkVolume,
+			DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+			TotalPktNum:    r.VolMeasurement.TotalPktNum,
+			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+		}
+		usars[r.SEID] = append(usars[r.SEID], usar)
+	}
+	for seid, rs := range usars {
+		g.log.Trace("sess[%+v] usars: %+v", seid, rs)
+	}
+
+	return usars, err
+}
+
 func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bs.Handle(handler)
 	g.bsnl.Handle(handler)
-	g.ps.Handle(handler, g.QueryURR)
+	g.ps.Handle(handler, g.QueryURR, g.QueryMultiSessURRs)
 }
 
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint16) {
