@@ -32,15 +32,16 @@ const (
 )
 
 type Gtp5g struct {
-	mux       *nl.Mux
-	link      *Gtp5gLink
-	conn      *nl.Conn
-	client    *gtp5gnl.Client
-	urrClient *gtp5gnl.Client
-	bs        *buff.Server
-	bsnl      *buffnetlink.Server
-	ps        *perio.Server
-	log       *logrus.Entry
+	mux      *nl.Mux
+	link     *Gtp5gLink
+	conn     *nl.Conn
+	psConn   *nl.Conn
+	client   *gtp5gnl.Client
+	psClient *gtp5gnl.Client
+	bs       *buff.Server
+	bsnl     *buffnetlink.Server
+	ps       *perio.Server
+	log      *logrus.Entry
 }
 
 func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
@@ -83,18 +84,19 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	}
 	g.client = c
 
-	urrconn, err := nl.Open(syscall.NETLINK_GENERIC)
+	psConn, err := nl.Open(syscall.NETLINK_GENERIC)
 	if err != nil {
 		g.Close()
-		return nil, errors.Wrap(err, "open urr netlink")
+		return nil, errors.Wrap(err, "open ps netlink")
 	}
+	g.psConn = psConn
 
-	urrc, err := gtp5gnl.NewClient(urrconn, mux)
+	psc, err := gtp5gnl.NewClient(psConn, mux)
 	if err != nil {
 		g.Close()
-		return nil, errors.Wrap(err, "new urr client")
+		return nil, errors.Wrap(err, "new ps client")
 	}
-	g.urrClient = urrc
+	g.psClient = psc
 
 	err = g.checkVersion()
 	if err != nil {
@@ -130,6 +132,9 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 func (g *Gtp5g) Close() {
 	if g.conn != nil {
 		g.conn.Close()
+	}
+	if g.psConn != nil {
+		g.psConn.Close()
 	}
 	if g.link != nil {
 		g.link.Close()
@@ -1437,10 +1442,22 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 }
 
 func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error) {
+	return g.queryURR(lSeid, urrid, false)
+}
+
+func (g *Gtp5g) psQueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error) {
+	return g.queryURR(lSeid, urrid, true)
+}
+
+func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USAReport, error) {
 	var usars []report.USAReport
 
 	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
-	rs, err := gtp5gnl.GetReportOID(g.urrClient, g.link.link, oid)
+	c := g.client
+	if ps {
+		c = g.psClient
+	}
+	rs, err := gtp5gnl.GetReportOID(c, g.link.link, oid)
 	if err != nil {
 		return nil, errors.Wrapf(err, "QueryURR")
 	}
@@ -1477,7 +1494,7 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bs.Handle(handler)
 	g.bsnl.Handle(handler)
-	g.ps.Handle(handler, g.QueryURR)
+	g.ps.Handle(handler, g.psQueryURR)
 }
 
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint16) {
