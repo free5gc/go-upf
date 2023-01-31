@@ -63,6 +63,8 @@ func (s *Server) ServeMsg(msg *nl.Msg) bool {
 	var seid uint64
 	var pdrid uint16
 	var action uint16
+	var isUSAR bool
+	var reports []report.USAReport
 
 	for len(b) > 0 {
 		hdr, n, err := nl.DecodeAttrHdr(b)
@@ -78,6 +80,31 @@ func (s *Server) ServeMsg(msg *nl.Msg) bool {
 			seid = native.Uint64(b[n:])
 		case gtp5gnl.BUFFER_PACKET:
 			pkt = b[n:int(hdr.Len)]
+		case gtp5gnl.UR:
+			r, err := gtp5gnl.DecodeUSAReport(b[n:])
+			if err != nil {
+				return false
+			}
+
+			usar := report.USAReport{
+				URRID:       r.URRID,
+				QueryUrrRef: r.QueryUrrRef,
+				StartTime:   r.StartTime,
+				EndTime:     r.EndTime,
+			}
+
+			usar.USARTrigger.Flags = r.USARTrigger
+			usar.VolumMeasure = report.VolumeMeasure{
+				TotalVolume:    r.VolMeasurement.TotalVolume,
+				UplinkVolume:   r.VolMeasurement.UplinkVolume,
+				DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+				TotalPktNum:    r.VolMeasurement.TotalPktNum,
+				UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+				DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+			}
+
+			isUSAR = true
+			reports = append(reports, usar)
 		}
 		b = b[hdr.Len.Align():]
 	}
@@ -92,6 +119,17 @@ func (s *Server) ServeMsg(msg *nl.Msg) bool {
 			report.SessReport{
 				SEID:    seid,
 				Reports: []report.Report{dldr},
+			},
+		)
+	} else if isUSAR {
+		var usars []report.Report
+		for _, usar := range reports {
+			usars = append(usars, usar)
+		}
+		s.handler.NotifySessReport(
+			report.SessReport{
+				SEID:    seid,
+				Reports: usars,
 			},
 		)
 	}

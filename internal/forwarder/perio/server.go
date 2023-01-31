@@ -129,12 +129,11 @@ func (pg *PERIOGroup) stopTicker() {
 }
 
 type Server struct {
-	evtCh              chan Event
-	perioList          map[time.Duration]*PERIOGroup // key: period
-	expiryList         map[uint64](map[uint32]*Expiry)
-	handler            report.Handler
-	queryURR           func(uint64, uint32) ([]report.USAReport, error)
-	queryMultiSessURRs func([]uint64, []uint32) (map[uint64][]report.USAReport, error)
+	evtCh      chan Event
+	perioList  map[time.Duration]*PERIOGroup // key: period
+	expiryList map[uint64](map[uint32]*Expiry)
+	handler    report.Handler
+	queryURR   func([]uint64, []uint32) (map[uint64][]report.USAReport, error)
 }
 
 func OpenServer(wg *sync.WaitGroup) (*Server, error) {
@@ -157,12 +156,10 @@ func (s *Server) Close() {
 
 func (s *Server) Handle(
 	handler report.Handler,
-	queryURR func(uint64, uint32) ([]report.USAReport, error),
-	queryMultiSessURRs func([]uint64, []uint32) (map[uint64][]report.USAReport, error),
+	queryURR func([]uint64, []uint32) (map[uint64][]report.USAReport, error),
 ) {
 	s.handler = handler
 	s.queryURR = queryURR
-	s.queryMultiSessURRs = queryMultiSessURRs
 }
 
 func (s *Server) Serve(wg *sync.WaitGroup) {
@@ -251,21 +248,22 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			expiry.timer.Stop()
 
 			var rpts []report.Report
-
-			usars, err := s.queryURR(e.lSeid, e.urrid)
+			sessUsars, err := s.queryURR([]uint64{e.lSeid}, []uint32{e.urrid})
 			if err != nil {
 				logger.PerioLog.Warnf("get USAReport[%#x:%#x] error: %v", e.lSeid, e.urrid, err)
 				break
 			}
 
-			if len(usars) == 0 {
+			if len(sessUsars) == 0 {
 				logger.PerioLog.Warnf("no expiry USAReport[%#x:%#x]", e.lSeid, e.urrid)
 				continue
 			}
 
-			for i := range usars {
-				usars[i].USARTrigger.Flags |= report.USAR_TRIG_QUVTI
-				rpts = append(rpts, usars[i])
+			for _, usars := range sessUsars {
+				for i := range usars {
+					usars[i].USARTrigger.Flags |= report.USAR_TRIG_QUVTI
+					rpts = append(rpts, usars[i])
+				}
 			}
 
 			s.handler.NotifySessReport(
@@ -290,19 +288,18 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					urrIds = append(urrIds, id)
 				}
 			}
-			seidUsars, err := s.queryMultiSessURRs(lSeids, urrIds)
-
+			sessUsars, err := s.queryURR(lSeids, urrIds)
 			if err != nil {
 				logger.PerioLog.Warnf("get USAReport[%#x:%#x] error: %v", lSeids, urrIds, err)
 				break
 			}
 
-			if len(seidUsars) == 0 {
+			if len(sessUsars) == 0 {
 				logger.PerioLog.Warnf("no PERIO USAReport[%#x:%#x]", lSeids, urrIds)
 				continue
 			}
 
-			for seid, usars := range seidUsars {
+			for seid, usars := range sessUsars {
 				for i := range usars {
 					usars[i].USARTrigger.Flags |= report.USAR_TRIG_PERIO
 					rpts = append(rpts, usars[i])

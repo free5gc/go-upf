@@ -32,14 +32,16 @@ const (
 )
 
 type Gtp5g struct {
-	mux    *nl.Mux
-	link   *Gtp5gLink
-	conn   *nl.Conn
-	client *gtp5gnl.Client
-	bs     *buff.Server
-	bsnl   *buffnetlink.Server
-	ps     *perio.Server
-	log    *logrus.Entry
+	mux      *nl.Mux
+	link     *Gtp5gLink
+	conn     *nl.Conn
+	psConn   *nl.Conn
+	client   *gtp5gnl.Client
+	psClient *gtp5gnl.Client
+	bs       *buff.Server
+	bsnl     *buffnetlink.Server
+	ps       *perio.Server
+	log      *logrus.Entry
 }
 
 func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
@@ -82,6 +84,20 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	}
 	g.client = c
 
+	psConn, err := nl.Open(syscall.NETLINK_GENERIC)
+	if err != nil {
+		g.Close()
+		return nil, errors.Wrap(err, "open ps netlink")
+	}
+	g.psConn = psConn
+
+	psc, err := gtp5gnl.NewClient(psConn, mux)
+	if err != nil {
+		g.Close()
+		return nil, errors.Wrap(err, "new ps client")
+	}
+	g.psClient = psc
+
 	err = g.checkVersion()
 	if err != nil {
 		g.Close()
@@ -116,6 +132,9 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 func (g *Gtp5g) Close() {
 	if g.conn != nil {
 		g.conn.Close()
+	}
+	if g.psConn != nil {
+		g.psConn.Close()
 	}
 	if g.link != nil {
 		g.link.Close()
@@ -1142,7 +1161,6 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 				Type:  gtp5gnl.URR_QUOTA_VALIDITY_TIME,
 				Value: nl.AttrU32(quotaValidityTime.Unix()),
 			})
-
 		case ie.MeasurementInformation:
 			v, err := i.MeasurementInformation()
 			if err != nil {
@@ -1178,10 +1196,6 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 	}
 
 	if rptTrig.QUVTI() {
-		g.log.Errorf("quotaValidityTime: %+v", quotaValidityTime)
-		g.log.Errorf("time now: %+v", time.Now())
-		g.log.Errorf("until : %+v", time.Until(quotaValidityTime))
-
 		g.ps.AddExpiryTimer(lSeid, urrid, time.Until(quotaValidityTime))
 	}
 	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
@@ -1192,6 +1206,8 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 	var urrid uint64
 	var attrs []nl.Attr
 	var usars []report.USAReport
+	var rptTrig report.ReportingTrigger
+	var quotaValidityTime time.Time
 
 	ies, err := req.UpdateURR()
 	if err != nil {
@@ -1219,7 +1235,6 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 			if err1 != nil {
 				return nil, err1
 			}
-			var rptTrig report.ReportingTrigger
 			err1 = rptTrig.Unmarshal(v)
 			if err1 != nil {
 				return nil, err1
@@ -1265,9 +1280,23 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 				Type:  gtp5gnl.URR_VOLUME_QUOTA,
 				Value: v,
 			})
+		case ie.QuotaValidityTime:
+			quotaValidityTime, err = i.QuotaValidityTime()
+			if err != nil {
+				break
+			}
+			// TODO: convert time.Duration -> ?
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.URR_QUOTA_VALIDITY_TIME,
+				Value: nl.AttrU32(quotaValidityTime.Unix()),
+			})
 		}
 
 		// TODO: should apply PERIO updateURR and receive final report from old URR
+	}
+
+	if rptTrig.QUVTI() {
+		g.ps.AddExpiryTimer(lSeid, uint32(urrid), time.Until(quotaValidityTime))
 	}
 
 	oid := gtp5gnl.OID{lSeid, urrid}
@@ -1441,69 +1470,31 @@ func (g *Gtp5g) RemoveBAR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.RemoveBAROID(g.client, g.link.link, oid)
 }
 
-func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error) {
-	var usars []report.USAReport
-	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
-	rs, err := gtp5gnl.GetReportOID(g.client, g.link.link, oid)
-	if err != nil {
-		return nil, errors.Wrapf(err, "QueryURR")
-	}
-
-	if rs == nil {
-		return nil, nil
-	}
-
-	for _, r := range rs {
-		usar := report.USAReport{
-			URRID:       r.URRID,
-			QueryUrrRef: r.QueryUrrRef,
-			StartTime:   r.StartTime,
-			EndTime:     r.EndTime,
-		}
-
-		usar.VolumMeasure = report.VolumeMeasure{
-			TotalVolume:    r.VolMeasurement.TotalVolume,
-			UplinkVolume:   r.VolMeasurement.UplinkVolume,
-			DownlinkVolume: r.VolMeasurement.DownlinkVolume,
-			TotalPktNum:    r.VolMeasurement.TotalPktNum,
-			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-		}
-
-		usars = append(usars, usar)
-	}
-
-	g.log.Tracef("QueryURR: %+v", usars)
-
-	return usars, err
+func (g *Gtp5g) QueryURR(lSeids []uint64, urrids []uint32) (map[uint64][]report.USAReport, error) {
+	return g.queryURR(lSeids, urrids, false)
 }
 
-func (g *Gtp5g) QueryMultiSessURRs(lSeids []uint64, urrids []uint32) (map[uint64][]report.USAReport, error) {
+func (g *Gtp5g) psQueryURR(lSeids []uint64, urrids []uint32) (map[uint64][]report.USAReport, error) {
+	return g.queryURR(lSeids, urrids, true)
+}
+
+func (g *Gtp5g) queryURR(lSeids []uint64, urrids []uint32, ps bool) (map[uint64][]report.USAReport, error) {
 	var usars map[uint64][]report.USAReport
-	var attrs []nl.Attr
+	var oids []gtp5gnl.OID
 
 	urr_num := len(urrids)
 	if urr_num != len(lSeids) {
 		return nil, errors.New("Unequal number of urr ids and seids")
 	}
 
-	for i, seid := range lSeids {
-		attrs = append(attrs, nl.Attr{
-			Type: gtp5gnl.SESS_URRS,
-			Value: nl.AttrList{
-				{
-					Type:  gtp5gnl.URR_ID,
-					Value: nl.AttrU32(urrids[i]),
-				},
-				{
-					Type:  gtp5gnl.URR_SEID,
-					Value: nl.AttrU64(seid),
-				},
-			},
-		})
+	for i, lseid := range lSeids {
+		oids = append(oids, gtp5gnl.OID{lseid, uint64(urrids[i])})
 	}
-
-	rs, err := gtp5gnl.GetMultiSessReport(g.client, g.link.link, urr_num, attrs)
+	c := g.client
+	if ps {
+		c = g.psClient
+	}
+	rs, err := gtp5gnl.GetReportOID(c, g.link.link, oids)
 	if err != nil {
 		return nil, errors.Wrapf(err, "QueryURR")
 	}
@@ -1541,7 +1532,7 @@ func (g *Gtp5g) QueryMultiSessURRs(lSeids []uint64, urrids []uint32) (map[uint64
 func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bs.Handle(handler)
 	g.bsnl.Handle(handler)
-	g.ps.Handle(handler, g.QueryURR, g.QueryMultiSessURRs)
+	g.ps.Handle(handler, g.psQueryURR)
 }
 
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint16) {

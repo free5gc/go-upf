@@ -59,6 +59,7 @@ type MeasureInformation struct {
 
 type USAReport struct {
 	URRID        uint32
+	SEID         uint64
 	URSEQN       uint32
 	USARTrigger  UsageReportTrigger
 	VolumMeasure VolumeMeasure

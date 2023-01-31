@@ -145,14 +145,17 @@ func (s *Sess) diassociateURR(urrid uint32) []report.USAReport {
 		urrInfo.refPdrNum--
 		if urrInfo.refPdrNum == 0 {
 			// indicates usage report being reported for a URR due to dissociated from the last PDR
-			usars, err := s.rnode.driver.QueryURR(s.LocalID, urrid)
+			sessUSARs, err := s.rnode.driver.QueryURR([]uint64{s.LocalID}, []uint32{urrid})
 			if err != nil {
 				return nil
 			}
-			for i := range usars {
-				usars[i].USARTrigger.Flags |= report.USAR_TRIG_TERMR
+
+			// indicates an immediate report reported on CP function demand
+			for _, usars := range sessUSARs {
+				for i := range usars {
+					usars[i].USARTrigger.Flags |= report.USAR_TRIG_IMMER
+				}
 			}
-			return usars
 		}
 	} else {
 		s.log.Warnf("diassociateURR: wrong refPdrNum(%d)", urrInfo.refPdrNum)
@@ -423,29 +426,37 @@ func (s *Sess) RemoveURR(req *ie.IE) ([]report.USAReport, error) {
 }
 
 func (s *Sess) QueryAllURR() ([]report.USAReport, error) {
+	var usars []report.USAReport
+	var seids []uint64
+	var urrids []uint32
 
-	var allUsars []report.USAReport
-	for id, ok := range s.URRIDs {
-		if ok == nil {
-			return nil, errors.Errorf("QueryAllURR: URR[%#x] not found", id)
-		}
-		usars, err := s.rnode.driver.QueryURR(s.LocalID, id)
-		if err != nil {
-			return nil, err
+	for id, _ := range s.URRIDs {
+		_, ok := s.URRIDs[id]
+		if !ok {
+			return nil, errors.Errorf("QueryURR: URR[%#x] not found", id)
 		}
 
-		// indicates an immediate report reported on CP function demand
+		seids = append(seids, s.LocalID)
+		urrids = append(urrids, id)
+	}
+
+	sessUSARs, err := s.rnode.driver.QueryURR(seids, urrids)
+	if err != nil {
+		return nil, err
+	}
+
+	// indicates an immediate report reported on CP function demand
+	for _, usars := range sessUSARs {
 		for i := range usars {
 			usars[i].USARTrigger.Flags |= report.USAR_TRIG_IMMER
 		}
-
-		allUsars = append(allUsars, usars...)
 	}
 
-	return allUsars, nil
+	return usars, nil
 }
 
 func (s *Sess) QueryURR(req *ie.IE) ([]report.USAReport, error) {
+	var usars []report.USAReport
 	id, err := req.URRID()
 	if err != nil {
 		return nil, err
@@ -456,15 +467,18 @@ func (s *Sess) QueryURR(req *ie.IE) ([]report.USAReport, error) {
 		return nil, errors.Errorf("QueryURR: URR[%#x] not found", id)
 	}
 
-	usars, err := s.rnode.driver.QueryURR(s.LocalID, id)
+	sessUSARs, err := s.rnode.driver.QueryURR([]uint64{s.LocalID}, []uint32{id})
 	if err != nil {
 		return nil, err
 	}
 
 	// indicates an immediate report reported on CP function demand
-	for i := range usars {
-		usars[i].USARTrigger.Flags |= report.USAR_TRIG_IMMER
+	for _, usars := range sessUSARs {
+		for i := range usars {
+			usars[i].USARTrigger.Flags |= report.USAR_TRIG_IMMER
+		}
 	}
+
 	return usars, nil
 }
 

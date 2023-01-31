@@ -31,8 +31,7 @@ type Driver interface {
 	CreateURR(uint64, *ie.IE) error
 	UpdateURR(uint64, *ie.IE) ([]report.USAReport, error)
 	RemoveURR(uint64, *ie.IE) ([]report.USAReport, error)
-	QueryURR(uint64, uint32) ([]report.USAReport, error)
-	QueryMultiSessURRs([]uint64, []uint32) (map[uint64][]report.USAReport, error)
+	QueryURR([]uint64, []uint32) (map[uint64][]report.USAReport, error)
 
 	CreateBAR(uint64, *ie.IE) error
 	UpdateBAR(uint64, *ie.IE) error

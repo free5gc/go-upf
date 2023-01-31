@@ -71,11 +71,7 @@ func (Empty) RemoveBAR(uint64, *ie.IE) error {
 	return nil
 }
 
-func (Empty) QueryURR(uint64, uint32) ([]report.USAReport, error) {
-	return nil, nil
-}
-
-func (Empty) QueryMultiSessURRs([]uint64, []uint32) (map[uint64][]report.USAReport, error) {
+func (Empty) QueryURR([]uint64, []uint32) (map[uint64][]report.USAReport, error) {
 	return nil, nil
 }
 
