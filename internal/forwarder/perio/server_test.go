@@ -1,6 +1,7 @@
 package perio
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -28,20 +29,24 @@ func (h *testHandler) PopBufPkt(lSeid uint64, pdrid uint16) ([]byte, bool) {
 
 func testGetUSAReport(lSeid []uint64, id []uint32) (map[uint64][]report.USAReport, error) {
 	sessReports := make(map[uint64][]report.USAReport)
-	v := report.VolumeMeasure{
-		UplinkVolume:   10,
-		DownlinkVolume: 20,
-		TotalVolume:    30,
-	}
-	usar := []report.USAReport{
-		{
-			URRID:        id[0],
-			USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
-			VolumMeasure: v,
-		},
+
+	for i, seid := range lSeid {
+		v := report.VolumeMeasure{
+			UplinkVolume:   10,
+			DownlinkVolume: 20,
+			TotalVolume:    30,
+		}
+		usar := []report.USAReport{
+			{
+				URRID:        id[i],
+				USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
+				VolumMeasure: v,
+			},
+		}
+		fmt.Printf("SEID URRID %d %d\n", seid, id[i])
+		sessReports[seid] = usar
 	}
 
-	sessReports[lSeid[0]] = usar
 	return sessReports, nil
 }
 
