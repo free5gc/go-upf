@@ -88,7 +88,7 @@ type Server struct {
 	perioList map[time.Duration]*PERIOGroup // key: period
 
 	handler  report.Handler
-	queryURR func(uint64, uint32) ([]report.USAReport, error)
+	queryURR func([]uint64, []uint32) (map[uint64][]report.USAReport, error)
 }
 
 func OpenServer(wg *sync.WaitGroup) (*Server, error) {
@@ -110,7 +110,7 @@ func (s *Server) Close() {
 
 func (s *Server) Handle(
 	handler report.Handler,
-	queryURR func(uint64, uint32) ([]report.USAReport, error),
+	queryURR func([]uint64, []uint32) (map[uint64][]report.USAReport, error),
 ) {
 	s.handler = handler
 	s.queryURR = queryURR
@@ -169,6 +169,10 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 				}
 			}
 		case TYPE_PERIO_TIMEOUT:
+			var lSeids []uint64
+			var urrIds []uint32
+			var rpts []report.Report
+
 			perioGroup, ok := s.perioList[e.period]
 			if !ok {
 				logger.PerioLog.Warnf("no periodGroup found for period[%v]", e.period)
@@ -176,28 +180,32 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			}
 
 			for lSeid, urrids := range perioGroup.urrids {
-				var rpts []report.Report
 				for id := range urrids {
-					usars, err := s.queryURR(lSeid, id)
-					if err != nil {
-						logger.PerioLog.Warnf("get USAReport[%#x:%#x] error: %v", lSeid, id, err)
-						break
-					}
+					lSeids = append(lSeids, lSeid)
+					urrIds = append(urrIds, id)
+				}
+			}
 
-					if len(usars) == 0 {
-						logger.PerioLog.Warnf("no PERIO USAReport[%#x:%#x]", lSeid, id)
-						continue
-					}
+			seidUsars, err := s.queryURR(lSeids, urrIds)
+			if err != nil {
+				logger.PerioLog.Warnf("get Multiple USAReports[%#x:%#x] error: %v", lSeids, urrIds, err)
+				break
+			}
 
-					for i := range usars {
-						usars[i].USARTrigger.Flags |= report.USAR_TRIG_PERIO
-						rpts = append(rpts, usars[i])
-					}
+			if len(seidUsars) == 0 {
+				logger.PerioLog.Warnf("no PERIO USAReport[%#x:%#x]", lSeids, urrIds)
+				continue
+			}
+
+			for seid, usars := range seidUsars {
+				for i := range usars {
+					usars[i].USARTrigger.Flags |= report.USAR_TRIG_PERIO
+					rpts = append(rpts, usars[i])
 				}
 
 				s.handler.NotifySessReport(
 					report.SessReport{
-						SEID:    lSeid,
+						SEID:    seid,
 						Reports: rpts,
 					})
 			}

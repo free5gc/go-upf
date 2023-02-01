@@ -26,19 +26,25 @@ func (h *testHandler) PopBufPkt(lSeid uint64, pdrid uint16) ([]byte, bool) {
 	return nil, true
 }
 
-func testGetUSAReport(lSeid uint64, id uint32) ([]report.USAReport, error) {
+func testGetUSAReport(lSeids []uint64, ids []uint32) (map[uint64][]report.USAReport, error) {
+	sessUsars := make(map[uint64][]report.USAReport)
+
 	v := report.VolumeMeasure{
 		UplinkVolume:   10,
 		DownlinkVolume: 20,
 		TotalVolume:    30,
 	}
-	return []report.USAReport{
-		{
-			URRID:        id,
-			USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
-			VolumMeasure: v,
-		},
-	}, nil
+
+	for i, seid := range lSeids {
+		sessUsars[seid] = []report.USAReport{
+			{
+				URRID:        ids[i],
+				USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
+				VolumMeasure: v,
+			},
+		}
+	}
+	return nil, nil
 }
 
 func TestServer(t *testing.T) {
