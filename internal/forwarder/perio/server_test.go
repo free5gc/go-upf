@@ -26,7 +26,7 @@ func (h *testHandler) PopBufPkt(lSeid uint64, pdrid uint16) ([]byte, bool) {
 	return nil, true
 }
 
-func testGetUSAReport(lSeids []uint64, ids []uint32) (map[uint64][]report.USAReport, error) {
+func testGetUSAReport(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
 	sessUsars := make(map[uint64][]report.USAReport)
 
 	v := report.VolumeMeasure{
@@ -35,14 +35,17 @@ func testGetUSAReport(lSeids []uint64, ids []uint32) (map[uint64][]report.USARep
 		TotalVolume:    30,
 	}
 
-	for i, seid := range lSeids {
-		sessUsars[seid] = []report.USAReport{
-			{
-				URRID:        ids[i],
-				USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
-				VolumMeasure: v,
-			},
+	for lSeid, urrids := range lSeidUrridsMap {
+		for _, urrid := range urrids {
+			sessUsars[lSeid] = []report.USAReport{
+				{
+					URRID:        urrid,
+					USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
+					VolumMeasure: v,
+				},
+			}
 		}
+
 	}
 	return nil, nil
 }

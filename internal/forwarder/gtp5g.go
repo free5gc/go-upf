@@ -1445,12 +1445,12 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 	return g.queryURR(lSeid, urrid, false)
 }
 
-func (g *Gtp5g) QueryMultiURR(lSeids []uint64, urrids []uint32) (map[uint64][]report.USAReport, error) {
-	return g.queryMultiURR(lSeids, urrids, false)
+func (g *Gtp5g) QueryMultiURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
+	return g.queryMultiURR(lSeidUrridsMap, false)
 }
 
-func (g *Gtp5g) psQueryURR(lSeids []uint64, urrids []uint32) (map[uint64][]report.USAReport, error) {
-	return g.queryMultiURR(lSeids, urrids, true)
+func (g *Gtp5g) psQueryURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
+	return g.queryMultiURR(lSeidUrridsMap, true)
 }
 
 func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USAReport, error) {
@@ -1495,18 +1495,16 @@ func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USARepor
 	return usars, err
 }
 
-func (g *Gtp5g) queryMultiURR(lSeids []uint64, urrids []uint32, ps bool) (map[uint64][]report.USAReport, error) {
+func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[uint64][]report.USAReport, error) {
 	var usars map[uint64][]report.USAReport
 	var oids []gtp5gnl.OID
 
-	urr_num := len(urrids)
-	if urr_num != len(lSeids) {
-		return nil, errors.New("Unequal number of urr ids and seids")
+	for seid, urrIds := range lSeidUrridsMap {
+		for _, urrId := range urrIds {
+			oids = append(oids, gtp5gnl.OID{seid, uint64(urrId)})
+		}
 	}
 
-	for i, lseid := range lSeids {
-		oids = append(oids, gtp5gnl.OID{lseid, uint64(urrids[i])})
-	}
 	c := g.client
 	if ps {
 		c = g.psClient

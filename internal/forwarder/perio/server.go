@@ -88,7 +88,7 @@ type Server struct {
 	perioList map[time.Duration]*PERIOGroup // key: period
 
 	handler  report.Handler
-	queryURR func([]uint64, []uint32) (map[uint64][]report.USAReport, error)
+	queryURR func(map[uint64][]uint32) (map[uint64][]report.USAReport, error)
 }
 
 func OpenServer(wg *sync.WaitGroup) (*Server, error) {
@@ -110,7 +110,7 @@ func (s *Server) Close() {
 
 func (s *Server) Handle(
 	handler report.Handler,
-	queryURR func([]uint64, []uint32) (map[uint64][]report.USAReport, error),
+	queryURR func(map[uint64][]uint32) (map[uint64][]report.USAReport, error),
 ) {
 	s.handler = handler
 	s.queryURR = queryURR
@@ -169,8 +169,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 				}
 			}
 		case TYPE_PERIO_TIMEOUT:
-			var lSeids []uint64
-			var urrIds []uint32
+			var lSeidUrridsMap map[uint64][]uint32
 			var rpts []report.Report
 
 			perioGroup, ok := s.perioList[e.period]
@@ -179,21 +178,21 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 				break
 			}
 
-			for lSeid, urrids := range perioGroup.urrids {
-				for id := range urrids {
-					lSeids = append(lSeids, lSeid)
-					urrIds = append(urrIds, id)
+			lSeidUrridsMap = make(map[uint64][]uint32)
+			for lSeid, urrIds := range perioGroup.urrids {
+				for urrId, _ := range urrIds {
+					lSeidUrridsMap[lSeid] = append(lSeidUrridsMap[lSeid], urrId)
 				}
 			}
 
-			seidUsars, err := s.queryURR(lSeids, urrIds)
+			seidUsars, err := s.queryURR(lSeidUrridsMap)
 			if err != nil {
-				logger.PerioLog.Warnf("get Multiple USAReports[%#x:%#x] error: %v", lSeids, urrIds, err)
+				logger.PerioLog.Warnf("get Multiple USAReports error: %v", err)
 				break
 			}
 
 			if len(seidUsars) == 0 {
-				logger.PerioLog.Warnf("no PERIO USAReport[%#x:%#x]", lSeids, urrIds)
+				logger.PerioLog.Warnf("no PERIO USAReport")
 				continue
 			}
 
