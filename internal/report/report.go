@@ -174,9 +174,10 @@ func (r *ReportingTrigger) Unmarshal(b []byte) error {
 	if len(b) < 2 {
 		return errors.Errorf("ReportingTrigger Unmarshal: less than 2 bytes")
 	}
-	// slice len might be 2 or 3; append 0 to 4 bytes at least
-	b = append(b, 0, 0)
-	r.Flags = binary.LittleEndian.Uint32(b)
+	// slice len might be 2 or 3; enlarge slice to 4 bytes at least
+	v := make([]byte, len(b)+2)
+	copy(v, b)
+	r.Flags = binary.LittleEndian.Uint32(v)
 	return nil
 }
 
