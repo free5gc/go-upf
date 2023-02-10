@@ -180,7 +180,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 
 			lSeidUrridsMap = make(map[uint64][]uint32)
 			for lSeid, urrIds := range perioGroup.urrids {
-				for urrId, _ := range urrIds {
+				for urrId := range urrIds {
 					lSeidUrridsMap[lSeid] = append(lSeidUrridsMap[lSeid], urrId)
 				}
 			}
