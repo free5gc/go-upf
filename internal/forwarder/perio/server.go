@@ -192,8 +192,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			}
 
 			if len(seidUsars) == 0 {
-
-				logger.PerioLog.Warnf("no PERIO USAReport %+v", seidUsars)
+				logger.PerioLog.Warnf("no PERIO USAReport")
 				continue
 			}
 
