@@ -37,17 +37,15 @@ func testGetUSAReport(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.U
 
 	for lSeid, urrids := range lSeidUrridsMap {
 		for _, urrid := range urrids {
-			sessUsars[lSeid] = []report.USAReport{
-				{
-					URRID:        urrid,
-					USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
-					VolumMeasure: v,
-				},
-			}
+			sessUsars[lSeid] = append(sessUsars[lSeid], report.USAReport{
+				URRID:        urrid,
+				USARTrigger:  report.UsageReportTrigger{Flags: report.USAR_TRIG_PERIO},
+				VolumMeasure: v,
+			})
 		}
-
 	}
-	return nil, nil
+
+	return sessUsars, nil
 }
 
 func TestServer(t *testing.T) {
