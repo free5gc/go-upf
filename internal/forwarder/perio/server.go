@@ -190,10 +190,9 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 				logger.PerioLog.Warnf("get Multiple USAReports error: %v", err)
 				break
 			}
-
 			if len(seidUsars) == 0 {
 				logger.PerioLog.Warnf("no PERIO USAReport")
-				continue
+				break
 			}
 
 			for seid, usars := range seidUsars {

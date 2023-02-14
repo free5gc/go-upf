@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	expectedMinGtp5gVersion string = "0.7.0"
+	expectedMinGtp5gVersion string = "0.7.3"
 	expectedMaxGtp5gVersion string = "0.8.0"
 	SOCKPATH                string = "/tmp/free5gc_unix_sock"
 )
@@ -1445,10 +1445,6 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 	return g.queryURR(lSeid, urrid, false)
 }
 
-func (g *Gtp5g) QueryMultiURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
-	return g.queryMultiURR(lSeidUrridsMap, false)
-}
-
 func (g *Gtp5g) psQueryURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
 	return g.queryMultiURR(lSeidUrridsMap, true)
 }
@@ -1463,7 +1459,7 @@ func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USARepor
 	}
 	rs, err := gtp5gnl.GetReportOID(c, g.link.link, oid)
 	if err != nil {
-		return nil, errors.Wrapf(err, "QueryURR")
+		return nil, errors.Wrapf(err, "queryURR")
 	}
 
 	if rs == nil {
@@ -1490,15 +1486,13 @@ func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USARepor
 		usars = append(usars, usar)
 	}
 
-	g.log.Tracef("QueryURR: %+v", usars)
+	g.log.Tracef("queryURR: %+v", usars)
 
 	return usars, err
 }
 
 func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[uint64][]report.USAReport, error) {
-	var usars map[uint64][]report.USAReport
 	var oids []gtp5gnl.OID
-
 	for seid, urrIds := range lSeidUrridsMap {
 		for _, urrId := range urrIds {
 			oids = append(oids, gtp5gnl.OID{seid, uint64(urrId)})
@@ -1511,14 +1505,14 @@ func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[
 	}
 	rs, err := gtp5gnl.GetMultiReportsOID(c, g.link.link, oids)
 	if err != nil {
-		return nil, errors.Wrapf(err, "QueryURR")
+		return nil, errors.Wrapf(err, "queryMultiURR")
 	}
 
 	if rs == nil {
 		return nil, nil
 	}
 
-	usars = make(map[uint64][]report.USAReport)
+	usars := make(map[uint64][]report.USAReport)
 	for _, r := range rs {
 		usar := report.USAReport{
 			URRID:       r.URRID,
@@ -1537,9 +1531,8 @@ func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[
 		}
 		usars[r.SEID] = append(usars[r.SEID], usar)
 	}
-	for seid, rs := range usars {
-		g.log.Tracef("sess[%+v] usars: %+v", seid, rs)
-	}
+
+	g.log.Tracef("queryMultiURR: %+v", usars)
 
 	return usars, err
 }
