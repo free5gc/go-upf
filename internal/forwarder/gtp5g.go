@@ -1445,8 +1445,12 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 	return g.queryURR(lSeid, urrid, false)
 }
 
-func (g *Gtp5g) psQueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error) {
-	return g.queryURR(lSeid, urrid, true)
+func (g *Gtp5g) QueryMultiURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
+	return g.queryMultiURR(lSeidUrridsMap, false)
+}
+
+func (g *Gtp5g) psQueryURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
+	return g.queryMultiURR(lSeidUrridsMap, true)
 }
 
 func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USAReport, error) {
@@ -1487,6 +1491,55 @@ func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USARepor
 	}
 
 	g.log.Tracef("QueryURR: %+v", usars)
+
+	return usars, err
+}
+
+func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[uint64][]report.USAReport, error) {
+	var usars map[uint64][]report.USAReport
+	var oids []gtp5gnl.OID
+
+	for seid, urrIds := range lSeidUrridsMap {
+		for _, urrId := range urrIds {
+			oids = append(oids, gtp5gnl.OID{seid, uint64(urrId)})
+		}
+	}
+
+	c := g.client
+	if ps {
+		c = g.psClient
+	}
+	rs, err := gtp5gnl.GetMultiReportsOID(c, g.link.link, oids)
+	if err != nil {
+		return nil, errors.Wrapf(err, "QueryURR")
+	}
+
+	if rs == nil {
+		return nil, nil
+	}
+
+	usars = make(map[uint64][]report.USAReport)
+	for _, r := range rs {
+		usar := report.USAReport{
+			URRID:       r.URRID,
+			QueryUrrRef: r.QueryUrrRef,
+			StartTime:   r.StartTime,
+			EndTime:     r.EndTime,
+		}
+
+		usar.VolumMeasure = report.VolumeMeasure{
+			TotalVolume:    r.VolMeasurement.TotalVolume,
+			UplinkVolume:   r.VolMeasurement.UplinkVolume,
+			DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+			TotalPktNum:    r.VolMeasurement.TotalPktNum,
+			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+		}
+		usars[r.SEID] = append(usars[r.SEID], usar)
+	}
+	for seid, rs := range usars {
+		g.log.Tracef("sess[%+v] usars: %+v", seid, rs)
+	}
 
 	return usars, err
 }
