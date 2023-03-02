@@ -153,7 +153,26 @@ func (s *Server) ServeMsg(msg *nl.Msg) bool {
 					},
 				)
 			}
+		default:
+			// For backward compatibility
+			seid, pdrid, action, pkt, err := decodbuffer(b[n:])
+			if err != nil {
+				return false
+			}
 
+			if s.handler != nil && pkt != nil {
+				dldr := report.DLDReport{
+					PDRID:  pdrid,
+					Action: action,
+					BufPkt: pkt,
+				}
+				s.handler.NotifySessReport(
+					report.SessReport{
+						SEID:    seid,
+						Reports: []report.Report{dldr},
+					},
+				)
+			}
 		}
 		b = b[hdr.Len.Align():]
 	}
