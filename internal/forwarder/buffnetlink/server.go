@@ -76,6 +76,8 @@ func decodbuffer(b []byte) (uint64, uint16, uint16, []byte, error) {
 		case gtp5gnl.BUFFER_PACKET:
 			pkt = b[n:int(hdr.Len)]
 		}
+
+		b = b[hdr.Len.Align():]
 	}
 
 	return seid, pdrid, action, pkt, nil
@@ -174,7 +176,6 @@ func (s *Server) ServeMsg(msg *nl.Msg) bool {
 				)
 			}
 		}
-		b = b[hdr.Len.Align():]
 	}
 
 	return true
