@@ -87,94 +87,92 @@ func (s *Server) ServeMsg(msg *nl.Msg) bool {
 	b := msg.Body[genl.SizeofHeader:]
 	var usars map[uint64][]report.USAReport
 
-	for len(b) > 0 {
-		hdr, n, err := nl.DecodeAttrHdr(b)
+	hdr, n, err := nl.DecodeAttrHdr(b)
+	if err != nil {
+		return false
+	}
+	switch hdr.MaskedType() {
+	case gtp5gnl.BUFFER:
+		seid, pdrid, action, pkt, err := decodbuffer(b[n:])
 		if err != nil {
 			return false
 		}
-		switch hdr.MaskedType() {
-		case gtp5gnl.BUFFER:
-			seid, pdrid, action, pkt, err := decodbuffer(b[n:])
-			if err != nil {
-				return false
+
+		if s.handler != nil && pkt != nil {
+			dldr := report.DLDReport{
+				PDRID:  pdrid,
+				Action: action,
+				BufPkt: pkt,
+			}
+			s.handler.NotifySessReport(
+				report.SessReport{
+					SEID:    seid,
+					Reports: []report.Report{dldr},
+				},
+			)
+		}
+	case gtp5gnl.REPORT:
+		rs, err := gtp5gnl.DecodeAllUSAReports(b[n:])
+		if err != nil {
+			return false
+		}
+		if rs == nil {
+			return false
+		}
+
+		usars = make(map[uint64][]report.USAReport)
+		for _, r := range rs {
+			usar := report.USAReport{
+				URRID:       r.URRID,
+				QueryUrrRef: r.QueryUrrRef,
+				StartTime:   r.StartTime,
+				EndTime:     r.EndTime,
 			}
 
-			if s.handler != nil && pkt != nil {
-				dldr := report.DLDReport{
-					PDRID:  pdrid,
-					Action: action,
-					BufPkt: pkt,
-				}
-				s.handler.NotifySessReport(
-					report.SessReport{
-						SEID:    seid,
-						Reports: []report.Report{dldr},
-					},
-				)
-			}
-		case gtp5gnl.REPORT:
-			rs, err := gtp5gnl.DecodeAllUSAReports(b[n:])
-			if err != nil {
-				return false
-			}
-			if rs == nil {
-				return false
-			}
+			usar.USARTrigger.SetReportingTrigger(r.USARTrigger)
 
-			usars = make(map[uint64][]report.USAReport)
+			usar.VolumMeasure = report.VolumeMeasure{
+				TotalVolume:    r.VolMeasurement.TotalVolume,
+				UplinkVolume:   r.VolMeasurement.UplinkVolume,
+				DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+				TotalPktNum:    r.VolMeasurement.TotalPktNum,
+				UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+				DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+			}
+			usars[r.SEID] = append(usars[r.SEID], usar)
+		}
+
+		for seid, rs := range usars {
+			var usars []report.Report
 			for _, r := range rs {
-				usar := report.USAReport{
-					URRID:       r.URRID,
-					QueryUrrRef: r.QueryUrrRef,
-					StartTime:   r.StartTime,
-					EndTime:     r.EndTime,
-				}
-
-				usar.USARTrigger.SetReportingTrigger(r.USARTrigger)
-
-				usar.VolumMeasure = report.VolumeMeasure{
-					TotalVolume:    r.VolMeasurement.TotalVolume,
-					UplinkVolume:   r.VolMeasurement.UplinkVolume,
-					DownlinkVolume: r.VolMeasurement.DownlinkVolume,
-					TotalPktNum:    r.VolMeasurement.TotalPktNum,
-					UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-					DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-				}
-				usars[r.SEID] = append(usars[r.SEID], usar)
+				usars = append(usars, r)
 			}
+			s.handler.NotifySessReport(
+				report.SessReport{
+					SEID:    seid,
+					Reports: usars,
+				},
+			)
+		}
+	default:
+		// For backward compatibility
+		seid, pdrid, action, pkt, err := decodbuffer(b[n:])
+		if err != nil {
+			return false
+		}
 
-			for seid, rs := range usars {
-				var usars []report.Report
-				for _, r := range rs {
-					usars = append(usars, r)
-				}
-				s.handler.NotifySessReport(
-					report.SessReport{
-						SEID:    seid,
-						Reports: usars,
-					},
-				)
+		if s.handler != nil && pkt != nil {
+			dldr := report.DLDReport{
+				PDRID:  pdrid,
+				Action: action,
+				BufPkt: pkt,
 			}
-		default:
-			// For backward compatibility
-			seid, pdrid, action, pkt, err := decodbuffer(b[n:])
-			if err != nil {
-				return false
-			}
-
-			if s.handler != nil && pkt != nil {
-				dldr := report.DLDReport{
-					PDRID:  pdrid,
-					Action: action,
-					BufPkt: pkt,
-				}
-				s.handler.NotifySessReport(
-					report.SessReport{
-						SEID:    seid,
-						Reports: []report.Report{dldr},
-					},
-				)
-			}
+			s.handler.NotifySessReport(
+				report.SessReport{
+					SEID:    seid,
+					Reports: []report.Report{dldr},
+				},
+			)
 		}
 	}
 
