@@ -170,7 +170,6 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			}
 		case TYPE_PERIO_TIMEOUT:
 			var lSeidUrridsMap map[uint64][]uint32
-			var rpts []report.Report
 
 			perioGroup, ok := s.perioList[e.period]
 			if !ok {
@@ -196,6 +195,8 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 			}
 
 			for seid, usars := range seidUsars {
+				var rpts []report.Report
+
 				for i := range usars {
 					usars[i].USARTrigger.Flags |= report.USAR_TRIG_PERIO
 					rpts = append(rpts, usars[i])
