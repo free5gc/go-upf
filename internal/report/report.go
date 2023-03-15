@@ -289,6 +289,45 @@ type UsageReportTrigger struct {
 	Flags uint32
 }
 
+func (t *UsageReportTrigger) SetReportingTrigger(r uint32) {
+	switch r {
+	case RPT_TRIG_PERIO:
+		t.Flags |= USAR_TRIG_PERIO
+	case RPT_TRIG_VOLTH:
+		t.Flags |= USAR_TRIG_VOLTH
+	case RPT_TRIG_TIMTH:
+		t.Flags |= USAR_TRIG_TIMTH
+	case RPT_TRIG_QUHTI:
+		t.Flags |= USAR_TRIG_QUHTI
+	case RPT_TRIG_START:
+		t.Flags |= USAR_TRIG_START
+	case RPT_TRIG_STOPT:
+		t.Flags |= USAR_TRIG_STOPT
+	case RPT_TRIG_DROTH:
+		t.Flags |= USAR_TRIG_DROTH
+	case RPT_TRIG_LIUSA:
+		t.Flags |= USAR_TRIG_LIUSA
+	case RPT_TRIG_VOLQU:
+		t.Flags |= USAR_TRIG_VOLQU
+	case RPT_TRIG_TIMQU:
+		t.Flags |= USAR_TRIG_TIMQU
+	case RPT_TRIG_ENVCL:
+		t.Flags |= USAR_TRIG_ENVCL
+	case RPT_TRIG_MACAR:
+		t.Flags |= USAR_TRIG_MACAR
+	case RPT_TRIG_EVETH:
+		t.Flags |= USAR_TRIG_EVETH
+	case RPT_TRIG_EVEQU:
+		t.Flags |= USAR_TRIG_EVEQU
+	case RPT_TRIG_IPMJL:
+		t.Flags |= USAR_TRIG_IPMJL
+	case RPT_TRIG_QUVTI:
+		t.Flags |= USAR_TRIG_QUVTI
+	case RPT_TRIG_UPINT:
+		t.Flags |= USAR_TRIG_UPINT
+	}
+}
+
 func (t *UsageReportTrigger) IE() *ie.IE {
 	b := make([]byte, 4)
 	binary.LittleEndian.PutUint32(b, t.Flags)
