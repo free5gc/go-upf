@@ -15,7 +15,6 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-gtp5gnl"
-	"github.com/free5gc/go-upf/internal/forwarder/buff"
 	"github.com/free5gc/go-upf/internal/forwarder/buffnetlink"
 	"github.com/free5gc/go-upf/internal/forwarder/perio"
 	"github.com/free5gc/go-upf/internal/gtpv1"
@@ -28,7 +27,6 @@ import (
 const (
 	expectedMinGtp5gVersion string = "0.8.0"
 	expectedMaxGtp5gVersion string = "0.9.0"
-	SOCKPATH                string = "/tmp/free5gc_unix_sock"
 )
 
 type Gtp5g struct {
@@ -38,7 +36,6 @@ type Gtp5g struct {
 	psConn   *nl.Conn
 	client   *gtp5gnl.Client
 	psClient *gtp5gnl.Client
-	bs       *buff.Server
 	bsnl     *buffnetlink.Server
 	ps       *perio.Server
 	log      *logrus.Entry
@@ -104,13 +101,6 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 		return nil, errors.Wrap(err, "version mismatch")
 	}
 
-	bs, err := buff.OpenServer(wg, SOCKPATH)
-	if err != nil {
-		g.Close()
-		return nil, errors.Wrap(err, "open buff server")
-	}
-	g.bs = bs
-
 	bsnl, err := buffnetlink.OpenServer(wg, c.Client, mux)
 	if err != nil {
 		g.Close()
@@ -141,9 +131,6 @@ func (g *Gtp5g) Close() {
 	}
 	if g.mux != nil {
 		g.mux.Close()
-	}
-	if g.bs != nil {
-		g.bs.Close()
 	}
 	if g.bsnl != nil {
 		g.bsnl.Close()
@@ -1538,7 +1525,6 @@ func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[
 }
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {
-	g.bs.Handle(handler)
 	g.bsnl.Handle(handler)
 	g.ps.Handle(handler, g.psQueryURR)
 }

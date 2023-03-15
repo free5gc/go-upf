@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/free5gc/go-gtp5gnl"
+	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
 )
 
@@ -42,6 +43,8 @@ func OpenServer(wg *sync.WaitGroup, client *nl.Client, mux *nl.Mux) (*Server, er
 	if err != nil {
 		return nil, errors.Wrap(err, "push handler")
 	}
+
+	logger.BuffLog.Infof("buff netlink server started")
 
 	// wg.Add(1)
 	return s, nil
