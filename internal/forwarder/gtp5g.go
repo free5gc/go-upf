@@ -1433,7 +1433,23 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 }
 
 func (g *Gtp5g) psQueryURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
-	return g.queryMultiURR(lSeidUrridsMap, true)
+	seidUsars := make(map[uint64][]report.USAReport)
+
+	for lSeid, urrids := range lSeidUrridsMap {
+		for _, urrid := range urrids {
+			usars, err := g.queryURR(lSeid, urrid, true)
+			if err != nil {
+				g.log.Warnf("psQueryURR: %v", err)
+				continue
+			}
+			if len(usars) == 0 {
+				g.log.Warnf("psQueryURR: no reports for URR[%#x:%#x]", lSeid, urrid)
+				continue
+			}
+			seidUsars[lSeid] = append(seidUsars[lSeid], usars...)
+		}
+	}
+	return seidUsars, nil
 }
 
 func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USAReport, error) {
@@ -1446,7 +1462,7 @@ func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USARepor
 	}
 	rs, err := gtp5gnl.GetReportOID(c, g.link.link, oid)
 	if err != nil {
-		return nil, errors.Wrapf(err, "queryURR")
+		return nil, errors.Wrapf(err, "queryURR[%#x:%#x]", lSeid, urrid)
 	}
 
 	if rs == nil {
@@ -1475,7 +1491,14 @@ func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USARepor
 
 	g.log.Tracef("queryURR: %+v", usars)
 
-	return usars, err
+	return usars, nil
+}
+
+// Note: the max size of netlink msg is 16k,
+//       the number of reports from gtp5g is limited
+//       depending on the size of report
+func (g *Gtp5g) QueryMultiURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
+	return g.queryMultiURR(lSeidUrridsMap, false)
 }
 
 func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[uint64][]report.USAReport, error) {
@@ -1492,7 +1515,7 @@ func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[
 	}
 	rs, err := gtp5gnl.GetMultiReportsOID(c, g.link.link, oids)
 	if err != nil {
-		return nil, errors.Wrapf(err, "queryMultiURR")
+		return nil, errors.Wrapf(err, "queryMultiURR[%+v]", lSeidUrridsMap)
 	}
 
 	if rs == nil {
@@ -1521,7 +1544,7 @@ func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[
 
 	g.log.Tracef("queryMultiURR: %+v", usars)
 
-	return usars, err
+	return usars, nil
 }
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {
