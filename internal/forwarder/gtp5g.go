@@ -1444,25 +1444,25 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 	return g.queryURR(lSeid, urrid, false)
 }
 
-func (g *Gtp5g) psQueryURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
-	seidUsars := make(map[uint64][]report.USAReport)
+// func (g *Gtp5g) psQueryURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
+// 	seidUsars := make(map[uint64][]report.USAReport)
 
-	for lSeid, urrids := range lSeidUrridsMap {
-		for _, urrid := range urrids {
-			usars, err := g.queryURR(lSeid, urrid, true)
-			if err != nil {
-				g.log.Warnf("psQueryURR: %v", err)
-				continue
-			}
-			if len(usars) == 0 {
-				g.log.Warnf("psQueryURR: no reports for URR[%#x:%#x]", lSeid, urrid)
-				continue
-			}
-			seidUsars[lSeid] = append(seidUsars[lSeid], usars...)
-		}
-	}
-	return seidUsars, nil
-}
+// 	for lSeid, urrids := range lSeidUrridsMap {
+// 		for _, urrid := range urrids {
+// 			usars, err := g.queryURR(lSeid, urrid, true)
+// 			if err != nil {
+// 				g.log.Warnf("psQueryURR: %v", err)
+// 				continue
+// 			}
+// 			if len(usars) == 0 {
+// 				g.log.Warnf("psQueryURR: no reports for URR[%#x:%#x]", lSeid, urrid)
+// 				continue
+// 			}
+// 			seidUsars[lSeid] = append(seidUsars[lSeid], usars...)
+// 		}
+// 	}
+// 	return seidUsars, nil
+// }
 
 func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USAReport, error) {
 	var usars []report.USAReport
