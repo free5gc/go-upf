@@ -29,18 +29,6 @@ const (
 	expectedMaxGtp5gVersion string = "0.9.0"
 )
 
-// The maximun netlink message size is 16K, and the body for the attibutes are 7856 Bytes
-// The netlink attribute size of UR need to count the UR header(4) + size of the attributes (and it's header) in UR
-const (
-	MAX_NETLINK_MSG_BODY_SIZE = 7856
-	UR_NETLINK_SIZE           = 140
-)
-
-// The reports in one query should not execeed the MAX_NETLINK_MSG_BODY_SIZE
-const (
-	MAX_QUERY_RPT_NUM = int(MAX_NETLINK_MSG_BODY_SIZE / UR_NETLINK_SIZE)
-)
-
 type Gtp5g struct {
 	mux      *nl.Mux
 	link     *Gtp5gLink
@@ -1532,7 +1520,8 @@ func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[
 			oids = append(oids, gtp5gnl.OID{seid, uint64(urrId)})
 			queryNum++
 
-			if queryNum >= MAX_QUERY_RPT_NUM {
+			queryReportNum := gtp5gnl.MAX_NETLINK_MSG_BODY_SIZE / gtp5gnl.URSize()
+			if queryNum >= queryReportNum {
 				rs, err := gtp5gnl.GetMultiReportsOID(c, g.link.link, oids)
 				if err != nil {
 					return nil, errors.Wrapf(err, "queryMultiURR[%+v]", lSeidUrridsMap)
