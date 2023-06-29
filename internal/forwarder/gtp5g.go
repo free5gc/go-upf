@@ -1432,25 +1432,9 @@ func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error)
 	return g.queryURR(lSeid, urrid, false)
 }
 
-// func (g *Gtp5g) psQueryURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
-// 	seidUsars := make(map[uint64][]report.USAReport)
-
-// 	for lSeid, urrids := range lSeidUrridsMap {
-// 		for _, urrid := range urrids {
-// 			usars, err := g.queryURR(lSeid, urrid, true)
-// 			if err != nil {
-// 				g.log.Warnf("psQueryURR: %v", err)
-// 				continue
-// 			}
-// 			if len(usars) == 0 {
-// 				g.log.Warnf("psQueryURR: no reports for URR[%#x:%#x]", lSeid, urrid)
-// 				continue
-// 			}
-// 			seidUsars[lSeid] = append(seidUsars[lSeid], usars...)
-// 		}
-// 	}
-// 	return seidUsars, nil
-// }
+func (g *Gtp5g) psQueryURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
+	return g.queryMultiURR(lSeidUrridsMap, true)
+}
 
 func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USAReport, error) {
 	var usars []report.USAReport
@@ -1494,15 +1478,8 @@ func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USARepor
 	return usars, nil
 }
 
-// Note: the max size of netlink msg is 16k,
-//       the number of reports from gtp5g is limited
-//       depending on the size of report
 func (g *Gtp5g) QueryMultiURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
 	return g.queryMultiURR(lSeidUrridsMap, false)
-}
-
-func (g *Gtp5g) psQueryMultiURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
-	return g.queryMultiURR(lSeidUrridsMap, true)
 }
 
 func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[uint64][]report.USAReport, error) {
@@ -1514,14 +1491,17 @@ func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[
 		c = g.psClient
 	}
 
+	// Note: the max size of netlink msg is 16k,
+	//       the number of reports from gtp5g is limited
+	//       depending on the size of report
 	queryNum := 0
+	queryNumOnce := gtp5gnl.MaxNetlinkUsageReportNum()
 	for seid, urrIds := range lSeidUrridsMap {
 		for _, urrId := range urrIds {
 			oids = append(oids, gtp5gnl.OID{seid, uint64(urrId)})
 			queryNum++
 
-			queryReportNum := gtp5gnl.MAX_NETLINK_MSG_BODY_SIZE / gtp5gnl.URSize()
-			if queryNum >= queryReportNum {
+			if queryNum >= queryNumOnce {
 				rs, err := gtp5gnl.GetMultiReportsOID(c, g.link.link, oids)
 				if err != nil {
 					return nil, errors.Wrapf(err, "queryMultiURR[%+v]", lSeidUrridsMap)
@@ -1576,7 +1556,7 @@ func (g *Gtp5g) queryMultiURR(lSeidUrridsMap map[uint64][]uint32, ps bool) (map[
 
 func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.bsnl.Handle(handler)
-	g.ps.Handle(handler, g.psQueryMultiURR)
+	g.ps.Handle(handler, g.psQueryURR)
 }
 
 func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint16) {
