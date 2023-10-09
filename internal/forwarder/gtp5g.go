@@ -626,14 +626,18 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 			}
 			farid = uint64(v)
 		case ie.ApplyAction:
-			v, err := i.ApplyAction()
+			b, err := i.ApplyAction()
 			if err != nil {
 				return err
 			}
-			v = SwitchU16Endian(v)
+			var act report.ApplyAction
+			err = act.Unmarshal(b)
+			if err != nil {
+				return err
+			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
-				Value: nl.AttrU16(v),
+				Value: nl.AttrU16(act.Flags),
 			})
 		case ie.ForwardingParameters:
 			xs, err := i.ForwardingParameters()
@@ -666,10 +670,6 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 	return gtp5gnl.CreateFAROID(g.client, g.link.link, oid, attrs)
 }
 
-func SwitchU16Endian(i uint16) uint16 {
-	return (i >> 8) | (i << 8)
-}
-
 func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 	var farid uint64
 	var attrs []nl.Attr
@@ -687,16 +687,20 @@ func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 			}
 			farid = uint64(v)
 		case ie.ApplyAction:
-			v, err := i.ApplyAction()
+			b, err := i.ApplyAction()
 			if err != nil {
 				return err
 			}
-			v = SwitchU16Endian(v)
+			var act report.ApplyAction
+			err = act.Unmarshal(b)
+			if err != nil {
+				return err
+			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
-				Value: nl.AttrU16(v),
+				Value: nl.AttrU16(act.Flags),
 			})
-			g.applyAction(lSeid, int(farid), v)
+			g.applyAction(lSeid, int(farid), act)
 		case ie.UpdateForwardingParameters:
 			xs, err := i.UpdateForwardingParameters()
 			if err != nil {
@@ -1565,18 +1569,18 @@ func (g *Gtp5g) HandleReport(handler report.Handler) {
 	g.ps.Handle(handler, g.psQueryURR)
 }
 
-func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint16) {
+func (g *Gtp5g) applyAction(lSeid uint64, farid int, action report.ApplyAction) {
 	oid := gtp5gnl.OID{lSeid, uint64(farid)}
 	far, err := gtp5gnl.GetFAROID(g.client, g.link.link, oid)
 	if err != nil {
 		g.log.Errorf("applyAction err: %+v", err)
 		return
 	}
-	if far.Action&report.BUFF == 0 {
+	if far.Action&report.APPLY_ACT_BUFF == 0 {
 		return
 	}
 	switch {
-	case action&report.DROP != 0:
+	case action.DROP():
 		// BUFF -> DROP
 		for _, pdrid := range far.PDRIDs {
 			for {
@@ -1586,7 +1590,7 @@ func (g *Gtp5g) applyAction(lSeid uint64, farid int, action uint16) {
 				}
 			}
 		}
-	case action&report.FORW != 0:
+	case action.FORW():
 		// BUFF -> FORW
 		for _, pdrid := range far.PDRIDs {
 			oid := gtp5gnl.OID{lSeid, uint64(pdrid)}

@@ -31,10 +31,10 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 		switch r := rpt.(type) {
 		case report.DLDReport:
 			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
-			if r.Action&report.BUFF != 0 && len(r.BufPkt) > 0 {
+			if r.Action&report.APPLY_ACT_BUFF != 0 && len(r.BufPkt) > 0 {
 				sess.Push(r.PDRID, r.BufPkt)
 			}
-			if r.Action&report.NOCP == 0 {
+			if r.Action&report.APPLY_ACT_NOCP == 0 {
 				return
 			}
 			err := s.serveDLDReport(laddr, sr.SEID, r.PDRID)

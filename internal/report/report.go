@@ -471,20 +471,89 @@ func (m *DurationMeasure) IE() *ie.IE {
 
 // Apply Action IE bits definition
 const (
-	DROP = 1 << iota
-	FORW
-	BUFF
-	NOCP
-	DUPL
-	IPMA
-	IPMD
-	DFRT
-	EDRT
-	BDPN
-	DDPN
-	FSSM
-	MBSU
+	APPLY_ACT_DROP = 1 << iota
+	APPLY_ACT_FORW
+	APPLY_ACT_BUFF
+	APPLY_ACT_NOCP
+	APPLY_ACT_DUPL
+	APPLY_ACT_IPMA
+	APPLY_ACT_IPMD
+	APPLY_ACT_DFRT
+	APPLY_ACT_EDRT
+	APPLY_ACT_BDPN
+	APPLY_ACT_DDPN
+	APPLY_ACT_FSSM
+	APPLY_ACT_MBSU
 )
+
+type ApplyAction struct {
+	Flags uint16
+}
+
+func (a *ApplyAction) Unmarshal(b []byte) error {
+	var v []byte
+	if len(b) < 1 {
+		return errors.Errorf("ApplyAction Unmarshal: less than 1 bytes")
+	} else if len(b) < 2 {
+		// slice len might be 1 or 2; enlarge slice to 2 bytes at least
+		v = make([]byte, len(b)+1)
+		copy(v, b)
+	}
+	a.Flags = binary.LittleEndian.Uint16(v)
+	return nil
+}
+
+func (a *ApplyAction) DROP() bool {
+	return a.Flags&APPLY_ACT_DROP != 0
+}
+
+func (a *ApplyAction) FORW() bool {
+	return a.Flags&APPLY_ACT_FORW != 0
+}
+
+func (a *ApplyAction) BUFF() bool {
+	return a.Flags&APPLY_ACT_BUFF != 0
+}
+
+func (a *ApplyAction) NOCP() bool {
+	return a.Flags&APPLY_ACT_NOCP != 0
+}
+
+func (a *ApplyAction) DUPL() bool {
+	return a.Flags&APPLY_ACT_DUPL != 0
+}
+
+func (a *ApplyAction) IPMA() bool {
+	return a.Flags&APPLY_ACT_IPMA != 0
+}
+
+func (a *ApplyAction) IPMD() bool {
+	return a.Flags&APPLY_ACT_IPMD != 0
+}
+
+func (a *ApplyAction) DFRT() bool {
+	return a.Flags&APPLY_ACT_DFRT != 0
+}
+
+func (a *ApplyAction) EDRT() bool {
+	return a.Flags&APPLY_ACT_EDRT != 0
+}
+
+func (a *ApplyAction) BDPN() bool {
+	return a.Flags&APPLY_ACT_BDPN != 0
+}
+
+func (a *ApplyAction) DDPN() bool {
+	return a.Flags&APPLY_ACT_DDPN != 0
+}
+
+func (a *ApplyAction) FSSM() bool {
+	return a.Flags&APPLY_ACT_FSSM != 0
+}
+
+func (a *ApplyAction) MBSU() bool {
+	return a.Flags&APPLY_ACT_MBSU != 0
+}
 
 type SessReport struct {
 	SEID    uint64
