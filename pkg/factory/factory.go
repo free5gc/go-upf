@@ -1,8 +1,8 @@
 package factory
 
 import (
-	"io/ioutil"
 	"net"
+	"os"
 
 	"github.com/asaskevich/govalidator"
 	"github.com/pkg/errors"
@@ -18,7 +18,7 @@ func InitConfigFactory(f string, cfg *Config) error {
 		f = UpfDefaultConfigPath
 	}
 
-	if content, err := ioutil.ReadFile(f); err != nil {
+	if content, err := os.ReadFile(f); err != nil {
 		return errors.Errorf("[Factory] %+v", err)
 	} else {
 		logger.CfgLog.Infof("Read config from [%s]", f)

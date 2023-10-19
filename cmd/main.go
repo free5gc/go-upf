@@ -38,7 +38,9 @@ func main() {
 		},
 	}
 
-	rand.Seed(time.Now().UnixNano())
+	// rand.Seed(time.Now().UnixNano()) // rand.Seed has been deprecated
+	randSeed := rand.New(rand.NewSource(time.Now().UnixNano()))
+	randSeed.Uint64()
 
 	if err := app.Run(os.Args); err != nil {
 		logger.MainLog.Errorf("UPF Cli Run Error: %v", err)
