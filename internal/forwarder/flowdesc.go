@@ -129,7 +129,7 @@ func ParseFlowDesc(s string) (*FlowDesc, error) {
 }
 
 func ParseFlowDescIPNet(s string) (*net.IPNet, error) {
-	if s == "any" {
+	if s == "any" || s == "assigned" {
 		return &net.IPNet{
 			IP:   net.IPv6zero,
 			Mask: net.CIDRMask(0, 128),
