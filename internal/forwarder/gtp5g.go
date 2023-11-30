@@ -173,9 +173,9 @@ func (g *Gtp5g) Link() *Gtp5gLink {
 	return g.link
 }
 
-func (g *Gtp5g) newFlowDesc(s string) (nl.AttrList, error) {
+func (g *Gtp5g) newFlowDesc(s string, sourceInterface uint8) (nl.AttrList, error) {
 	var attrs nl.AttrList
-	fd, err := ParseFlowDesc(s)
+	fd, err := ParseFlowDesc(s, sourceInterface)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +249,7 @@ func convertSlice(ports [][]uint16) []byte {
 	return b
 }
 
-func (g *Gtp5g) newSdfFilter(i *ie.IE) (nl.AttrList, error) {
+func (g *Gtp5g) newSdfFilter(i *ie.IE, sourceInterface uint8) (nl.AttrList, error) {
 	var attrs nl.AttrList
 
 	v, err := i.SDFFilter()
@@ -258,7 +258,7 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE) (nl.AttrList, error) {
 	}
 
 	if v.HasFD() {
-		fd, err := g.newFlowDesc(v.FlowDescription)
+		fd, err := g.newFlowDesc(v.FlowDescription, sourceInterface)
 		if err != nil {
 			return nil, err
 		}
@@ -311,9 +311,17 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var sourceInterface uint8
+	var sdfFilterIE *ie.IE
 	for _, x := range ies {
 		switch x.Type {
 		case ie.SourceInterface:
+			var err1 error
+			sourceInterface, err1 = x.SourceInterface()
+			if err1 != nil {
+				break
+			}
 		case ie.FTEID:
 			v, err := x.FTEID()
 			if err != nil {
@@ -343,15 +351,18 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 				Value: nl.AttrBytes(v.IPv4Address),
 			})
 		case ie.SDFFilter:
-			v, err := g.newSdfFilter(x)
-			if err != nil {
-				break
-			}
+			sdfFilterIE = x
+		case ie.ApplicationID:
+		}
+	}
+
+	if sdfFilterIE != nil {
+		v, err := g.newSdfFilter(sdfFilterIE, sourceInterface)
+		if err == nil {
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDI_SDF_FILTER,
 				Value: v,
 			})
-		case ie.ApplicationID:
 		}
 	}
 
