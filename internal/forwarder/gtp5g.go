@@ -3,6 +3,7 @@ package forwarder
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -173,9 +174,9 @@ func (g *Gtp5g) Link() *Gtp5gLink {
 	return g.link
 }
 
-func (g *Gtp5g) newFlowDesc(s string, sourceInterface uint8) (nl.AttrList, error) {
+func (g *Gtp5g) newFlowDesc(s string) (nl.AttrList, error) {
 	var attrs nl.AttrList
-	fd, err := ParseFlowDesc(s, sourceInterface)
+	fd, err := ParseFlowDesc(s)
 	if err != nil {
 		return nil, err
 	}
@@ -249,6 +250,21 @@ func convertSlice(ports [][]uint16) []byte {
 	return b
 }
 
+func swapSrcDst(fdStr string) (string, error) {
+	strs1 := strings.Split(fdStr, "from")
+	if len(strs1) != 2 {
+		return "", fmt.Errorf("invalid flow description format")
+	}
+
+	strs2 := strings.Split(strs1[1], "to")
+	if len(strs2) != 2 {
+		return "", fmt.Errorf("invalid flow description format")
+	}
+
+	ret := strs1[0] + "from" + strs2[1] + " to" + strs2[0]
+	return ret, nil
+}
+
 func (g *Gtp5g) newSdfFilter(i *ie.IE, sourceInterface uint8) (nl.AttrList, error) {
 	var attrs nl.AttrList
 
@@ -258,7 +274,15 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE, sourceInterface uint8) (nl.AttrList, erro
 	}
 
 	if v.HasFD() {
-		fd, err := g.newFlowDesc(v.FlowDescription, sourceInterface)
+		fdStr := v.FlowDescription
+		if sourceInterface == ie.SrcInterfaceAccess {
+			fdStr, err = swapSrcDst(fdStr)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		fd, err := g.newFlowDesc(fdStr)
 		if err != nil {
 			return nil, err
 		}
@@ -314,18 +338,19 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 
 	var sourceInterface uint8
 	var sdfFilterIE *ie.IE
+
+L:
 	for _, x := range ies {
 		switch x.Type {
 		case ie.SourceInterface:
-			var err1 error
-			sourceInterface, err1 = x.SourceInterface()
-			if err1 != nil {
-				break
+			sourceInterface, err = x.SourceInterface()
+			if err != nil {
+				break L
 			}
 		case ie.FTEID:
 			v, err := x.FTEID()
 			if err != nil {
-				break
+				break L
 			}
 			attrs = append(attrs, nl.Attr{
 				Type: gtp5gnl.PDI_F_TEID,
@@ -344,7 +369,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 		case ie.UEIPAddress:
 			v, err := x.UEIPAddress()
 			if err != nil {
-				break
+				break L
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDI_UE_ADDR_IPV4,

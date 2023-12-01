@@ -5,8 +5,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-
-	"github.com/wmnsk/go-pfcp/ie"
 )
 
 // IPFilterRule <- action s dir s proto s 'from' s src 'to' s dst
@@ -33,7 +31,7 @@ type FlowDesc struct {
 	DstPorts [][]uint16
 }
 
-func ParseFlowDesc(s string, sourceInterface uint8) (*FlowDesc, error) {
+func ParseFlowDesc(s string) (*FlowDesc, error) {
 	fd := new(FlowDesc)
 	token := strings.Fields(s)
 	pos := 0
@@ -125,11 +123,6 @@ func ParseFlowDesc(s string, sourceInterface uint8) (*FlowDesc, error) {
 		if err == nil {
 			fd.DstPorts = dports
 		}
-	}
-
-	if sourceInterface == ie.SrcInterfaceAccess { // TS 29.244 5.2.1A.2A
-		fd.Dst, fd.Src = fd.Src, fd.Dst
-		fd.DstPorts, fd.SrcPorts = fd.SrcPorts, fd.DstPorts
 	}
 
 	return fd, nil
