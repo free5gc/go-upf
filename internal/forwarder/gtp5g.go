@@ -3,7 +3,6 @@ package forwarder
 import (
 	"fmt"
 	"net"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -174,11 +173,14 @@ func (g *Gtp5g) Link() *Gtp5gLink {
 	return g.link
 }
 
-func (g *Gtp5g) newFlowDesc(s string) (nl.AttrList, error) {
+func (g *Gtp5g) newFlowDesc(s string, swapSrcDst bool) (nl.AttrList, error) {
 	var attrs nl.AttrList
 	fd, err := ParseFlowDesc(s)
 	if err != nil {
 		return nil, err
+	}
+	if swapSrcDst {
+		fd.Src, fd.Dst = fd.Dst, fd.Src
 	}
 	switch fd.Action {
 	case "permit":
@@ -250,22 +252,7 @@ func convertSlice(ports [][]uint16) []byte {
 	return b
 }
 
-func swapSrcDst(fdStr string) (string, error) {
-	strs1 := strings.Split(fdStr, "from")
-	if len(strs1) != 2 {
-		return "", fmt.Errorf("invalid flow description format")
-	}
-
-	strs2 := strings.Split(strs1[1], "to")
-	if len(strs2) != 2 {
-		return "", fmt.Errorf("invalid flow description format")
-	}
-
-	ret := strs1[0] + "from" + strs2[1] + " to" + strs2[0]
-	return ret, nil
-}
-
-func (g *Gtp5g) newSdfFilter(i *ie.IE, sourceInterface uint8) (nl.AttrList, error) {
+func (g *Gtp5g) newSdfFilter(i *ie.IE, srcIf uint8) (nl.AttrList, error) {
 	var attrs nl.AttrList
 
 	v, err := i.SDFFilter()
@@ -274,15 +261,8 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE, sourceInterface uint8) (nl.AttrList, erro
 	}
 
 	if v.HasFD() {
-		fdStr := v.FlowDescription
-		if sourceInterface == ie.SrcInterfaceAccess {
-			fdStr, err = swapSrcDst(fdStr)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		fd, err := g.newFlowDesc(fdStr)
+		swapSrcDst := (srcIf == ie.SrcInterfaceAccess)
+		fd, err := g.newFlowDesc(v.FlowDescription, swapSrcDst)
 		if err != nil {
 			return nil, err
 		}
@@ -336,21 +316,20 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 		return nil, err
 	}
 
-	var sourceInterface uint8
-	var sdfFilterIE *ie.IE
-
-L:
+	var srcIf uint8
+	var sdfIEs []*ie.IE
 	for _, x := range ies {
 		switch x.Type {
 		case ie.SourceInterface:
-			sourceInterface, err = x.SourceInterface()
+			v, err := x.SourceInterface()
 			if err != nil {
-				break L
+				break
 			}
+			srcIf = v
 		case ie.FTEID:
 			v, err := x.FTEID()
 			if err != nil {
-				break L
+				break
 			}
 			attrs = append(attrs, nl.Attr{
 				Type: gtp5gnl.PDI_F_TEID,
@@ -369,20 +348,20 @@ L:
 		case ie.UEIPAddress:
 			v, err := x.UEIPAddress()
 			if err != nil {
-				break L
+				break
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDI_UE_ADDR_IPV4,
 				Value: nl.AttrBytes(v.IPv4Address),
 			})
 		case ie.SDFFilter:
-			sdfFilterIE = x
+			sdfIEs = append(sdfIEs, x)
 		case ie.ApplicationID:
 		}
 	}
 
-	if sdfFilterIE != nil {
-		v, err := g.newSdfFilter(sdfFilterIE, sourceInterface)
+	for _, x := range sdfIEs {
+		v, err := g.newSdfFilter(x, srcIf)
 		if err == nil {
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDI_SDF_FILTER,
