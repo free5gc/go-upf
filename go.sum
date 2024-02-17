@@ -12,10 +12,10 @@ github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d/go.mod h1:ma
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/free5gc/go-gtp5gnl v1.4.6-0.20230629034810-9a49c0a5ee2f h1:+D0L2ixhbg6Iy/oQEAJQLmOU/w1mmndqVF78GdjX1yo=
-github.com/free5gc/go-gtp5gnl v1.4.6-0.20230629034810-9a49c0a5ee2f/go.mod h1:TT5aXB90NuSPMehuIK9lV2yJFnq6Qjw37ZqNB1QAKh0=
-github.com/free5gc/util v1.0.5-0.20231012123940-85f4557167be h1:SglM1KIL+bR50hPzbvxVwNW44+yHR2tq9nTpLra75UE=
-github.com/free5gc/util v1.0.5-0.20231012123940-85f4557167be/go.mod h1:d+79g84a3YHhzvjJ2IhurrBOavOA8xWIQ/GCywPXqQk=
+github.com/free5gc/go-gtp5gnl v1.4.6 h1:xqwyGjrRNRGwo3/HyfXMh/fQ56QnCUzQKP2XR5/i1cE=
+github.com/free5gc/go-gtp5gnl v1.4.6/go.mod h1:TT5aXB90NuSPMehuIK9lV2yJFnq6Qjw37ZqNB1QAKh0=
+github.com/free5gc/util v1.0.5 h1:MjyEIX6gGbdS8FUAOxhE0FsMD6pmv5T+45LjBabVhS8=
+github.com/free5gc/util v1.0.5/go.mod h1:jgiW/bNbNbX87CSTKXyfvkhQeDY9ThK+TtWTu4ILCS8=
 github.com/gabriel-vasile/mimetype v1.4.2 h1:w5qFW6JKBz9Y393Y4q372O9A7cUSequkh1Q7OhCmWKU=
 github.com/gabriel-vasile/mimetype v1.4.2/go.mod h1:zApsH/mKG4w07erKIaJPFiX0Tsq9BFQgN3qGY5GnNgA=
 github.com/gin-contrib/sse v0.1.0 h1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=
