@@ -64,9 +64,12 @@ func (pg *PERIOGroup) newTicker(wg *sync.WaitGroup, evtCh chan Event) error {
 			select {
 			case <-ticker.C:
 				logger.PerioLog.Debugf("ticker[%v] timeout", period)
-				evtCh <- Event{
-					eType:  TYPE_PERIO_TIMEOUT,
-					period: period,
+				// If the UPF had terminating, the evtCh would be nil
+				if evtCh != nil {
+					evtCh <- Event{
+						eType:  TYPE_PERIO_TIMEOUT,
+						period: period,
+					}
 				}
 			case <-pg.stopCh:
 				logger.PerioLog.Infof("ticker[%v] Stopped", period)
