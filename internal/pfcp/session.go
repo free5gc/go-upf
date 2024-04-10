@@ -100,6 +100,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		newIeNodeID(s.nodeID),
 		ie.NewCause(ie.CauseRequestAccepted),
 		ie.NewFSEID(sess.LocalID, v4, v6),
+		ie.NewCreatePDR(req.CreatePDR...),
 	)
 
 	err = s.sendRspTo(rsp, addr)
