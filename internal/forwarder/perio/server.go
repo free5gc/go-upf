@@ -49,6 +49,7 @@ func (pg *PERIOGroup) newTicker(wg *sync.WaitGroup, evtCh chan Event) error {
 	if pg.ticker != nil {
 		return errors.Errorf("ticker not nil")
 	}
+	logger.PerioLog.Infof("new ticker [%+v]", pg.period)
 
 	pg.ticker = time.NewTicker(pg.period)
 	pg.stopCh = make(chan struct{})
@@ -82,6 +83,7 @@ func (pg *PERIOGroup) newTicker(wg *sync.WaitGroup, evtCh chan Event) error {
 }
 
 func (pg *PERIOGroup) stopTicker() {
+	logger.PerioLog.Debugf("stopTicker: [%+v]", pg.period)
 	pg.stopCh <- struct{}{}
 	close(pg.stopCh)
 }
@@ -102,7 +104,6 @@ func OpenServer(wg *sync.WaitGroup) (*Server, error) {
 
 	wg.Add(1)
 	go s.Serve(wg)
-	logger.PerioLog.Infof("perio server started")
 
 	return s, nil
 }
@@ -120,6 +121,7 @@ func (s *Server) Handle(
 }
 
 func (s *Server) Serve(wg *sync.WaitGroup) {
+	logger.PerioLog.Infof("perio server started")
 	defer func() {
 		logger.PerioLog.Infof("perio server stopped")
 		close(s.evtCh)
@@ -164,9 +166,10 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					if len(perioGroup.urrids[e.lSeid]) == 0 {
 						delete(perioGroup.urrids, e.lSeid)
 						if len(perioGroup.urrids) == 0 {
+							// If no urr for the ticker, this ticker could be stop and delete
 							perioGroup.stopTicker()
+							delete(s.perioList, period)
 						}
-						delete(s.perioList, period)
 					}
 					break
 				}
