@@ -181,6 +181,7 @@ func (g *Gtp5g) newFlowDesc(s string, swapSrcDst bool) (nl.AttrList, error) {
 	}
 	if swapSrcDst {
 		fd.Src, fd.Dst = fd.Dst, fd.Src
+		fd.SrcPorts, fd.DstPorts = fd.DstPorts, fd.SrcPorts
 	}
 	switch fd.Action {
 	case "permit":
