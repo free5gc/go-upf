@@ -8,9 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/khirono/go-nl"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wmnsk/go-pfcp/ie"
 
+	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
@@ -277,4 +280,56 @@ func TestGtp5g_CreateRules(t *testing.T) {
 		require.NotNil(t, rs)
 		g.log.Infof("Receive final reports from URR(%d)", rs[0].URRID)
 	})
+}
+
+func TestNewFlowDesc(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping testing in short mode")
+	}
+
+	var wg sync.WaitGroup
+	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort), 1400)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+
+	cases := []struct {
+		name       string
+		s          string
+		swapSrcDst bool
+		attrs      nl.AttrList
+		err        error
+	}{
+		{
+			name:       "permit out any to assigned",
+			s:          "permit out ip from any to assigned",
+			swapSrcDst: false,
+			attrs: nl.AttrList{
+				nl.Attr{
+					Type:  gtp5gnl.FLOW_DESCRIPTION_ACTION,
+					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_PERMIT),
+				},
+				nl.Attr{
+					Type:  gtp5gnl.FLOW_DESCRIPTION_DIRECTION,
+					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_OUT),
+				},
+			},
+			err: nil,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs, err := g.newFlowDesc(tt.s, tt.swapSrcDst)
+			if tt.err == nil {
+				if err != nil {
+					t.Fatal(err)
+				}
+				assert.Equal(t, &tt.attrs, attrs)
+			} else if err != tt.err {
+				t.Errorf("wantErr %v; but got %v", tt.err, err)
+			}
+		})
+	}
 }
