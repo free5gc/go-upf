@@ -125,6 +125,23 @@ func TestParseFlowDesc(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "any to assign",
+			s:    "permit out ip from any to assigned",
+			fd: FlowDesc{
+				Action: "permit",
+				Dir:    "out",
+				Proto:  0xff,
+				Src: &net.IPNet{
+					IP:   net.IPv6zero,
+					Mask: net.CIDRMask(0, 128),
+				},
+				Dst: &net.IPNet{
+					IP:   net.IPv6zero,
+					Mask: net.CIDRMask(0, 128),
+				},
+			},
+		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
