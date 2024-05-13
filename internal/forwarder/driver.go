@@ -8,9 +8,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 
-	"github.com/free5gc/go-upf/internal/logger"
-	"github.com/free5gc/go-upf/internal/report"
-	"github.com/free5gc/go-upf/pkg/factory"
+	"github.com/aalayanahmad/go-upf/internal/logger"
+	"github.com/aalayanahmad/go-upf/internal/report"
+	"github.com/aalayanahmad/go-upf/pkg/factory"
 )
 
 type Driver interface {
@@ -36,6 +36,10 @@ type Driver interface {
 	CreateBAR(uint64, *ie.IE) error
 	UpdateBAR(uint64, *ie.IE) error
 	RemoveBAR(uint64, *ie.IE) error
+
+	CreateSRR(uint64, *ie.IE) error
+	UpdateSRR(uint64, *ie.IE) error
+	RemoveSRR(uint64, *ie.IE) error
 
 	HandleReport(report.Handler)
 }

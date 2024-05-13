@@ -3,8 +3,8 @@ package pfcp
 import (
 	"testing"
 
-	"github.com/free5gc/go-upf/internal/forwarder"
-	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/aalayanahmad/go-upf/internal/forwarder"
+	"github.com/aalayanahmad/go-upf/internal/logger"
 	logger_util "github.com/free5gc/util/logger"
 )
 

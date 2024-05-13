@@ -5,7 +5,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 
-	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/aalayanahmad/go-upf/internal/logger"
 )
 
 const (

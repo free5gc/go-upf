@@ -9,9 +9,9 @@ import (
 	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
 
+	"github.com/aalayanahmad/go-upf/internal/logger"
+	"github.com/aalayanahmad/go-upf/internal/report"
 	"github.com/free5gc/go-gtp5gnl"
-	"github.com/free5gc/go-upf/internal/logger"
-	"github.com/free5gc/go-upf/internal/report"
 )
 
 type Server struct {

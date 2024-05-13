@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/free5gc/go-upf/pkg/factory"
+	"github.com/aalayanahmad/go-upf/pkg/factory"
 )
 
 func TestWaitRoutineStopped(t *testing.T) {

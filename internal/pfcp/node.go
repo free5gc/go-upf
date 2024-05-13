@@ -8,8 +8,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 
-	"github.com/free5gc/go-upf/internal/forwarder"
-	"github.com/free5gc/go-upf/internal/report"
+	"github.com/aalayanahmad/go-upf/internal/forwarder"
+	"github.com/aalayanahmad/go-upf/internal/report"
 	logger_util "github.com/free5gc/util/logger"
 )
 
@@ -38,6 +38,7 @@ type Sess struct {
 	QERIDs   map[uint32]struct{}    // key: QER_ID
 	URRIDs   map[uint32]*URRInfo    // key: URR_ID
 	BARIDs   map[uint8]struct{}     // key: BAR_ID
+	SRRIDs   map[uint8]struct{}     // key: SRR_ID
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
 	log      *logrus.Entry
@@ -251,6 +252,19 @@ func (s *Sess) CreateFAR(req *ie.IE) error {
 	return nil
 }
 
+func (s *Sess) CreateSRR(req *ie.IE) error {
+	id, err := req.SRRID()
+	if err != nil {
+		return err
+	}
+	s.SRRIDs[id] = struct{}{}
+
+	err = s.rnode.driver.CreateSRR(s.LocalID, req)
+	if err != nil {
+		return err
+	}
+	return nil
+}
 func (s *Sess) UpdateFAR(req *ie.IE) error {
 	id, err := req.FARID()
 	if err != nil {

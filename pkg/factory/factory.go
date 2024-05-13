@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 
-	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/aalayanahmad/go-upf/internal/logger"
 )
 
 // TODO: Support configuration update from REST api

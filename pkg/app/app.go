@@ -10,10 +10,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/free5gc/go-upf/internal/forwarder"
-	"github.com/free5gc/go-upf/internal/logger"
-	"github.com/free5gc/go-upf/internal/pfcp"
-	"github.com/free5gc/go-upf/pkg/factory"
+	"github.com/aalayanahmad/go-upf/internal/forwarder"
+	"github.com/aalayanahmad/go-upf/internal/logger"
+	"github.com/aalayanahmad/go-upf/internal/pfcp"
+	"github.com/aalayanahmad/go-upf/pkg/factory"
 )
 
 type UpfApp struct {

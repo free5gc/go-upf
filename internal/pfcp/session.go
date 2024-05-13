@@ -6,7 +6,7 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
-	"github.com/free5gc/go-upf/internal/report"
+	"github.com/aalayanahmad/go-upf/internal/report"
 )
 
 func (s *PfcpServer) handleSessionEstablishmentRequest(
@@ -54,7 +54,12 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est CreateFAR error: %+v", err)
 		}
 	}
-
+	for _, i := range req.CreateSRR {
+		err = sess.CreateSRR(i)
+		if err != nil {
+			sess.log.Errorf("Est CreateFAR error: %+v", err)
+		}
+	}
 	for _, i := range req.CreateQER {
 		err = sess.CreateQER(i)
 		if err != nil {

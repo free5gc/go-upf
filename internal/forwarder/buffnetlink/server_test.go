@@ -13,7 +13,7 @@ import (
 	"github.com/khirono/go-genl"
 	"github.com/khirono/go-nl"
 
-	"github.com/free5gc/go-upf/internal/report"
+	"github.com/aalayanahmad/go-upf/internal/report"
 )
 
 type testHandler struct {

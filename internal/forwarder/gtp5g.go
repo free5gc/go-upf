@@ -14,13 +14,13 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 
+	"github.com/aalayanahmad/go-upf/internal/forwarder/buffnetlink"
+	"github.com/aalayanahmad/go-upf/internal/forwarder/perio"
+	"github.com/aalayanahmad/go-upf/internal/gtpv1"
+	"github.com/aalayanahmad/go-upf/internal/logger"
+	"github.com/aalayanahmad/go-upf/internal/report"
+	"github.com/aalayanahmad/go-upf/pkg/factory"
 	"github.com/free5gc/go-gtp5gnl"
-	"github.com/free5gc/go-upf/internal/forwarder/buffnetlink"
-	"github.com/free5gc/go-upf/internal/forwarder/perio"
-	"github.com/free5gc/go-upf/internal/gtpv1"
-	"github.com/free5gc/go-upf/internal/logger"
-	"github.com/free5gc/go-upf/internal/report"
-	"github.com/free5gc/go-upf/pkg/factory"
 	logger_util "github.com/free5gc/util/logger"
 )
 

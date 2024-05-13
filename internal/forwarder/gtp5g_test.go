@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wmnsk/go-pfcp/ie"
 
-	"github.com/free5gc/go-upf/internal/report"
-	"github.com/free5gc/go-upf/pkg/factory"
+	"github.com/aalayanahmad/go-upf/internal/report"
+	"github.com/aalayanahmad/go-upf/pkg/factory"
 )
 
 func Test_convertSlice(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
-	"github.com/free5gc/go-upf/internal/report"
-	"github.com/free5gc/go-upf/pkg/factory"
+	"github.com/aalayanahmad/go-upf/internal/report"
+	"github.com/aalayanahmad/go-upf/pkg/factory"
 )
 
 func (s *PfcpServer) ServeReport(sr *report.SessReport) {
@@ -71,7 +71,7 @@ func (s *PfcpServer) serveDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 		sess.RemoteID,
 		0,
 		0,
-		ie.NewReportType(0, 0, 0, 1),
+		ie.NewReportType(0, 0, 0, 0, 1),
 		ie.NewDownlinkDataReport(
 			ie.NewPDRID(pdrid),
 			/*
@@ -103,7 +103,7 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 		sess.RemoteID,
 		0,
 		0,
-		ie.NewReportType(0, 0, 1, 0),
+		ie.NewReportType(0, 0, 0, 1, 0),
 	)
 	for _, r := range usars {
 		urrInfo, ok := sess.URRIDs[r.URRID]
@@ -121,4 +121,38 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 
 	err = s.sendReqTo(req, addr)
 	return errors.Wrap(err, "serveUSAReport")
+}
+
+func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, usars []report.USAReport) error {
+	s.log.Infoln("serveUSAReport")
+
+	sess, err := s.lnode.Sess(lSeid)
+	if err != nil {
+		return errors.Wrap(err, "serveUSAReport")
+	}
+
+	req := message.NewSessionReportRequest(
+		0,
+		0,
+		sess.RemoteID,
+		0,
+		0,
+		ie.NewReportType(1, 0, 0, 0, 0),
+	)
+	for _, s := range sesrs {
+		srrInfo, ok := sess.URRIDs[r.URRID]
+		if !ok {
+			sess.log.Warnf("serveSESReport: SRRInfo[%#x] not found", s.SRRID)
+			continue
+		}
+		s.URSEQN = sess.SRRSeq(s.SRRID)
+		req.UsageReport = append(req.UsageReport,
+			ie.NewUsageReportWithinSessionReportRequest(
+				s.IEsWithinSessReportReq(
+					srrInfo.MeasureMethod, srrInfo.MeasureInformation)...,
+			))
+	}
+
+	err = s.sendReqTo(req, addr)
+	return errors.Wrap(err, "serveSESReport")
 }
