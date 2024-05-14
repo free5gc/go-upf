@@ -1360,7 +1360,147 @@ func (g *Gtp5g) RemoveURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 
 	return usars, err
 }
+func (g *Gtp5g) CreateSRR(lSeid uint64, req *ie.IE) error {
+	var srrid uint64
+	var attrs []nl.Attr
 
+	ies, err := req.CreateSRR()
+	if err != nil {
+		return err
+	}
+	for _, i := range ies {
+		switch i.Type {
+		case ie.SRRID:
+			v, err := i.SRRID()
+			if err != nil {
+				return err
+			}
+			srrid = uint64(v)
+		case ie.QoSMonitoringPerQoSFlowControlInformation:
+			v, err := i.QoSMonitoringPerQoSFlowControlInformation()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.QFI,
+				Value: nl.AttrU8(v),
+			})
+		case ie.SuggestedBufferingPacketsCount:
+			v, err := i.SuggestedBufferingPacketsCount()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.BAR_BUFFERING_PACKETS_COUNT,
+				Value: nl.AttrU16(v),
+			})
+		}
+	}
+
+	oid := gtp5gnl.OID{lSeid, srrid}
+	return gtp5gnl.CreateSRROID(g.client, g.link.link, oid, attrs)
+}
+
+func (g *Gtp5g) UpdateSRR(lSeid uint64, req *ie.IE) error {
+	var srrid uint64
+	var attrs []nl.Attr
+
+	ies, err := req.UpdateSRR()
+	if err != nil {
+		return err
+	}
+	for _, i := range ies {
+		switch i.Type {
+		case ie.BARID:
+			v, err := i.SRRID()
+			if err != nil {
+				return err
+			}
+			barid = uint64(v)
+		case ie.DownlinkDataNotificationDelay:
+			v, err := i.DownlinkDataNotificationDelay()
+			if err != nil {
+				return err
+			}
+			// TODO: convert time.Duration -> ?
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.BAR_DOWNLINK_DATA_NOTIFICATION_DELAY,
+				Value: nl.AttrU8(v),
+			})
+		case ie.SuggestedBufferingPacketsCount:
+			v, err := i.SuggestedBufferingPacketsCount()
+			if err != nil {
+				return err
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.BAR_BUFFERING_PACKETS_COUNT,
+				Value: nl.AttrU16(v),
+			})
+		}
+	}
+
+	oid := gtp5gnl.OID{lSeid, srrid}
+	return gtp5gnl.UpdateBAROID(g.client, g.link.link, oid, attrs)
+}
+
+func (g *Gtp5g) RemoveSRR(lSeid uint64, req *ie.IE) error {
+	v, err := req.SRRID()
+	if err != nil {
+		return errors.New("not found SRRID")
+	}
+	oid := gtp5gnl.OID{lSeid, uint64(v)}
+	return gtp5gnl.RemoveSRROID(g.client, g.link.link, oid)
+}
+
+func (g *Gtp5g) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport, error) {
+	return g.queryURR(lSeid, urrid, false)
+}
+
+func (g *Gtp5g) psQueryURR(lSeidUrridsMap map[uint64][]uint32) (map[uint64][]report.USAReport, error) {
+	return g.queryMultiURR(lSeidUrridsMap, true)
+}
+
+func (g *Gtp5g) queryURR(lSeid uint64, urrid uint32, ps bool) ([]report.USAReport, error) {
+	var usars []report.USAReport
+
+	oid := gtp5gnl.OID{lSeid, uint64(urrid)}
+	c := g.client
+	if ps {
+		c = g.psClient
+	}
+	rs, err := gtp5gnl.GetReportOID(c, g.link.link, oid)
+	if err != nil {
+		return nil, errors.Wrapf(err, "queryURR[%#x:%#x]", lSeid, urrid)
+	}
+
+	if rs == nil {
+		return nil, nil
+	}
+
+	for _, r := range rs {
+		usar := report.USAReport{
+			URRID:       r.URRID,
+			QueryUrrRef: r.QueryUrrRef,
+			StartTime:   r.StartTime,
+			EndTime:     r.EndTime,
+		}
+
+		usar.VolumMeasure = report.VolumeMeasure{
+			TotalVolume:    r.VolMeasurement.TotalVolume,
+			UplinkVolume:   r.VolMeasurement.UplinkVolume,
+			DownlinkVolume: r.VolMeasurement.DownlinkVolume,
+			TotalPktNum:    r.VolMeasurement.TotalPktNum,
+			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
+			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
+		}
+
+		usars = append(usars, usar)
+	}
+
+	g.log.Tracef("queryURR: %+v", usars)
+
+	return usars, nil
+}
 func (g *Gtp5g) CreateBAR(lSeid uint64, req *ie.IE) error {
 	var barid uint64
 	var attrs []nl.Attr

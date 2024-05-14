@@ -71,6 +71,18 @@ func (Empty) RemoveBAR(uint64, *ie.IE) error {
 	return nil
 }
 
+func (Empty) CreateSRR(uint64, *ie.IE) error {
+	return nil
+}
+
+func (Empty) UpdateSRR(uint64, *ie.IE) error {
+	return nil
+}
+
+func (Empty) RemoveSRR(uint64, *ie.IE) error {
+	return nil
+}
+
 func (Empty) QueryURR(uint64, uint32) ([]report.USAReport, error) {
 	return nil, nil
 }

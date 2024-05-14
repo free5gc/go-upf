@@ -3,6 +3,7 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/aalayanahmad/go-pfcp/ie"
 	"github.com/aalayanahmad/go-pfcp/message"
@@ -139,14 +140,12 @@ func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, srrid uint8) er
 		0,
 		ie.NewReportType(1, 0, 0, 0, 0),
 		ie.NewSessionReport(
-			ie.NewSRRID(srrid),
+			ie.NewSRRID(255),
 			ie.NewQoSMonitoringReport(
-				ie.NewQFI(0),
-				ie.NewQoSMonitoringMeasurement(
-					ie.NewMonitoringTime(0),
-				),
-				ie.NewEventTimeStamp(0),
-				ie.NewStartTime(0),
+				ie.NewQFI(0x01),
+				ie.NewQoSMonitoringMeasurement(0x0f, 0x11111111, 0x22222222, 0x33333333),
+				ie.NewEventTimeStamp(time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC)),
+				ie.NewStartTime(time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC)),
 			),
 		),
 	)
