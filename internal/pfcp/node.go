@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/aalayanahmad/go-pfcp/ie"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/aalayanahmad/go-upf/internal/forwarder"
 	"github.com/aalayanahmad/go-upf/internal/report"

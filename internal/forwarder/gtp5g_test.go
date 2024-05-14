@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aalayanahmad/go-pfcp/ie"
 	"github.com/stretchr/testify/require"
-	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/aalayanahmad/go-upf/internal/report"
 	"github.com/aalayanahmad/go-upf/pkg/factory"

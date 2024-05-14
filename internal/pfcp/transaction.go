@@ -5,9 +5,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/aalayanahmad/go-pfcp/message"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/wmnsk/go-pfcp/message"
 
 	logger_util "github.com/free5gc/util/logger"
 )

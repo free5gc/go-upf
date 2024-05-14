@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aalayanahmad/go-pfcp/message"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/aalayanahmad/go-upf/internal/forwarder"
 	"github.com/aalayanahmad/go-upf/internal/logger"

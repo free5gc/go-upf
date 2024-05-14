@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/wmnsk/go-pfcp/ie"
-	"github.com/wmnsk/go-pfcp/message"
+	"github.com/aalayanahmad/go-pfcp/ie"
+	"github.com/aalayanahmad/go-pfcp/message"
 )
 
 func main() {

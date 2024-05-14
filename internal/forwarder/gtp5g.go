@@ -8,11 +8,11 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/aalayanahmad/go-pfcp/ie"
 	"github.com/hashicorp/go-version"
 	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/aalayanahmad/go-upf/internal/forwarder/buffnetlink"
 	"github.com/aalayanahmad/go-upf/internal/forwarder/perio"

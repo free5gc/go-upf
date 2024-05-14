@@ -5,8 +5,8 @@ import (
 	"net"
 	"sync"
 
+	"github.com/aalayanahmad/go-pfcp/ie"
 	"github.com/pkg/errors"
-	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/aalayanahmad/go-upf/internal/logger"
 	"github.com/aalayanahmad/go-upf/internal/report"

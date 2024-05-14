@@ -3,8 +3,8 @@ package pfcp
 import (
 	"net"
 
+	"github.com/aalayanahmad/go-pfcp/message"
 	"github.com/pkg/errors"
-	"github.com/wmnsk/go-pfcp/message"
 )
 
 func (s *PfcpServer) reqDispacher(msg message.Message, addr net.Addr) error {

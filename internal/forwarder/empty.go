@@ -1,7 +1,7 @@
 package forwarder
 
 import (
-	"github.com/wmnsk/go-pfcp/ie"
+	"github.com/aalayanahmad/go-pfcp/ie"
 
 	"github.com/aalayanahmad/go-upf/internal/report"
 )

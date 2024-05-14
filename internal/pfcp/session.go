@@ -3,8 +3,8 @@ package pfcp
 import (
 	"net"
 
-	"github.com/wmnsk/go-pfcp/ie"
-	"github.com/wmnsk/go-pfcp/message"
+	"github.com/aalayanahmad/go-pfcp/ie"
+	"github.com/aalayanahmad/go-pfcp/message"
 
 	"github.com/aalayanahmad/go-upf/internal/report"
 )
@@ -14,7 +14,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	addr net.Addr,
 ) {
 	// TODO: error response
-	s.log.Infoln("handleSessionEstablishmentRequest")
+	s.log.Infoln("handleSessionEstablishmentRequest -- ahmad")
 
 	if req.NodeID == nil {
 		s.log.Errorln("not found NodeID")
@@ -57,7 +57,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	for _, i := range req.CreateSRR {
 		err = sess.CreateSRR(i)
 		if err != nil {
-			sess.log.Errorf("Est CreateFAR error: %+v", err)
+			sess.log.Errorf("Est CreateSRR error: %+v", err)
 		}
 	}
 	for _, i := range req.CreateQER {
@@ -339,7 +339,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 			req.Header.SequenceNumber,
 			0, // pri
 			ie.NewCause(ie.CauseSessionContextNotFound),
-			ie.NewReportType(0, 0, 1, 0),
+			ie.NewReportType(0, 0, 0, 1, 0),
 		)
 
 		err = s.sendRspTo(rsp, addr)

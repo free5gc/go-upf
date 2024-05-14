@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/aalayanahmad/go-pfcp/ie"
+	"github.com/aalayanahmad/go-pfcp/message"
 	"github.com/pkg/errors"
-	"github.com/wmnsk/go-pfcp/ie"
-	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/aalayanahmad/go-upf/internal/report"
 	"github.com/aalayanahmad/go-upf/pkg/factory"
@@ -123,12 +123,12 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 	return errors.Wrap(err, "serveUSAReport")
 }
 
-func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, usars []report.USAReport) error {
-	s.log.Infoln("serveUSAReport")
+func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, srrid uint8) error {
+	s.log.Infoln("serveSESReport")
 
 	sess, err := s.lnode.Sess(lSeid)
 	if err != nil {
-		return errors.Wrap(err, "serveUSAReport")
+		return errors.Wrap(err, "serveSESReport")
 	}
 
 	req := message.NewSessionReportRequest(
@@ -138,20 +138,18 @@ func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, usars []report.
 		0,
 		0,
 		ie.NewReportType(1, 0, 0, 0, 0),
+		ie.NewSessionReport(
+			ie.NewSRRID(srrid),
+			ie.NewQoSMonitoringReport(
+				ie.NewQFI(0),
+				ie.NewQoSMonitoringMeasurement(
+					ie.NewMonitoringTime(0),
+				),
+				ie.NewEventTimeStamp(0),
+				ie.NewStartTime(0),
+			),
+		),
 	)
-	for _, s := range sesrs {
-		srrInfo, ok := sess.URRIDs[r.URRID]
-		if !ok {
-			sess.log.Warnf("serveSESReport: SRRInfo[%#x] not found", s.SRRID)
-			continue
-		}
-		s.URSEQN = sess.SRRSeq(s.SRRID)
-		req.UsageReport = append(req.UsageReport,
-			ie.NewUsageReportWithinSessionReportRequest(
-				s.IEsWithinSessReportReq(
-					srrInfo.MeasureMethod, srrInfo.MeasureInformation)...,
-			))
-	}
 
 	err = s.sendReqTo(req, addr)
 	return errors.Wrap(err, "serveSESReport")
