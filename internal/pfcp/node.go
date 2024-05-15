@@ -34,17 +34,17 @@ type Sess struct {
 	rnode    *RemoteNode
 	LocalID  uint64
 	RemoteID uint64
-	PDRIDs   map[uint16]*PDRInfo    // key: PDR_ID
-	FARIDs   map[uint32]struct{}    // key: FAR_ID
-	QERIDs   map[uint32]struct{}    // key: QER_ID
-	URRIDs   map[uint32]*URRInfo    // key: URR_ID
-	BARIDs   map[uint8]struct{}     // key: BAR_ID
-	SRRIDs   map[uint8][]*SRRInfo   // key: SRR_ID //fir each SRRID there can be multiple QoSControlblabla
-	q        map[uint16]chan []byte // key: PDR_ID
+	PDRIDs   map[uint16]*PDRInfo         // key: PDR_ID
+	FARIDs   map[uint32]struct{}         // key: FAR_ID
+	QERIDs   map[uint32]struct{}         // key: QER_ID
+	URRIDs   map[uint32]*URRInfo         // key: URR_ID
+	BARIDs   map[uint8]struct{}          // key: BAR_ID
+	SRRIDs   map[uint8][]*QoSControlInfo // key: SRR_ID //fir each SRRID there can be multiple QoSControlblabla
+	q        map[uint16]chan []byte      // key: PDR_ID
 	qlen     int
 	log      *logrus.Entry
 }
-type SRRInfo struct {
+type QoSControlInfo struct {
 	QFI                            uint8
 	RequestedQoSMonitoring         uint8
 	ReportingFrequency             uint8
@@ -258,112 +258,125 @@ func (s *Sess) RemovePDR(req *ie.IE) ([]report.USAReport, error) {
 }
 
 func (s *Sess) CreateSRR(req *ie.IE) error {
+	var id uint8
+	srrQoSControlInfos := []*QoSControlInfo{}
 
-	id, err := req.SRRID()
-	if err != nil {
-		return err
-	}
-	//what if i have two QoSReprotssss?? how to retrieve for each
-	qfi := &ie.IE{}
-	requested_qos_monitoring := &ie.IE{}
-	reporting_frequency := &ie.IE{}
-	packet_delay_thresholds := &ie.IE{}
-	minimum_wait_time := &ie.IE{}
-	measurement_period := &ie.IE{}
-	for _, a := range req.ChildIEs {
-		if a.Type == ie.QFI {
-			qfi = a
+	for _, srr_ie := range req.ChildIEs {
+		qfi := &ie.IE{}
+		requested_qos_monitoring := &ie.IE{}
+		reporting_frequency := &ie.IE{}
+		packet_delay_thresholds := &ie.IE{}
+		minimum_wait_time := &ie.IE{}
+		measurement_period := &ie.IE{}
+		//put all of these in a SRRInfo struct
+		srrQoSControlInfos := []*QoSControlInfo{}
+
+		if srr_ie.Type == ie.SRRID {
+			srr_id, err := srr_ie.SRRID()
+			if err != nil {
+				return err
+			}
+			id = srr_id
 		}
-		if a.Type == ie.RequestedQoSMonitoring {
-			requested_qos_monitoring = a
+
+		if srr_ie.Type == ie.QoSMonitoringPerQoSFlowControlInformation {
+			for _, qosControl_ie := range srr_ie.ChildIEs {
+				if qosControl_ie.Type == ie.QFI {
+					qfi = qosControl_ie
+				}
+				if qosControl_ie.Type == ie.RequestedQoSMonitoring {
+					requested_qos_monitoring = qosControl_ie
+				}
+				if qosControl_ie.Type == ie.ReportingFrequency {
+					reporting_frequency = qosControl_ie
+				}
+				if qosControl_ie.Type == ie.MinimumWaitTime {
+					minimum_wait_time = qosControl_ie
+				}
+				if qosControl_ie.Type == ie.MeasurementPeriod {
+					measurement_period = qosControl_ie
+				}
+			}
+			//for qfi
+			qfi_value, err := qfi.QFI()
+			if err != nil {
+				return err
+			}
+			//for RequestedQoSMonitoring:
+			has_dl := requested_qos_monitoring.HasDL()
+			has_ul := requested_qos_monitoring.HasUL()
+			has_rp := requested_qos_monitoring.HasRP()
+			var deduced_RequestedQoSMonitoring_flag uint8
+			if has_dl {
+				deduced_RequestedQoSMonitoring_flag |= 1 << 0
+			}
+			if has_ul {
+				deduced_RequestedQoSMonitoring_flag |= 1 << 1
+			}
+			if has_rp {
+				deduced_RequestedQoSMonitoring_flag |= 1 << 2
+			}
+			//for reporting_frequency:
+			is_event := reporting_frequency.HasEVETT()
+			is_periodic := reporting_frequency.HasPeriodic()
+			var deduced_ReportingFrequency_flag uint8
+			if is_event {
+				deduced_ReportingFrequency_flag |= 1 << 0
+			}
+			if is_periodic {
+				deduced_ReportingFrequency_flag |= 1 << 1
+			}
+			//for packet_delay_thresholds:
+			has_dl = packet_delay_thresholds.HasDL()
+			has_ul = packet_delay_thresholds.HasUL()
+			has_rp = packet_delay_thresholds.HasRP()
+			var deduced_PacketDelayThresholds_flag uint8
+			if has_dl {
+				deduced_PacketDelayThresholds_flag |= 1 << 0
+			}
+			if has_ul {
+				deduced_PacketDelayThresholds_flag |= 1 << 1
+			}
+			if has_rp {
+				deduced_PacketDelayThresholds_flag |= 1 << 2
+			}
+			fields, err := packet_delay_thresholds.PacketDelayThresholds()
+			if err != nil {
+				return err
+			}
+			dl_thres := fields.DownlinkPacketDelayThresholds
+			ul_thres := fields.UplinkPacketDelayThresholds
+			rp_thres := fields.RoundTripPacketDelayThresholds
+			//for minimum_wait_time:
+			min_wait_t, err := minimum_wait_time.MinimumWaitTime()
+			if err != nil {
+				return err
+			}
+			//for measurement_period:
+			mes_period, err := measurement_period.MeasurementPeriod()
+			if err != nil {
+				return err
+			}
+			QoSControlInfo1 := &QoSControlInfo{
+				QFI:                            qfi_value,
+				RequestedQoSMonitoring:         deduced_RequestedQoSMonitoring_flag,
+				ReportingFrequency:             deduced_ReportingFrequency_flag,
+				PacketDelayThresholds:          deduced_PacketDelayThresholds_flag,
+				DownlinkPacketDelayThresholds:  dl_thres,
+				UplinkPacketDelayThresholds:    ul_thres,
+				RoundTripPacketDelayThresholds: rp_thres,
+				MinimumWaitTime:                min_wait_t,
+				MeasurementPeriod:              mes_period,
+			}
+			srrQoSControlInfos = append(srrQoSControlInfos, QoSControlInfo1)
 		}
-		if a.Type == ie.ReportingFrequency {
-			reporting_frequency = a
-		}
-		if a.Type == ie.MinimumWaitTime {
-			minimum_wait_time = a
-		}
-		if a.Type == ie.MeasurementPeriod {
-			measurement_period = a
-		}
 	}
-	//for qfi
-	qfi_value, err := qfi.QFI()
+
+	err := s.rnode.driver.CreateSRR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
-	//for RequestedQoSMonitoring:
-	has_dl := requested_qos_monitoring.HasDL()
-	has_ul := requested_qos_monitoring.HasUL()
-	has_rp := requested_qos_monitoring.HasRP()
-	var deduced_RequestedQoSMonitoring_flag uint8
-	if has_dl {
-		deduced_RequestedQoSMonitoring_flag |= 1 << 0
-	}
-	if has_ul {
-		deduced_RequestedQoSMonitoring_flag |= 1 << 1
-	}
-	if has_rp {
-		deduced_RequestedQoSMonitoring_flag |= 1 << 2
-	}
-	//for reporting_frequency:
-	is_event := reporting_frequency.HasEVETT()
-	is_periodic := reporting_frequency.HasPeriodic()
-	var deduced_ReportingFrequency_flag uint8
-	if is_event {
-		deduced_ReportingFrequency_flag |= 1 << 0
-	}
-	if is_periodic {
-		deduced_ReportingFrequency_flag |= 1 << 1
-	}
-	//for packet_delay_thresholds:
-	has_dl = packet_delay_thresholds.HasDL()
-	has_ul = packet_delay_thresholds.HasUL()
-	has_rp = packet_delay_thresholds.HasRP()
-	var deduced_PacketDelayThresholds_flag uint8
-	if has_dl {
-		deduced_PacketDelayThresholds_flag |= 1 << 0
-	}
-	if has_ul {
-		deduced_PacketDelayThresholds_flag |= 1 << 1
-	}
-	if has_rp {
-		deduced_PacketDelayThresholds_flag |= 1 << 2
-	}
-	fields, err := packet_delay_thresholds.PacketDelayThresholds()
-	if err != nil {
-		return err
-	}
-	dl_thres := fields.DownlinkPacketDelayThresholds
-	ul_thres := fields.UplinkPacketDelayThresholds
-	rp_thres := fields.RoundTripPacketDelayThresholds
-	//for minimum_wait_time:
-	min_wait_t, err := minimum_wait_time.MinimumWaitTime()
-	if err != nil {
-		return err
-	}
-	//for measurement_period:
-	mes_period, err := measurement_period.MeasurementPeriod()
-	if err != nil {
-		return err
-	}
-	SRRInfo1 := &SRRInfo{
-		QFI:                            qfi_value,
-		RequestedQoSMonitoring:         deduced_RequestedQoSMonitoring_flag,
-		ReportingFrequency:             deduced_ReportingFrequency_flag,
-		PacketDelayThresholds:          deduced_PacketDelayThresholds_flag,
-		DownlinkPacketDelayThresholds:  dl_thres,
-		UplinkPacketDelayThresholds:    ul_thres,
-		RoundTripPacketDelayThresholds: rp_thres,
-		MinimumWaitTime:                min_wait_t,
-		MeasurementPeriod:              mes_period,
-	}
-	err = s.rnode.driver.CreateSRR(s.LocalID, req)
-	if err != nil {
-		return err
-	}
-	srrInfoSlice := []*SRRInfo{SRRInfo1}
-	s.SRRIDs[id] = srrInfoSlice
+	s.SRRIDs[id] = srrQoSControlInfos
 	return nil
 }
 
