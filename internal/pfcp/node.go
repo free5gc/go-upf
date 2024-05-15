@@ -3,6 +3,7 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/aalayanahmad/go-pfcp/ie"
 	"github.com/pkg/errors"
@@ -38,10 +39,18 @@ type Sess struct {
 	QERIDs   map[uint32]struct{}    // key: QER_ID
 	URRIDs   map[uint32]*URRInfo    // key: URR_ID
 	BARIDs   map[uint8]struct{}     // key: BAR_ID
-	SRRIDs   map[uint8]struct{}     // key: SRR_ID
+	SRRIDs   map[uint8]*[]SRR_INFO  // key: SRR_ID //fir each SRRID there can be multiple QoSControlblabla
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
 	log      *logrus.Entry
+}
+type SRR_INFO struct {
+	QFI                    uint8
+	RequestedQosMonitoring uint8
+	ReportingFrequency     uint32
+	PacketDelayThresholds  uint8
+	MinimumWaitTime        time.Time
+	MeasurementPeriod      time.Time
 }
 
 func (s *Sess) Close() []report.USAReport {
@@ -246,11 +255,18 @@ func (s *Sess) RemovePDR(req *ie.IE) ([]report.USAReport, error) {
 }
 
 func (s *Sess) CreateSRR(req *ie.IE) error {
+
 	id, err := req.SRRID()
 	if err != nil {
 		return err
 	}
-	s.SRRIDs[id] = struct{}{}
+	qosMonitoringPerQoSFlowControlInformation, err := req.QoSMonitoringPerQoSFlowControlInformation()
+	if err != nil {
+		return err
+	}
+	s.SRRIDs[id] = struct {
+		id
+	}
 
 	err = s.rnode.driver.CreateSRR(s.LocalID, req)
 	if err != nil {

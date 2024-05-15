@@ -130,7 +130,7 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 	return errors.Wrap(err, "serveUSAReport")
 }
 
-// where do i get the values from
+// where do i get the values from?? how do i knwo what do i need to report?
 func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, srrid uint8) error {
 	s.log.Infoln("serveSESReport")
 
