@@ -47,7 +47,7 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 			usars = append(usars, r)
 		case report.SESReport:
 			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
-			err := s.serveSESReport(laddr, sr.SEID, r.PDRID)
+			err := s.serveSESReport(laddr, sr.SEID, r.SRRID)
 			if err != nil {
 				s.log.Errorln(err)
 			}
@@ -130,6 +130,7 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 	return errors.Wrap(err, "serveUSAReport")
 }
 
+// where do i get the values from
 func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, srrid uint8) error {
 	s.log.Infoln("serveSESReport")
 
