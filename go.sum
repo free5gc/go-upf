@@ -3,6 +3,8 @@ github.com/aalayanahmad/go-pfcp v1.0.3 h1:NQLJqt4jn4sH8jO5PbROuObQnAm4x07nz2UJgS
 github.com/aalayanahmad/go-pfcp v1.0.3/go.mod h1:gsTqFUGYp9FPve43mvwsbEzzdiMPm5sqK5eR+2F58pI=
 github.com/aalayanahmad/go-pfcp v1.0.4 h1:wlELZEB1A06cN74laSxEFwvvdlOPbXsvJVdCqKEbdTo=
 github.com/aalayanahmad/go-pfcp v1.0.4/go.mod h1:gsTqFUGYp9FPve43mvwsbEzzdiMPm5sqK5eR+2F58pI=
+github.com/aalayanahmad/go-pfcp v1.0.5 h1:1vMk3QYcUO1mfZXeL9Q3SFT/dWg82Mjy5g6JcxM8Urg=
+github.com/aalayanahmad/go-pfcp v1.0.5/go.mod h1:gsTqFUGYp9FPve43mvwsbEzzdiMPm5sqK5eR+2F58pI=
 github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d h1:Byv0BzEl3/e6D5CLfI0j/7hiIEtvGVFPCZ7Ei2oq8iQ=
 github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d/go.mod h1:WaHUgvxTVq04UNunO+XhnAqY/wQc+bxr74GqbsZ/Jqw=
 github.com/bytedance/sonic v1.5.0/go.mod h1:ED5hyg4y6t3/9Ku1R6dU/4KyJ48DZ4jPhfY1O2AihPM=

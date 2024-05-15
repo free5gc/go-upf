@@ -39,18 +39,21 @@ type Sess struct {
 	QERIDs   map[uint32]struct{}    // key: QER_ID
 	URRIDs   map[uint32]*URRInfo    // key: URR_ID
 	BARIDs   map[uint8]struct{}     // key: BAR_ID
-	SRRIDs   map[uint8]*[]SRR_INFO  // key: SRR_ID //fir each SRRID there can be multiple QoSControlblabla
+	SRRIDs   map[uint8][]*SRRInfo   // key: SRR_ID //fir each SRRID there can be multiple QoSControlblabla
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
 	log      *logrus.Entry
 }
-type SRR_INFO struct {
-	QFI                    uint8
-	RequestedQosMonitoring uint8
-	ReportingFrequency     uint32
-	PacketDelayThresholds  uint8
-	MinimumWaitTime        time.Time
-	MeasurementPeriod      time.Time
+type SRRInfo struct {
+	QFI                            uint8
+	RequestedQoSMonitoring         uint8
+	ReportingFrequency             uint8
+	PacketDelayThresholds          uint8
+	DownlinkPacketDelayThresholds  uint32
+	UplinkPacketDelayThresholds    uint32
+	RoundTripPacketDelayThresholds uint32
+	MinimumWaitTime                time.Duration
+	MeasurementPeriod              time.Duration
 }
 
 func (s *Sess) Close() []report.USAReport {
@@ -260,18 +263,107 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 	if err != nil {
 		return err
 	}
-	qosMonitoringPerQoSFlowControlInformation, err := req.QoSMonitoringPerQoSFlowControlInformation()
+	//what if i have two QoSReprotssss?? how to retrieve for each
+	qfi := &ie.IE{}
+	requested_qos_monitoring := &ie.IE{}
+	reporting_frequency := &ie.IE{}
+	packet_delay_thresholds := &ie.IE{}
+	minimum_wait_time := &ie.IE{}
+	measurement_period := &ie.IE{}
+	for _, a := range req.ChildIEs {
+		if a.Type == ie.QFI {
+			qfi = a
+		}
+		if a.Type == ie.RequestedQoSMonitoring {
+			requested_qos_monitoring = a
+		}
+		if a.Type == ie.ReportingFrequency {
+			reporting_frequency = a
+		}
+		if a.Type == ie.MinimumWaitTime {
+			minimum_wait_time = a
+		}
+		if a.Type == ie.MeasurementPeriod {
+			measurement_period = a
+		}
+	}
+	//for qfi
+	qfi_value, err := qfi.QFI()
 	if err != nil {
 		return err
 	}
-	s.SRRIDs[id] = struct {
-		id
+	//for RequestedQoSMonitoring:
+	has_dl := requested_qos_monitoring.HasDL()
+	has_ul := requested_qos_monitoring.HasUL()
+	has_rp := requested_qos_monitoring.HasRP()
+	var deduced_RequestedQoSMonitoring_flag uint8
+	if has_dl {
+		deduced_RequestedQoSMonitoring_flag |= 1 << 0
 	}
-
+	if has_ul {
+		deduced_RequestedQoSMonitoring_flag |= 1 << 1
+	}
+	if has_rp {
+		deduced_RequestedQoSMonitoring_flag |= 1 << 2
+	}
+	//for reporting_frequency:
+	is_event := reporting_frequency.HasEVETT()
+	is_periodic := reporting_frequency.HasPeriodic()
+	var deduced_ReportingFrequency_flag uint8
+	if is_event {
+		deduced_ReportingFrequency_flag |= 1 << 0
+	}
+	if is_periodic {
+		deduced_ReportingFrequency_flag |= 1 << 1
+	}
+	//for packet_delay_thresholds:
+	has_dl = packet_delay_thresholds.HasDL()
+	has_ul = packet_delay_thresholds.HasUL()
+	has_rp = packet_delay_thresholds.HasRP()
+	var deduced_PacketDelayThresholds_flag uint8
+	if has_dl {
+		deduced_PacketDelayThresholds_flag |= 1 << 0
+	}
+	if has_ul {
+		deduced_PacketDelayThresholds_flag |= 1 << 1
+	}
+	if has_rp {
+		deduced_PacketDelayThresholds_flag |= 1 << 2
+	}
+	fields, err := packet_delay_thresholds.PacketDelayThresholds()
+	if err != nil {
+		return err
+	}
+	dl_thres := fields.DownlinkPacketDelayThresholds
+	ul_thres := fields.UplinkPacketDelayThresholds
+	rp_thres := fields.RoundTripPacketDelayThresholds
+	//for minimum_wait_time:
+	min_wait_t, err := minimum_wait_time.MinimumWaitTime()
+	if err != nil {
+		return err
+	}
+	//for measurement_period:
+	mes_period, err := measurement_period.MeasurementPeriod()
+	if err != nil {
+		return err
+	}
+	SRRInfo1 := &SRRInfo{
+		QFI:                            qfi_value,
+		RequestedQoSMonitoring:         deduced_RequestedQoSMonitoring_flag,
+		ReportingFrequency:             deduced_ReportingFrequency_flag,
+		PacketDelayThresholds:          deduced_PacketDelayThresholds_flag,
+		DownlinkPacketDelayThresholds:  dl_thres,
+		UplinkPacketDelayThresholds:    ul_thres,
+		RoundTripPacketDelayThresholds: rp_thres,
+		MinimumWaitTime:                min_wait_t,
+		MeasurementPeriod:              mes_period,
+	}
 	err = s.rnode.driver.CreateSRR(s.LocalID, req)
 	if err != nil {
 		return err
 	}
+	srrInfoSlice := []*SRRInfo{SRRInfo1}
+	s.SRRIDs[id] = srrInfoSlice
 	return nil
 }
 
