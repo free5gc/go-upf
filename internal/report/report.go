@@ -69,11 +69,14 @@ type QoSMonitoringReport struct {
 	StartTime                time.Time
 }
 
+type QoSMonitoringMeasurementBit struct {
+	flags uint8
+}
 type QoSMonitoringMeasurement struct {
-	flags                uint8
-	DownlinkPacketDelay  uint32
-	UplinkPacketDelay    uint32
-	RoundTripPacketDelay uint32
+	QoSMonitoringMeasurementBit QoSMonitoringMeasurementBit
+	DownlinkPacketDelay         uint32
+	UplinkPacketDelay           uint32
+	RoundTripPacketDelay        uint32
 	// DownlinkCongestionInformation uint32
 	// UplinkCongestionInformation   uint32
 	// AverageDownlinkDataRate       uint32
@@ -99,10 +102,46 @@ func (s SESReport) Type() ReportType {
 // here is where i would report the QoSReport to fill the report!
 func (qMr *QoSMonitoringReport) IE() *ie.IE {
 	qfi := ie.NewQFI(qMr.QFI)
-	qoSMonitoringMeasurement := ie.NewQoSMonitoringMeasurement(qMr.QoSMonitoringMeasurement.flags, qMr.QoSMonitoringMeasurement.DownlinkPacketDelay, qMr.QoSMonitoringMeasurement.UplinkPacketDelay, qMr.QoSMonitoringMeasurement.RoundTripPacketDelay)
+	qoSMonitoringMeasurement := ie.NewQoSMonitoringMeasurement(qMr.QoSMonitoringMeasurement.QoSMonitoringMeasurementBit.flags, qMr.QoSMonitoringMeasurement.DownlinkPacketDelay, qMr.QoSMonitoringMeasurement.UplinkPacketDelay, qMr.QoSMonitoringMeasurement.RoundTripPacketDelay)
 	timeStamp := ie.NewEventTimeStamp(qMr.TimeStamp)
 	startTime := ie.NewStartTime(qMr.StartTime)
 	return ie.NewQoSMonitoringReport(qfi, qoSMonitoringMeasurement, timeStamp, startTime)
+}
+
+func (qMMb *QoSMonitoringMeasurementBit) ULDR() bool {
+	return qMMb.flags&QOS_ULDR != 0
+}
+
+func (qMMb *QoSMonitoringMeasurementBit) DLDR() bool {
+	return qMMb.flags&QOS_DLDR != 0
+}
+
+func (qMMb *QoSMonitoringMeasurementBit) RPPD() bool {
+	return qMMb.flags&QOS_RPPD != 0
+}
+
+func (s SESReport) IEsWithinSessReportReq() []*ie.IE {
+	ies := []*ie.IE{
+		ie.NewSRRID(s.SRRID),
+		s.QoSMonitoringReport.IE(),
+	}
+	return ies
+}
+
+func (s SESReport) IEsWithinSessModRsp() []*ie.IE {
+	ies := []*ie.IE{
+		ie.NewSRRID(s.SRRID),
+		s.QoSMonitoringReport.IE(),
+	}
+	return ies
+}
+
+func (s SESReport) IEsWithinSessDelRsp() []*ie.IE {
+	ies := []*ie.IE{
+		ie.NewSRRID(s.SRRID),
+		s.QoSMonitoringReport.IE(),
+	}
+	return ies
 }
 
 type USAReport struct {
@@ -143,7 +182,6 @@ func (r USAReport) IEsWithinSessReportReq(
 	}
 	return ies
 }
-
 func (r USAReport) IEsWithinSessModRsp(
 	method MeasureMethod, info MeasureInformation,
 ) []*ie.IE {
