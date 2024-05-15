@@ -57,6 +57,54 @@ type MeasureInformation struct {
 	CIAM  bool
 }
 
+type SESReport struct {
+	SRRID               uint8
+	QoSMonitoringReport *QoSMonitoringReport
+}
+
+type QoSMonitoringReport struct {
+	QFI                      uint8
+	QoSMonitoringMeasurement *QoSMonitoringMeasurement
+	TimeStamp                time.Time
+	StartTime                time.Time
+}
+
+type QoSMonitoringMeasurement struct {
+	flags                uint8
+	DownlinkPacketDelay  uint32
+	UplinkPacketDelay    uint32
+	RoundTripPacketDelay uint32
+	// DownlinkCongestionInformation uint32
+	// UplinkCongestionInformation   uint32
+	// AverageDownlinkDataRate       uint32
+	// AverageUplinkDataRate         uint32
+}
+
+// QoSMonitoringMeasurement flags
+const (
+	QOS_ULDR = 1 << iota
+	QOS_DLDR
+	QOS_ULCI
+	QOS_DLCI
+	QOS_PLMF
+	QOS_RPPD
+	QOS_ULPD
+	QOS_DLPD
+)
+
+func (s SESReport) Type() ReportType {
+	return SESR
+}
+
+// here is where i would report the QoSReport to fill the report!
+func (qMr *QoSMonitoringReport) IE() *ie.IE {
+	qfi := ie.NewQFI(qMr.QFI)
+	qoSMonitoringMeasurement := ie.NewQoSMonitoringMeasurement(qMr.QoSMonitoringMeasurement.flags, qMr.QoSMonitoringMeasurement.DownlinkPacketDelay, qMr.QoSMonitoringMeasurement.UplinkPacketDelay, qMr.QoSMonitoringMeasurement.RoundTripPacketDelay)
+	timeStamp := ie.NewEventTimeStamp(qMr.TimeStamp)
+	startTime := ie.NewStartTime(qMr.StartTime)
+	return ie.NewQoSMonitoringReport(qfi, qoSMonitoringMeasurement, timeStamp, startTime)
+}
+
 type USAReport struct {
 	URRID        uint32
 	URSEQN       uint32

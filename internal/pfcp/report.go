@@ -45,6 +45,12 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 		case report.USAReport:
 			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
 			usars = append(usars, r)
+		case report.SESReport:
+			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
+			err := s.serveSESReport(laddr, sr.SEID, r.PDRID)
+			if err != nil {
+				s.log.Errorln(err)
+			}
 		default:
 			s.log.Warnf("Unsupported Report: SEID(%#x), type(%d)", sr.SEID, rpt.Type())
 		}
