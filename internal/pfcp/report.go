@@ -3,7 +3,6 @@ package pfcp
 import (
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/aalayanahmad/go-pfcp/ie"
 	"github.com/aalayanahmad/go-pfcp/message"
@@ -28,6 +27,7 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 	}
 
 	var usars []report.USAReport
+	var sesrs []report.SESReport
 	for _, rpt := range sr.Reports {
 		switch r := rpt.(type) {
 		case report.DLDReport:
@@ -47,10 +47,7 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 			usars = append(usars, r)
 		case report.SESReport:
 			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
-			err := s.serveSESReport(laddr, sr.SEID, r.SRRID, sess.SRRIDs[r.SRRID])
-			if err != nil {
-				s.log.Errorln(err)
-			}
+			sesrs = append(sesrs, r)
 		default:
 			s.log.Warnf("Unsupported Report: SEID(%#x), type(%d)", sr.SEID, rpt.Type())
 		}
@@ -58,6 +55,12 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 
 	if len(usars) > 0 {
 		err := s.serveUSAReport(laddr, sr.SEID, usars)
+		if err != nil {
+			s.log.Errorln(err)
+		}
+	}
+	if len(sesrs) > 0 {
+		err := s.serveSESReport(laddr, sr.SEID, sesrs)
 		if err != nil {
 			s.log.Errorln(err)
 		}
@@ -131,7 +134,7 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 }
 
 // where do i get the values from?? how do i knwo what do i need to report?
-func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, srrid uint8, qosControlinfos []*QoSControlInfo) error {
+func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, sesrs []report.SESReport) error {
 	s.log.Infoln("serveSESReport")
 
 	sess, err := s.lnode.Sess(lSeid)
@@ -145,17 +148,17 @@ func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, srrid uint8, qo
 		sess.RemoteID,
 		0,
 		0,
-		ie.NewReportType(1, 0, 0, 0, 0),
-		ie.NewSessionReport(
-			ie.NewSRRID(srrid),
-			ie.NewQoSMonitoringReport(
-				ie.NewQFI(0x01),
-				ie.NewQoSMonitoringMeasurement(0x0f, 0x11111111, 0x22222222, 0x33333333),
-				ie.NewEventTimeStamp(time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC)),
-				ie.NewStartTime(time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC)),
-			),
-		),
-	)
+		ie.NewReportType(1, 0, 0, 0, 0))
+	for _, s := range sesrs {
+		qInfos, ok := sess.SRRIDs[s.SRRID]
+		if !ok {
+			sess.log.Warnf("serveSESReport: SRRInfo[%#x] not found", s.SRRID)
+			continue
+		}
+		req.SessionReport = append(req.SessionReport,
+			ie.NewSessionReport(
+				rrInfo.MeasureMethod, urrInfo.MeasureInformation, thresholds,)...,))
+	}
 
 	err = s.sendReqTo(req, addr)
 	return errors.Wrap(err, "serveSESReport")
