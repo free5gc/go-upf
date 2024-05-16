@@ -54,6 +54,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est CreateFAR error: %+v", err)
 		}
 	}
+	//take the SRRs inside the session establishment requests to be able to know to what reporting must be performed
 	for _, i := range req.CreateSRR {
 		err = sess.CreateSRR(i)
 		if err != nil {
