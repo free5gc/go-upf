@@ -9,6 +9,7 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/aalayanahmad/go-upf/internal/logger"
+	"github.com/aalayanahmad/go-upf/monitor" // Import the monitor package
 	upfapp "github.com/aalayanahmad/go-upf/pkg/app"
 	"github.com/aalayanahmad/go-upf/pkg/factory"
 	logger_util "github.com/free5gc/util/logger"
@@ -64,6 +65,9 @@ func action(cliCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Start the packet sniffer in a separate goroutine
+	go monitor.StartSniffer("any", "./gtp_packets.txt")
 
 	if err := upf.Run(); err != nil {
 		return err
