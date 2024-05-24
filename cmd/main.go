@@ -9,7 +9,7 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/aalayanahmad/go-upf/internal/logger"
-	"github.com/aalayanahmad/go-upf/monitor" // Import the monitor package
+	"github.com/aalayanahmad/go-upf/monitor"
 	upfapp "github.com/aalayanahmad/go-upf/pkg/app"
 	"github.com/aalayanahmad/go-upf/pkg/factory"
 	logger_util "github.com/free5gc/util/logger"
@@ -25,8 +25,8 @@ func main() {
 	}()
 
 	app := cli.NewApp()
-	app.Name = "upf"
-	app.Usage = "5G User Plane Function (UPF)"
+	app.Name = "upf --ahmad modified for reporting ^-^"
+	app.Usage = "5G User Plane Function (UPF) --ahmad modified for reporting ^-^"
 	app.Action = action
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -66,8 +66,8 @@ func action(cliCtx *cli.Context) error {
 		return err
 	}
 
-	// Start the packet sniffer in a separate goroutine
-	go monitor.StartSniffer("any", "./gtp_packets.txt")
+	//to check if sniffing is working properly, start the packet sniffer in a separate goroutine
+	go monitor.StartSniffer("any", "./sniffed_gtPackets.txt")
 
 	if err := upf.Run(); err != nil {
 		return err
