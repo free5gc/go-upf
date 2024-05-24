@@ -12,9 +12,9 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
-const maxPackets = 10 // Maximum number of GTP packets to capture
+const maxPackets = 10 //number of gtp packets to capture
 
-func StartSniffer(iface, filePath string) {
+func CapturingPackets(iface, filePath string) {
 	// Open the device for capturing
 	handle, err := pcap.OpenLive(iface, 1600, true, pcap.BlockForever)
 	if err != nil {

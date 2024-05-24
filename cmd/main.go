@@ -6,14 +6,13 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/urfave/cli"
-
 	"github.com/aalayanahmad/go-upf/internal/logger"
 	"github.com/aalayanahmad/go-upf/monitor"
 	upfapp "github.com/aalayanahmad/go-upf/pkg/app"
 	"github.com/aalayanahmad/go-upf/pkg/factory"
 	logger_util "github.com/free5gc/util/logger"
 	"github.com/free5gc/util/version"
+	"github.com/urfave/cli"
 )
 
 func main() {
@@ -65,9 +64,8 @@ func action(cliCtx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-
-	//to check if sniffing is working properly, start the packet sniffer in a separate goroutine
-	go monitor.StartSniffer("any", "./sniffed_gtPackets.txt")
+	//run packet capturing in a seperate goroutine
+	go monitor.CapturingPackets("any", "./capturedPackets.pcap")
 
 	if err := upf.Run(); err != nil {
 		return err
