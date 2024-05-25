@@ -3,6 +3,7 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/aalayanahmad/go-pfcp/ie"
@@ -55,6 +56,12 @@ type QoSControlInfo struct {
 	MinimumWaitTime                time.Duration
 	MeasurementPeriod              time.Duration
 }
+
+var (
+	// Use a sync.RWMutex to allow concurrent reads and writes to the SRR map
+	Sotred_srrs_to_be_used_by_upf = make(map[uint8][]*QoSControlInfo)
+	SrrMapLock                    = sync.RWMutex{}
+)
 
 func (s *Sess) Close() []report.USAReport {
 	for id := range s.FARIDs {
@@ -260,7 +267,6 @@ func (s *Sess) RemovePDR(req *ie.IE) ([]report.USAReport, error) {
 func (s *Sess) CreateSRR(req *ie.IE) error {
 	var id uint8
 	srrQoSControlInfos := []*QoSControlInfo{}
-
 	for _, srr_ie := range req.ChildIEs {
 		qfi := &ie.IE{}
 		requested_qos_monitoring := &ie.IE{}
@@ -376,6 +382,10 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 	if err != nil {
 		return err
 	}
+	SrrMapLock.Lock()
+	Sotred_srrs_to_be_used_by_upf[id] = srrQoSControlInfos
+	SrrMapLock.Unlock()
+
 	s.SRRIDs[id] = srrQoSControlInfos
 	return nil
 }

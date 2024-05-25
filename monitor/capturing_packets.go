@@ -8,6 +8,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/aalayanahmad/go-upf/internal/pfcp"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
 )
@@ -18,7 +19,9 @@ const (
 )
 
 var packets_latest_arrival_map sync.Map
-var flow_latency_map sync.Map
+var QoS_flow_latency_map sync.Map
+
+var QoS_flow_related_monitoring_info sync.Map
 
 func CapturePackets(interface_name, file_to_save_captured_packets string) {
 	handle, err := pcap.OpenLive(interface_name, 2048, true, pcap.BlockForever)
@@ -87,12 +90,32 @@ func worker(packetQueue <-chan gopacket.Packet, stopChan <-chan struct{}, wg *sy
 	}
 }
 
+func GetSRRContent(srrID uint8) ([]*pfcp.QoSControlInfo, error) {
+	srrID = uint8(1)
+
+	pfcp.SrrMapLock.RLock()
+	defer pfcp.SrrMapLock.RUnlock()
+
+	srrInfos, exists := pfcp.Sotred_srrs_to_be_used_by_upf[srrID]
+	if !exists {
+		return nil, fmt.Errorf("SRR ID %d not found", srrID)
+	}
+
+	return srrInfos, nil
+}
+
+// find QoS what needs to be monitored and threshold for that!
+func GetQoSFlowMonitoringContent(srrID uint8) {
+	//
+}
 func processPacket(packet gopacket.Packet, file *os.File) {
 
 	// Loop through all layers in the packet
 	for _, layer := range packet.Layers() {
 		fmt.Fprintf(file, "Layer Namr: %s\n", layer)
 	}
+	//if (for this src+dest the qfi says event triggered comaopre latency to thresdhold there!)
+	//else need to issue a report
 	//if src is in range 10.60.0.X or 10.61.0.X
 	//string key_value := src_ip + dest_ip
 	//variable for current arrival time of this packet

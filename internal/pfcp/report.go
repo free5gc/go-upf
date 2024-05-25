@@ -157,7 +157,7 @@ func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, sesrs []report.
 		}
 		req.SessionReport = append(req.SessionReport,
 			ie.NewSessionReport(
-				rrInfo.MeasureMethod, urrInfo.MeasureInformation, thresholds)...,))
+				rrInfo.MeasureMethod, urrInfo.MeasureInformation, thresholds)...)
 	}
 
 	err = s.sendReqTo(req, addr)
