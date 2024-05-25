@@ -9,17 +9,19 @@ import (
 	"syscall"
 
 	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
 const (
-	maxPackets  = 10 // number of packets to capture
-	workerCount = 5  // number of workers
+	number_of_packets_to_be_captured = 35
+	number_of_simultaneous_workers   = 35
 )
 
-func CapturingPackets(iface, filePath string) {
-	handle, err := pcap.OpenLive(iface, 1600, true, pcap.BlockForever)
+var packets_latest_arrival_map sync.Map
+var flow_latency_map sync.Map
+
+func CapturePackets(interface_name, file_to_save_captured_packets string) {
+	handle, err := pcap.OpenLive(interface_name, 2048, true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,19 +32,19 @@ func CapturingPackets(iface, filePath string) {
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
-	fmt.Println("Started capturing packets on", iface)
+	fmt.Println("it's me hi! i started capturing packets on: ", interface_name)
 
-	file, err := os.Create(filePath)
+	file, err := os.Create(file_to_save_captured_packets)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
 
-	packetQueue := make(chan gopacket.Packet, 1000)
+	packetQueue := make(chan gopacket.Packet, 555)
 	stopChan := make(chan struct{})
 	var wg sync.WaitGroup
 
-	for i := 0; i < workerCount; i++ {
+	for i := 0; i < number_of_simultaneous_workers; i++ {
 		wg.Add(1)
 		go worker(packetQueue, stopChan, &wg, file)
 	}
@@ -52,21 +54,22 @@ func CapturingPackets(iface, filePath string) {
 		close(stopChan)
 	}()
 
-	packetCount := 0
+	packets_captured := 0
 	for packet := range packetSource.Packets() {
 		select {
 		case packetQueue <- packet:
-			packetCount++
-			if packetCount >= maxPackets {
-				break
+			packets_captured++
+			if packets_captured >= number_of_packets_to_be_captured {
+				close(stopChan)
+				wg.Wait()
+				return
 			}
 		case <-stopChan:
-			break
+			close(packetQueue)
+			wg.Wait()
+			return
 		}
 	}
-
-	close(packetQueue)
-	wg.Wait()
 }
 
 func worker(packetQueue <-chan gopacket.Packet, stopChan <-chan struct{}, wg *sync.WaitGroup, file *os.File) {
@@ -84,35 +87,16 @@ func worker(packetQueue <-chan gopacket.Packet, stopChan <-chan struct{}, wg *sy
 	}
 }
 
-func processPacket(packet gopacket.Packet, file *os.File) bool {
-	gtpLayer := packet.Layer(layers.LayerTypeGTPv1U)
-	if gtpLayer != nil {
-		gtp, _ := gtpLayer.(*layers.GTPv1U)
+func processPacket(packet gopacket.Packet, file *os.File) {
 
-		ipLayer := packet.Layer(layers.LayerTypeIPv4)
-		if ipLayer == nil {
-			ipLayer = packet.Layer(layers.LayerTypeIPv6)
-		}
-
-		fmt.Fprintf(file, "GTP Packet - TEID: %d, Length: %d\n", gtp.TEID, gtp.MessageLength)
-
-		if ipLayer != nil {
-			switch ip := ipLayer.(type) {
-			case *layers.IPv4:
-				fmt.Fprintf(file, "IPv4 Packet - SrcIP: %s, DstIP: %s\n", ip.SrcIP, ip.DstIP)
-			case *layers.IPv6:
-				fmt.Fprintf(file, "IPv6 Packet - SrcIP: %s, DstIP: %s\n", ip.SrcIP, ip.DstIP)
-			}
-		}
-
-		return true
+	// Loop through all layers in the packet
+	for _, layer := range packet.Layers() {
+		fmt.Fprintf(file, "Layer Namr: %s\n", layer)
 	}
-	return false
+	//if src is in range 10.60.0.X or 10.61.0.X
+	//string key_value := src_ip + dest_ip
+	//variable for current arrival time of this packet
+	//find latency
+	//check if there is need to report
+	//store this in packets_latest arrival time
 }
-
-//next analyze the osource and destination of each packet
-//if source is 10.60.0.X or 10.61.0.X then this is a UL packet
-//else it is DL
-//if it is UL find time and log it in the a map with keys = src+dest+qfi
-//add that to SRR make all these global
-//then if it is event triggered start comparing to threshold of UL and then initiate report.
