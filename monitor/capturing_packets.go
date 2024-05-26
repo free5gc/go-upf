@@ -7,9 +7,11 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/aalayanahmad/go-upf/internal/pfcp"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
@@ -18,30 +20,30 @@ const (
 	number_of_simultaneous_workers   = 35
 )
 
-var packets_latest_arrival_map sync.Map
-var QoS_flow_latency_map sync.Map
+var (
+	latestArrivalTimes = make(map[string]time.Time)
+	latencies          = make(map[string]time.Duration)
+	mu                 sync.Mutex
+)
+var server_to_send_report pfcp.PfcpServer
 
-var QoS_flow_related_monitoring_info sync.Map
-
-func CapturePackets(interface_name, file_to_save_captured_packets string) {
-	handle, err := pcap.OpenLive(interface_name, 2048, true, pcap.BlockForever)
+func CapturePackets(interfaceName string, fileToSaveCapturedPackets string) {
+	handle, err := pcap.OpenLive(interfaceName, 2048, true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer handle.Close()
+
+	if err := handle.SetBPFFilter("udp port 2152"); err != nil {
+		log.Fatal(err)
+	}
 
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
-	fmt.Println("it's me hi! i started capturing packets on: ", interface_name)
-
-	file, err := os.Create(file_to_save_captured_packets)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
+	fmt.Println("Started capturing packets on:", interfaceName)
 
 	packetQueue := make(chan gopacket.Packet, 555)
 	stopChan := make(chan struct{})
@@ -49,7 +51,7 @@ func CapturePackets(interface_name, file_to_save_captured_packets string) {
 
 	for i := 0; i < number_of_simultaneous_workers; i++ {
 		wg.Add(1)
-		go worker(packetQueue, stopChan, &wg, file)
+		go worker(packetQueue, stopChan, &wg)
 	}
 
 	go func() {
@@ -57,12 +59,12 @@ func CapturePackets(interface_name, file_to_save_captured_packets string) {
 		close(stopChan)
 	}()
 
-	packets_captured := 0
+	packetsCaptured := 0
 	for packet := range packetSource.Packets() {
 		select {
 		case packetQueue <- packet:
-			packets_captured++
-			if packets_captured >= number_of_packets_to_be_captured {
+			packetsCaptured++
+			if packetsCaptured >= number_of_packets_to_be_captured {
 				close(stopChan)
 				wg.Wait()
 				return
@@ -75,7 +77,7 @@ func CapturePackets(interface_name, file_to_save_captured_packets string) {
 	}
 }
 
-func worker(packetQueue <-chan gopacket.Packet, stopChan <-chan struct{}, wg *sync.WaitGroup, file *os.File) {
+func worker(packetQueue <-chan gopacket.Packet, stopChan <-chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		select {
@@ -83,43 +85,71 @@ func worker(packetQueue <-chan gopacket.Packet, stopChan <-chan struct{}, wg *sy
 			if !ok {
 				return
 			}
-			processPacket(packet, file)
+			processPacket(packet)
 		case <-stopChan:
 			return
 		}
 	}
 }
 
-func GetSRRContent(srrID uint8) ([]*pfcp.QoSControlInfo, error) {
-	srrID = uint8(1)
+func processPacket(packet gopacket.Packet) {
+	var outerIPv4, innerIPv4 *layers.IPv4
+	var gtpLayer *layers.GTPv1U
 
-	pfcp.SrrMapLock.RLock()
-	defer pfcp.SrrMapLock.RUnlock()
-
-	srrInfos, exists := pfcp.Sotred_srrs_to_be_used_by_upf[srrID]
-	if !exists {
-		return nil, fmt.Errorf("SRR ID %d not found", srrID)
-	}
-
-	return srrInfos, nil
-}
-
-// find QoS what needs to be monitored and threshold for that!
-func GetQoSFlowMonitoringContent(srrID uint8) {
-	//
-}
-func processPacket(packet gopacket.Packet, file *os.File) {
-
-	// Loop through all layers in the packet
 	for _, layer := range packet.Layers() {
-		fmt.Fprintf(file, "Layer Namr: %s\n", layer)
+		switch layer := layer.(type) {
+		case *layers.IPv4:
+			if outerIPv4 == nil {
+				outerIPv4 = layer
+			} else {
+				innerIPv4 = layer
+			}
+		case *layers.GTPv1U:
+			gtpLayer = layer
+		}
 	}
-	//if (for this src+dest the qfi says event triggered comaopre latency to thresdhold there!)
-	//else need to issue a report
-	//if src is in range 10.60.0.X or 10.61.0.X
-	//string key_value := src_ip + dest_ip
-	//variable for current arrival time of this packet
-	//find latency
-	//check if there is need to report
-	//store this in packets_latest arrival time
+
+	if gtpLayer != nil && innerIPv4 != nil {
+		srcIP := innerIPv4.SrcIP.String()
+		dstIP := innerIPv4.DstIP.String()
+		_, period_or_event := QoSflow_ReportedFrequency.Load(dstIP)
+		if !period_or_event {
+			return
+		}
+		_, ul_thresdhold := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
+		if !ul_thresdhold {
+			return
+		}
+		if isInRange(srcIP) {
+			key := srcIP + "->" + dstIP
+			currentTime := time.Now()
+
+			mu.Lock()
+			lastArrivalTime, exists := latestArrivalTimes[key]
+			if exists {
+				latency := currentTime.Sub(lastArrivalTime)
+				latencies[key] = latency
+				fmt.Printf("Key: %s, Latency: %v ms\n", key, latency.Milliseconds())
+			}
+			latestArrivalTimes[key] = currentTime
+			mu.Unlock()
+		}
+
+		fmt.Printf("Inner IPv4 Src IP: %s, Dst IP: %s\n", srcIP, dstIP)
+	}
+
+	fmt.Println("*")
 }
+
+func isInRange(ip string) bool {
+	return ip[:7] == "10.60.0" || ip[:7] == "10.61.0"
+}
+
+// // Check the condition
+// if conditionMet {
+//     // Call the serverSESReport method
+//     err := server.serveSESR(pass parameters here) fill it there and send it inside that one!!!
+//     if err != nil {
+//         // Handle error
+//     }
+// }

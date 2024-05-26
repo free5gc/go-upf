@@ -133,33 +133,35 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 	return errors.Wrap(err, "serveUSAReport")
 }
 
-// where do i get the values from?? how do i knwo what do i need to report?
-func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, sesrs []report.SESReport) error {
+func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, sesrs []report.USAReport) error {
 	s.log.Infoln("serveSESReport")
-
-	sess, err := s.lnode.Sess(lSeid)
-	if err != nil {
-		return errors.Wrap(err, "serveSESReport")
-	}
-
-	req := message.NewSessionReportRequest(
-		0,
-		0,
-		sess.RemoteID,
-		0,
-		0,
-		ie.NewReportType(1, 0, 0, 0, 0))
-	for _, s := range sesrs {
-		qInfos, ok := sess.SRRIDs[s.SRRID]
-		if !ok {
-			sess.log.Warnf("serveSESReport: SRRInfo[%#x] not found", s.SRRID)
-			continue
-		}
-		req.SessionReport = append(req.SessionReport,
-			ie.NewSessionReport(
-				rrInfo.MeasureMethod, urrInfo.MeasureInformation, thresholds)...)
-	}
-
-	err = s.sendReqTo(req, addr)
-	return errors.Wrap(err, "serveSESReport")
+	err := s.sendReqTo(req, addr)
+	return errors.Wrap(err, "serveUSAReport")
 }
+
+// func CreateSessionReportRequest(seid uint64, reports []report.Report) *message.SessionReportRequest { //this is what will be called in monitor.go
+// 	req := message.NewSessionReportRequest(
+// 		0,
+// 		0,
+// 		sess.RemoteID,
+// 		0,
+// 		0,
+// 		ie.NewReportType(1, 0, 0, 0, 0),
+// 	)
+// 	for _, r := range usars {
+// 		urrInfo, ok := sess.URRIDs[r.URRID]
+// 		if !ok {
+// 			sess.log.Warnf("serveUSAReport: URRInfo[%#x] not found", r.URRID)
+// 			continue
+// 		}
+// 		r.URSEQN = sess.URRSeq(r.URRID)
+// 		req.UsageReport = append(req.UsageReport,
+// 			ie.NewUsageReportWithinSessionReportRequest(
+// 				r.IEsWithinSessReportReq(
+// 					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
+// 			))
+// 	}
+// }
+
+//break down this function
+//take parameters from monitor and call this function
