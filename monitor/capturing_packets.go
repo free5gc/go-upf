@@ -111,12 +111,17 @@ func processPacket(packet gopacket.Packet) {
 	if gtpLayer != nil && innerIPv4 != nil {
 		srcIP := innerIPv4.SrcIP.String()
 		dstIP := innerIPv4.DstIP.String()
-		_, period_or_event := QoSflow_ReportedFrequency.Load(dstIP)
-		if !period_or_event {
+		frequency, exists := QoSflow_ReportedFrequency.Load(dstIP)
+		if !exists {
+			return
+		}
+		perio_or_evett, ok := frequency.(uint8)
+		if !ok {
+			fmt.Println("Loaded value is not of type uint32")
 			return
 		}
 
-		if isInRange(srcIP && (period_or_event == 1)) {
+		if isInRange(srcIP) && (perio_or_evett == uint8(1)) {
 			key := srcIP + "->" + dstIP
 			startTime := time.Now()
 			if _, exists := start_time_of_each_UE_flow[key]; !exists {
@@ -125,15 +130,21 @@ func processPacket(packet gopacket.Packet) {
 			currentTime := time.Now()
 
 			mu.Lock()
-			_, ul_thresdhold_for_this_flow := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
-			if !ul_thresdhold_for_this_flow {
+			ul_thresdhold_for_this_flow, exists := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
+			if !exists {
+				fmt.Println("No values for this	flow")
+				return
+			}
+			ul_threshold, ok := ul_thresdhold_for_this_flow.(uint32)
+			if !ok {
+				fmt.Println("Loaded value is not of type uint32")
 				return
 			}
 			last_arrival_time_for_this_src_and_dest, exists := time_of_last_arrived_packet_from_each_UE_qos_flow[key]
 			if exists {
 				latency := currentTime.Sub(last_arrival_time_for_this_src_and_dest)
 				latency_in_ms := (uint32)((latency).Milliseconds())
-				if latency_in_ms > ul_thresdhold_for_this_flow {
+				if latency_in_ms > ul_threshold {
 					fmt.Printf("Need to Reprot")
 				}
 				fmt.Printf("No need to Report")
