@@ -65,8 +65,8 @@ func action(cliCtx *cli.Context) error {
 		return err
 	}
 	//run packet capturing in a seperate goroutine
-	go monitor.CapturingPackets("any", "./capturedPackets.pcap")
-
+	go monitor.CapturePackets("any", "./capturedPackets.pcap")
+	upf.Start()
 	if err := upf.Run(); err != nil {
 		return err
 	}

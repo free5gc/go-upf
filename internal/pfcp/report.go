@@ -6,10 +6,9 @@ import (
 
 	"github.com/aalayanahmad/go-pfcp/ie"
 	"github.com/aalayanahmad/go-pfcp/message"
-	"github.com/pkg/errors"
-
 	"github.com/aalayanahmad/go-upf/internal/report"
 	"github.com/aalayanahmad/go-upf/pkg/factory"
+	"github.com/pkg/errors"
 )
 
 func (s *PfcpServer) ServeReport(sr *report.SessReport) {
@@ -133,35 +132,37 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 	return errors.Wrap(err, "serveUSAReport")
 }
 
-func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, sesrs []report.USAReport) error {
-	s.log.Infoln("serveSESReport")
-	err := s.sendReqTo(req, addr)
-	return errors.Wrap(err, "serveUSAReport")
+func returnMonitoringValue(uint16 value) uint16{ //everytime a report must be generated inside cap.. do pfcp.returnMonitorign(pass value)
+	return monitoringValue
 }
 
-// func CreateSessionReportRequest(seid uint64, reports []report.Report) *message.SessionReportRequest { //this is what will be called in monitor.go
-// 	req := message.NewSessionReportRequest(
-// 		0,
-// 		0,
-// 		sess.RemoteID,
-// 		0,
-// 		0,
-// 		ie.NewReportType(1, 0, 0, 0, 0),
-// 	)
-// 	for _, r := range usars {
-// 		urrInfo, ok := sess.URRIDs[r.URRID]
-// 		if !ok {
-// 			sess.log.Warnf("serveUSAReport: URRInfo[%#x] not found", r.URRID)
-// 			continue
-// 		}
-// 		r.URSEQN = sess.URRSeq(r.URRID)
-// 		req.UsageReport = append(req.UsageReport,
-// 			ie.NewUsageReportWithinSessionReportRequest(
-// 				r.IEsWithinSessReportReq(
-// 					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
-// 			))
-// 	}
-// }
+func returnMonitoringThreshold(uint16 trhesdhold) uint16{ //everytime a report must be generated inside cap.. do pfcp.returnMonitorign(pass value)
+	return monitoringValue
+}
 
-//break down this function
-//take parameters from monitor and call this function
+// send reprot!!
+func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, pdrid uint16) error {
+	s.log.Infoln("serveSESReport")
+
+	sess, err := s.lnode.Sess(lSeid)
+	if err != nil {
+		return errors.Wrap(err, "serveSESReport")
+	}
+
+	req := message.NewSessionReportRequest(
+		0,
+		0,
+		sess.RemoteID,
+		0,
+		0,
+		ie.NewReportType(1, 0, 0, 0, 0),
+		ie.NewSessionReportRequestWithinSessionReportRequest(
+				monitoringValue:=returnMonitoringValue(),
+				monitoringThreshold:=returnMonitoringThreshold(),
+			),
+		),
+	)
+
+	err = s.sendReqTo(req, addr)
+	return errors.Wrap(err, "serveSESReport")
+}

@@ -145,11 +145,12 @@ func isInRange(ip string) bool {
 	return ip[:7] == "10.60.0" || ip[:7] == "10.61.0"
 }
 
-// // Check the condition
-// if conditionMet {
-//     // Call the serverSESReport method
-//     err := server.serveSESR(pass parameters here) fill it there and send it inside that one!!!
-//     if err != nil {
-//         // Handle error
-//     }
-// }
+func getMonitoringValue() uint8 {
+	// Implementation for fetching the monitoring value
+	return 5 // Example value, replace with actual implementation
+}
+
+func getMonitoringThreshold() uint8 {
+	// Implementation for fetching the monitoring threshold
+	return 10 // Example value, replace with actual implementation
+}
