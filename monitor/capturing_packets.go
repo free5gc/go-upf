@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -15,15 +16,15 @@ import (
 )
 
 const (
-	number_of_packets_to_be_captured = 50 //just for testing
+	number_of_packets_to_be_captured = 50 // just for testing
 	number_of_simultaneous_workers   = 15
 )
 
 var (
-	time_of_last_arrived_packet_from_each_UE_qos_flow = make(map[string]time.Time) //upLink only
-	start_time_of_each_UE_flow                        = make(map[string]time.Time) //upLink only
-	latest_latency_measure_per_UE_qos_flow            = make(map[string]uint32)    //upLink only
-	mu                                                sync.Mutex
+	time_of_last_arrived_packet_from_each_UE_destination_combo = make(map[string]time.Time) // upLink only
+	start_time_of_each_UE_destination_combo                    = make(map[string]time.Time) // upLink only
+	latest_latency_measure_per_UE_destination_combo            = make(map[string]uint32)    // upLink only
+	mu                                                         sync.Mutex
 )
 
 func CapturePackets(interface_name string, file_to_save_captured_packets string) {
@@ -33,7 +34,7 @@ func CapturePackets(interface_name string, file_to_save_captured_packets string)
 	}
 	defer handle.Close()
 
-	if err := handle.SetBPFFilter("udp port 2152"); err != nil { //capture gtp packets
+	if err := handle.SetBPFFilter("udp port 2152"); err != nil { // capture gtp packets
 		log.Fatal(err)
 	}
 
@@ -117,41 +118,41 @@ func processPacket(packet gopacket.Packet) {
 		}
 		perio_or_evett, ok := frequency.(uint8)
 		if !ok {
-			fmt.Println("Loaded value is not of type uint32")
+			fmt.Println("Loaded value is not of type uint8")
 			return
 		}
 
-		if isInRange(srcIP) && (perio_or_evett == uint8(1)) {
+		if isInRange(srcIP) && perio_or_evett == uint8(1) {
 			key := srcIP + "->" + dstIP
-			startTime := time.Now()
-			if _, exists := start_time_of_each_UE_flow[key]; !exists {
-				start_time_of_each_UE_flow[key] = startTime
+			mu.Lock()
+			if _, exists := start_time_of_each_UE_destination_combo[key]; !exists {
+				start_time_of_each_UE_destination_combo[key] = time.Now()
 			}
 			currentTime := time.Now()
 
-			mu.Lock()
 			ul_thresdhold_for_this_flow, exists := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
 			if !exists {
-				fmt.Println("No values for this	flow")
+				fmt.Println("No values for this flow")
+				mu.Unlock()
 				return
 			}
 			ul_threshold, ok := ul_thresdhold_for_this_flow.(uint32)
 			if !ok {
 				fmt.Println("Loaded value is not of type uint32")
+				mu.Unlock()
 				return
 			}
-			last_arrival_time_for_this_src_and_dest, exists := time_of_last_arrived_packet_from_each_UE_qos_flow[key]
+			last_arrival_time_for_this_src_and_dest, exists := time_of_last_arrived_packet_from_each_UE_destination_combo[key]
 			if exists {
 				latency := currentTime.Sub(last_arrival_time_for_this_src_and_dest)
-				latency_in_ms := (uint32)((latency).Milliseconds())
+				latency_in_ms := uint32(latency.Milliseconds())
 				if latency_in_ms > ul_threshold {
-					fmt.Printf("Need to Reprot")
+					trigger_report_through_new_monitoring_value(latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
 				}
-				fmt.Printf("No need to Report")
-				latest_latency_measure_per_UE_qos_flow[key] = latency_in_ms
+				latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
 				fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
 			}
-			time_of_last_arrived_packet_from_each_UE_qos_flow[key] = currentTime
+			time_of_last_arrived_packet_from_each_UE_destination_combo[key] = currentTime
 			mu.Unlock()
 		}
 
@@ -162,14 +163,10 @@ func processPacket(packet gopacket.Packet) {
 }
 
 func isInRange(ip string) bool {
-	return ip[:7] == "10.60.0" || ip[:7] == "10.61.0"
+	return strings.HasPrefix(ip, "10.60.0") || strings.HasPrefix(ip, "10.61.0")
 }
 
-func getMonitoringValue() uint8 {
-
-	return 5
-}
-func getMonitoringThreshold() uint8 {
-
-	return 10
+func trigger_report_through_new_monitoring_value(value uint32, start time.Time, current time.Time) (uint32, time.Time, time.Time) {
+	fmt.Printf("Reporting new monitoring value: %d, start: %v, current: %v\n", value, start, current)
+	return value, start, current
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/aalayanahmad/go-upf/internal/pfcp"
 )
 
-// without UE applies the same to all UEs connecte to a certain destination
+// without UE applies the same to all UEs connect to a certain destination
 var QoSflow_RequestedMonitoring sync.Map
 var QoSflow_ReportedFrequency sync.Map
 var QoSflow_PacketDelayThresholds sync.Map
@@ -34,7 +34,7 @@ func GetSRRContent(srrID uint8) ([]*pfcp.QoSControlInfo, error) {
 func GetQoSFlowMonitoringContent(srrInfos []*pfcp.QoSControlInfo) {
 	for _, srrInfo := range srrInfos {
 		qfi := srrInfo.QFI
-		request_qos_monit := srrInfo.RequestedQoSMonitoring
+		ReqQoSMonit := srrInfo.RequestedQoSMonitoring
 		ReportingFrequency := srrInfo.ReportingFrequency
 		PacketDelayThresholds := srrInfo.PacketDelayThresholds
 		DownlinkPacketDelayThresholds := srrInfo.DownlinkPacketDelayThresholds
@@ -50,22 +50,13 @@ func GetQoSFlowMonitoringContent(srrInfos []*pfcp.QoSControlInfo) {
 		if qfi_int == 2 {
 			qfi_reference = "10.100.200.4"
 		}
-		var request_qos_monit_int int = int(request_qos_monit)
-		var ReportingFrequency_int int = int(ReportingFrequency)
-		var PacketDelayThresholds_int int = int(PacketDelayThresholds)
-		var DownlinkPacketDelayThresholds_uint32 = DownlinkPacketDelayThresholds
-		var UplinkPacketDelayThresholds_uint32 = UplinkPacketDelayThresholds
-		var RoundTripPacketDelayThresholds_uint32 = RoundTripPacketDelayThresholds
-		var MinimumWaitTime_int int = int(MinimumWaitTime)
-		var MeasurementPeriod_int int = int(MeasurementPeriod)
-		QoSflow_RequestedMonitoring.Store(qfi_reference, request_qos_monit_int)
-		QoSflow_ReportedFrequency.Store(qfi_reference, ReportingFrequency_int)
-		QoSflow_PacketDelayThresholds.Store(qfi_reference, PacketDelayThresholds_int)
-		QoSflow_DownlinkPacketDelayThresholds.Store(qfi_reference, DownlinkPacketDelayThresholds_uint32)
-		QoSflow_UplinkPacketDelayThresholds.Store(qfi_reference, UplinkPacketDelayThresholds_uint32)
-		QoSflow_RoundTripPacketDelayThresholdso.Store(qfi_reference, RoundTripPacketDelayThresholds_uint32)
-		QoSflow_MinimumWaitTime.Store(qfi_reference, MinimumWaitTime_int)
-		QoSflow_MeasurementPeriod.Store(qfi_reference, MeasurementPeriod_int)
-		fmt.Println("QFI: ", qfi_reference, " RequestedQoSMonitoring: ", request_qos_monit_int, " ReportingFrequency: ", ReportingFrequency_int, " PacketDelayThresholds: ", PacketDelayThresholds_int, " DownlinkPacketDelayThresholds: ", DownlinkPacketDelayThresholds_uint32, " UplinkPacketDelayThresholds: ", UplinkPacketDelayThresholds_uint32, " RoundTripPacketDelayThresholds: ", RoundTripPacketDelayThresholds_uint32, " MinimumWaitTime: ", MinimumWaitTime_int, " MeasurementPeriod: ", MeasurementPeriod_int)
+		QoSflow_RequestedMonitoring.Store(qfi_reference, ReqQoSMonit)
+		QoSflow_ReportedFrequency.Store(qfi_reference, ReportingFrequency)
+		QoSflow_PacketDelayThresholds.Store(qfi_reference, PacketDelayThresholds)
+		QoSflow_DownlinkPacketDelayThresholds.Store(qfi_reference, DownlinkPacketDelayThresholds)
+		QoSflow_UplinkPacketDelayThresholds.Store(qfi_reference, UplinkPacketDelayThresholds)
+		QoSflow_RoundTripPacketDelayThresholdso.Store(qfi_reference, RoundTripPacketDelayThresholds)
+		QoSflow_MinimumWaitTime.Store(qfi_reference, MinimumWaitTime)
+		QoSflow_MeasurementPeriod.Store(qfi_reference, MeasurementPeriod)
 	}
 }
