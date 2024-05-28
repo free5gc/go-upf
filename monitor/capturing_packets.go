@@ -9,32 +9,31 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aalayanahmad/go-upf/internal/pfcp"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
 const (
-	number_of_packets_to_be_captured = 35
-	number_of_simultaneous_workers   = 35
+	number_of_packets_to_be_captured = 50 //just for testing
+	number_of_simultaneous_workers   = 15
 )
 
 var (
-	latestArrivalTimes = make(map[string]time.Time)
-	latencies          = make(map[string]time.Duration)
-	mu                 sync.Mutex
+	time_of_last_arrived_packet_from_each_UE_qos_flow = make(map[string]time.Time) //upLink only
+	start_time_of_each_UE_flow                        = make(map[string]time.Time) //upLink only
+	latest_latency_measure_per_UE_qos_flow            = make(map[string]uint32)    //upLink only
+	mu                                                sync.Mutex
 )
-var server_to_send_report pfcp.PfcpServer
 
-func CapturePackets(interfaceName string, fileToSaveCapturedPackets string) {
-	handle, err := pcap.OpenLive(interfaceName, 2048, true, pcap.BlockForever)
+func CapturePackets(interface_name string, file_to_save_captured_packets string) {
+	handle, err := pcap.OpenLive(interface_name, 2048, true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer handle.Close()
 
-	if err := handle.SetBPFFilter("udp port 2152"); err != nil {
+	if err := handle.SetBPFFilter("udp port 2152"); err != nil { //capture gtp packets
 		log.Fatal(err)
 	}
 
@@ -43,9 +42,9 @@ func CapturePackets(interfaceName string, fileToSaveCapturedPackets string) {
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
-	fmt.Println("Started capturing packets on:", interfaceName)
+	fmt.Println("--ahmad implemented -- Started capturing packets on:", interface_name)
 
-	packetQueue := make(chan gopacket.Packet, 555)
+	packetQueue := make(chan gopacket.Packet, 1000)
 	stopChan := make(chan struct{})
 	var wg sync.WaitGroup
 
@@ -59,12 +58,12 @@ func CapturePackets(interfaceName string, fileToSaveCapturedPackets string) {
 		close(stopChan)
 	}()
 
-	packetsCaptured := 0
+	packets_captured_so_far := 0
 	for packet := range packetSource.Packets() {
 		select {
 		case packetQueue <- packet:
-			packetsCaptured++
-			if packetsCaptured >= number_of_packets_to_be_captured {
+			packets_captured_so_far++
+			if packets_captured_so_far >= number_of_packets_to_be_captured {
 				close(stopChan)
 				wg.Wait()
 				return
@@ -116,29 +115,39 @@ func processPacket(packet gopacket.Packet) {
 		if !period_or_event {
 			return
 		}
-		_, ul_thresdhold := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
-		if !ul_thresdhold {
-			return
-		}
-		if isInRange(srcIP) {
+
+		if isInRange(srcIP && (period_or_event == 1)) {
 			key := srcIP + "->" + dstIP
+			startTime := time.Now()
+			if _, exists := start_time_of_each_UE_flow[key]; !exists {
+				start_time_of_each_UE_flow[key] = startTime
+			}
 			currentTime := time.Now()
 
 			mu.Lock()
-			lastArrivalTime, exists := latestArrivalTimes[key]
-			if exists {
-				latency := currentTime.Sub(lastArrivalTime)
-				latencies[key] = latency
-				fmt.Printf("Key: %s, Latency: %v ms\n", key, latency.Milliseconds())
+			_, ul_thresdhold_for_this_flow := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
+			if !ul_thresdhold_for_this_flow {
+				return
 			}
-			latestArrivalTimes[key] = currentTime
+			last_arrival_time_for_this_src_and_dest, exists := time_of_last_arrived_packet_from_each_UE_qos_flow[key]
+			if exists {
+				latency := currentTime.Sub(last_arrival_time_for_this_src_and_dest)
+				latency_in_ms := (uint32)((latency).Milliseconds())
+				if latency_in_ms > ul_thresdhold_for_this_flow {
+					fmt.Printf("Need to Reprot")
+				}
+				fmt.Printf("No need to Report")
+				latest_latency_measure_per_UE_qos_flow[key] = latency_in_ms
+				fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
+			}
+			time_of_last_arrived_packet_from_each_UE_qos_flow[key] = currentTime
 			mu.Unlock()
 		}
 
 		fmt.Printf("Inner IPv4 Src IP: %s, Dst IP: %s\n", srcIP, dstIP)
 	}
 
-	fmt.Println("*")
+	fmt.Println("***thank u, next***")
 }
 
 func isInRange(ip string) bool {
@@ -146,11 +155,10 @@ func isInRange(ip string) bool {
 }
 
 func getMonitoringValue() uint8 {
-	// Implementation for fetching the monitoring value
-	return 5 // Example value, replace with actual implementation
-}
 
+	return 5
+}
 func getMonitoringThreshold() uint8 {
-	// Implementation for fetching the monitoring threshold
-	return 10 // Example value, replace with actual implementation
+
+	return 10
 }
