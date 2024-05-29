@@ -28,16 +28,9 @@ var (
 	mu                                                         sync.Mutex
 )
 
-type to_fill_the_report struct {
-	QFI                      uint8
-	QoSMonitoringMeasurement uint32
-	EventTimeStamp           time.Time
-	StartTime                time.Time
-}
+var toFillTheReport_Chan = make(chan shared.to_fill_the_report)
 
-var toFillTheReport_Chan = make(chan to_fill_the_report)
-
-func GetValuesToFill_Chan() <-chan to_fill_the_report {
+func GetValuesToFill_Chan() <-chan shared.to_fill_the_report {
 	return toFillTheReport_Chan
 }
 func CapturePackets(interface_name string, file_to_save_captured_packets string) {
@@ -181,7 +174,7 @@ func processPacket(packet gopacket.Packet) {
 								if dstIP == "10.100.200.4" {
 									qfi_val = 2
 								}
-								new_values_to_fill := to_fill_the_report{
+								new_values_to_fill := shared.to_fill_the_report{
 									QFI:                      qfi_val,
 									QoSMonitoringMeasurement: latency_in_ms,
 									EventTimeStamp:           currentTime,
