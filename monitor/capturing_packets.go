@@ -24,6 +24,7 @@ var (
 	time_of_last_arrived_packet_from_each_UE_destination_combo = make(map[string]time.Time) // upLink only
 	start_time_of_each_UE_destination_combo                    = make(map[string]time.Time) // upLink only
 	latest_latency_measure_per_UE_destination_combo            = make(map[string]uint32)    // upLink only
+	time_of_last_issued_report_per_UE_destination_combo        = make(map[string]time.Time) // upLink only
 	mu                                                         sync.Mutex
 )
 
@@ -130,12 +131,15 @@ func processPacket(packet gopacket.Packet) {
 		}
 		time_to_wait_before_next_report_duration, ok := time_to_wait_before_next_report.(time.Duration)
 
-		if isInRange(srcIP) {
-			if perio_or_evett == uint8(1) {
+		if isInRange(srcIP) { //source IP is one of the UEs
+			if perio_or_evett == uint8(1) { //is it event tirggered
+
 				key := srcIP + "->" + dstIP
+
 				if _, exists := start_time_of_each_UE_destination_combo[key]; !exists {
 					start_time_of_each_UE_destination_combo[key] = time.Now()
 				}
+
 				currentTime := time.Now()
 
 				ul_thresdhold_for_this_flow, exists := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
@@ -152,41 +156,45 @@ func processPacket(packet gopacket.Packet) {
 				}
 				last_arrival_time_for_this_src_and_dest, exists := time_of_last_arrived_packet_from_each_UE_destination_combo[key]
 				if exists {
-					if time.Since(last_arrival_time_for_this_src_and_dest) >= time_to_wait_before_next_report_duration {
-						latency := currentTime.Sub(last_arrival_time_for_this_src_and_dest)
-						latency_in_ms := uint32(latency.Milliseconds())
-						if latency_in_ms > ul_threshold {
-							var qfi_val uint8
-							if dstIP == "10.100.200.3" {
-								qfi_val = 2
-							}
+					time_since_last_report, exists_1 := time_of_last_issued_report_per_UE_destination_combo[key]
+					if exists_1 {
+						if time.Since(time_since_last_report) >= time_to_wait_before_next_report_duration {
+							latency := currentTime.Sub(last_arrival_time_for_this_src_and_dest)
+							latency_in_ms := uint32(latency.Milliseconds())
+							if latency_in_ms > ul_threshold {
+								var qfi_val uint8
+								if dstIP == "10.100.200.3" {
+									qfi_val = 2
+								}
 
-							if dstIP == "10.100.200.4" {
-								qfi_val = 2
+								if dstIP == "10.100.200.4" {
+									qfi_val = 2
+								}
+								// Reporting new monitoring value and waiting before next report
+								select {
+								case <-time.After(time_to_wait_before_next_report_duration):
+									trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
+									time_reported := time.Now()
+									time_of_last_issued_report_per_UE_destination_combo[key] = time_reported
+								case <-stopChan:
+									return
+								}
 							}
-							// Reporting new monitoring value and waiting before next report
-							select {
-							case <-time.After(time_to_wait_before_next_report_duration):
-								trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
-							case <-stopChan:
-								return
-							}
+							latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
+							fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
 						}
-						latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
-						fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
 					}
+					time_of_last_arrived_packet_from_each_UE_destination_combo[key] = currentTime
+					mu.Unlock()
 				}
-				time_of_last_arrived_packet_from_each_UE_destination_combo[key] = currentTime
-				mu.Unlock()
+
+				fmt.Printf("Inner IPv4 Src IP: %s, Dst IP: %s\n", srcIP, dstIP)
 			}
-
-			fmt.Printf("Inner IPv4 Src IP: %s, Dst IP: %s\n", srcIP, dstIP)
 		}
+
+		fmt.Println("***thank u, next***")
 	}
-
-	fmt.Println("***thank u, next***")
 }
-
 func isInRange(ip string) bool {
 	return strings.HasPrefix(ip, "10.60.0") || strings.HasPrefix(ip, "10.61.0")
 }
