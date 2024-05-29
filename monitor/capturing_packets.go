@@ -93,6 +93,7 @@ func worker(packetQueue <-chan gopacket.Packet, stopChan <-chan struct{}, wg *sy
 }
 
 func processPacket(packet gopacket.Packet) {
+	stopChan := make(chan struct{})
 	var outerIPv4, innerIPv4 *layers.IPv4
 	var gtpLayer *layers.GTPv1U
 
@@ -112,6 +113,7 @@ func processPacket(packet gopacket.Packet) {
 	if gtpLayer != nil && innerIPv4 != nil {
 		srcIP := innerIPv4.SrcIP.String()
 		dstIP := innerIPv4.DstIP.String()
+		mu.Lock()
 		frequency, exists := QoSflow_ReportedFrequency.Load(dstIP)
 		if !exists {
 			return
@@ -122,9 +124,14 @@ func processPacket(packet gopacket.Packet) {
 			return
 		}
 
+		time_to_wait_before_next_report, exists := QoSflow_MinimumWaitTime.Load(dstIP)
+		if !exists {
+			return
+		}
+		time_to_wait_before_next_report_duration, ok := time_to_wait_before_next_report.(time.Duration)
+
 		if isInRange(srcIP) && perio_or_evett == uint8(1) {
 			key := srcIP + "->" + dstIP
-			mu.Lock()
 			if _, exists := start_time_of_each_UE_destination_combo[key]; !exists {
 				start_time_of_each_UE_destination_combo[key] = time.Now()
 			}
@@ -155,7 +162,13 @@ func processPacket(packet gopacket.Packet) {
 					if dstIP == "10.100.200.4" {
 						qfi_val = 2
 					}
-					trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
+					// Reporting new monitoring value and waiting before next report
+					select {
+					case <-time.After(time_to_wait_before_next_report_duration):
+						trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
+					case <-stopChan:
+						return
+					}
 				}
 				latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
 				fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)

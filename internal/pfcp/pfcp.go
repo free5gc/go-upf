@@ -107,7 +107,6 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		return
 	}
 	s.conn = conn
-
 	wg.Add(1)
 	go s.receiver(wg)
 
