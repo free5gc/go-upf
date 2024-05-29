@@ -3,6 +3,8 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/aalayanahmad/go-pfcp/ie"
 	"github.com/aalayanahmad/go-pfcp/message"
@@ -132,13 +134,13 @@ func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 	return errors.Wrap(err, "serveUSAReport")
 }
 
-func returnMonitoringValue(uint16 value) uint16 { //everytime a report must be generated inside cap.. do pfcp.returnMonitorign(pass value)
-	return monitoringValue
-}
-
-func returnMonitoringThreshold(uint16 trhesdhold) uint16 { //everytime a report must be generated inside cap.. do pfcp.returnMonitorign(pass value)
-	return monitoringValue
-}
+var (
+	mu                     sync.RWMutex
+	qfi_value              uint8
+	monitoring_measurement uint32
+	event_happened_at      time.Time
+	start_time             time.Time
+)
 
 // send reprot!!
 func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, pdrid uint16) error {
@@ -148,7 +150,8 @@ func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 	if err != nil {
 		return errors.Wrap(err, "serveSESReport")
 	}
-
+	mu.RLock()
+	defer mu.RUnlock()
 	req := message.NewSessionReportRequest(
 		0,
 		0,
@@ -159,13 +162,27 @@ func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 		ie.NewSessionReport(
 			ie.NewSRRID(1),
 			ie.NewQoSMonitoringReport(
-						// ie.NewQFI(0x01),
-						// ie.NewQoSMonitoringMeasurement(0x0f, 0x11111111, 0x22222222, 0x33333333),
-						// ie.NewEventTimeStamp(time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC)),
-						// ie.NewStartTime(time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC)),
-					),
-				),
+				ie.NewQFI(qfi_value),
+				ie.NewQoSMonitoringMeasurement(0x0, monitoring_measurement, 0x0, 0x0),
+				ie.NewEventTimeStamp(event_happened_at),
+				ie.NewStartTime(start_time),
 			),
+		))
 	err = s.sendReqTo(req, addr)
 	return errors.Wrap(err, "serveSESReport")
+}
+
+func new_values_listener() {
+	go func() {
+		toFillTheReport_Chan := to_fill_the_report.GetValuesToFill_Chan()
+		for new_value := range toFillTheReport_Chan {
+			mu.Lock()
+			qfi_value = new_value.QFI
+			monitoring_measurement = new_value.QoSMonitoringMeasurement
+			event_happened_at = new_value.EventTimeStamp
+			start_time = new_value.StartTime
+			mu.Unlock()
+		}
+
+	}()
 }

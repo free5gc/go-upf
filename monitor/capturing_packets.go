@@ -28,6 +28,18 @@ var (
 	mu                                                         sync.Mutex
 )
 
+type to_fill_the_report struct {
+	QFI                      uint8
+	QoSMonitoringMeasurement uint32
+	EventTimeStamp           time.Time
+	StartTime                time.Time
+}
+
+var toFillTheReport_Chan = make(chan to_fill_the_report)
+
+func GetValuesToFill_Chan() <-chan to_fill_the_report {
+	return toFillTheReport_Chan
+}
 func CapturePackets(interface_name string, file_to_save_captured_packets string) {
 	handle, err := pcap.OpenLive(interface_name, 2048, true, pcap.BlockForever)
 	if err != nil {
@@ -169,7 +181,13 @@ func processPacket(packet gopacket.Packet) {
 								if dstIP == "10.100.200.4" {
 									qfi_val = 2
 								}
-								trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
+								new_values_to_fill := to_fill_the_report{
+									QFI:                      qfi_val,
+									QoSMonitoringMeasurement: latency_in_ms,
+									EventTimeStamp:           currentTime,
+									StartTime:                start_time_of_each_UE_destination_combo[key],
+								}
+								toFillTheReport_Chan <- new_values_to_fill
 							}
 							latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
 							fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
@@ -188,9 +206,4 @@ func processPacket(packet gopacket.Packet) {
 }
 func isInRange(ip string) bool {
 	return strings.HasPrefix(ip, "10.60.0") || strings.HasPrefix(ip, "10.61.0")
-}
-
-func trigger_report_through_new_monitoring_value(qfi_val uint8, monitoring_value uint32, start time.Time, current time.Time) (uint8, uint32, time.Time, time.Time) {
-	fmt.Printf("Reporting new monitoring value: %d, start: %v, current: %v\n", monitoring_value, start, current)
-	return qfi_val, monitoring_value, start, current
 }
