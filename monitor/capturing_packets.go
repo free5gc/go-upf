@@ -147,7 +147,15 @@ func processPacket(packet gopacket.Packet) {
 				latency := currentTime.Sub(last_arrival_time_for_this_src_and_dest)
 				latency_in_ms := uint32(latency.Milliseconds())
 				if latency_in_ms > ul_threshold {
-					trigger_report_through_new_monitoring_value(latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
+					var qfi_val uint8
+					if dstIP == "10.100.200.3" {
+						qfi_val = 2
+					}
+
+					if dstIP == "10.100.200.4" {
+						qfi_val = 2
+					}
+					trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
 				}
 				latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
 				fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
@@ -166,7 +174,7 @@ func isInRange(ip string) bool {
 	return strings.HasPrefix(ip, "10.60.0") || strings.HasPrefix(ip, "10.61.0")
 }
 
-func trigger_report_through_new_monitoring_value(value uint32, start time.Time, current time.Time) (uint32, time.Time, time.Time) {
-	fmt.Printf("Reporting new monitoring value: %d, start: %v, current: %v\n", value, start, current)
-	return value, start, current
+func trigger_report_through_new_monitoring_value(qfi_val uint8, monitoring_value uint32, start time.Time, current time.Time) (uint8, uint32, time.Time, time.Time) {
+	fmt.Printf("Reporting new monitoring value: %d, start: %v, current: %v\n", monitoring_value, start, current)
+	return qfi_val, monitoring_value, start, current
 }
