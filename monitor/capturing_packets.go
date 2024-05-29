@@ -94,7 +94,6 @@ func worker(packetQueue <-chan gopacket.Packet, stopChan <-chan struct{}, wg *sy
 }
 
 func processPacket(packet gopacket.Packet) {
-	stopChan := make(chan struct{})
 	var outerIPv4, innerIPv4 *layers.IPv4
 	var gtpLayer *layers.GTPv1U
 
@@ -170,15 +169,7 @@ func processPacket(packet gopacket.Packet) {
 								if dstIP == "10.100.200.4" {
 									qfi_val = 2
 								}
-								// Reporting new monitoring value and waiting before next report
-								select {
-								case <-time.After(time_to_wait_before_next_report_duration):
-									trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
-									time_reported := time.Now()
-									time_of_last_issued_report_per_UE_destination_combo[key] = time_reported
-								case <-stopChan:
-									return
-								}
+								trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
 							}
 							latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
 							fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
