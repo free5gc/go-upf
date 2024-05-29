@@ -130,54 +130,58 @@ func processPacket(packet gopacket.Packet) {
 		}
 		time_to_wait_before_next_report_duration, ok := time_to_wait_before_next_report.(time.Duration)
 
-		if isInRange(srcIP) && perio_or_evett == uint8(1) {
-			key := srcIP + "->" + dstIP
-			if _, exists := start_time_of_each_UE_destination_combo[key]; !exists {
-				start_time_of_each_UE_destination_combo[key] = time.Now()
-			}
-			currentTime := time.Now()
+		if isInRange(srcIP) {
+			if perio_or_evett == uint8(1) {
+				key := srcIP + "->" + dstIP
+				if _, exists := start_time_of_each_UE_destination_combo[key]; !exists {
+					start_time_of_each_UE_destination_combo[key] = time.Now()
+				}
+				currentTime := time.Now()
 
-			ul_thresdhold_for_this_flow, exists := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
-			if !exists {
-				fmt.Println("No values for this flow")
-				mu.Unlock()
-				return
-			}
-			ul_threshold, ok := ul_thresdhold_for_this_flow.(uint32)
-			if !ok {
-				fmt.Println("Loaded value is not of type uint32")
-				mu.Unlock()
-				return
-			}
-			last_arrival_time_for_this_src_and_dest, exists := time_of_last_arrived_packet_from_each_UE_destination_combo[key]
-			if exists {
-				latency := currentTime.Sub(last_arrival_time_for_this_src_and_dest)
-				latency_in_ms := uint32(latency.Milliseconds())
-				if latency_in_ms > ul_threshold {
-					var qfi_val uint8
-					if dstIP == "10.100.200.3" {
-						qfi_val = 2
-					}
+				ul_thresdhold_for_this_flow, exists := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
+				if !exists {
+					fmt.Println("No values for this flow")
+					mu.Unlock()
+					return
+				}
+				ul_threshold, ok := ul_thresdhold_for_this_flow.(uint32)
+				if !ok {
+					fmt.Println("Loaded value is not of type uint32")
+					mu.Unlock()
+					return
+				}
+				last_arrival_time_for_this_src_and_dest, exists := time_of_last_arrived_packet_from_each_UE_destination_combo[key]
+				if exists {
+					if time.Since(last_arrival_time_for_this_src_and_dest) >= time_to_wait_before_next_report_duration {
+						latency := currentTime.Sub(last_arrival_time_for_this_src_and_dest)
+						latency_in_ms := uint32(latency.Milliseconds())
+						if latency_in_ms > ul_threshold {
+							var qfi_val uint8
+							if dstIP == "10.100.200.3" {
+								qfi_val = 2
+							}
 
-					if dstIP == "10.100.200.4" {
-						qfi_val = 2
-					}
-					// Reporting new monitoring value and waiting before next report
-					select {
-					case <-time.After(time_to_wait_before_next_report_duration):
-						trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
-					case <-stopChan:
-						return
+							if dstIP == "10.100.200.4" {
+								qfi_val = 2
+							}
+							// Reporting new monitoring value and waiting before next report
+							select {
+							case <-time.After(time_to_wait_before_next_report_duration):
+								trigger_report_through_new_monitoring_value(qfi_val, latency_in_ms, start_time_of_each_UE_destination_combo[key], time.Now())
+							case <-stopChan:
+								return
+							}
+						}
+						latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
+						fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
 					}
 				}
-				latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
-				fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
+				time_of_last_arrived_packet_from_each_UE_destination_combo[key] = currentTime
+				mu.Unlock()
 			}
-			time_of_last_arrived_packet_from_each_UE_destination_combo[key] = currentTime
-			mu.Unlock()
-		}
 
-		fmt.Printf("Inner IPv4 Src IP: %s, Dst IP: %s\n", srcIP, dstIP)
+			fmt.Printf("Inner IPv4 Src IP: %s, Dst IP: %s\n", srcIP, dstIP)
+		}
 	}
 
 	fmt.Println("***thank u, next***")
