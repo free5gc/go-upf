@@ -129,7 +129,7 @@ func processPacket(packet gopacket.Packet) {
 	if gtpLayer != nil && innerIPv4 != nil {
 		srcIP := innerIPv4.SrcIP.String()
 		dstIP := innerIPv4.DstIP.String()
-		mu1.Lock()
+		mu1.Lock() //should use all locks?
 		frequency, exists := QoSflow_ReportedFrequency.Load(dstIP)
 		if !exists {
 			return
@@ -208,6 +208,6 @@ func processPacket(packet gopacket.Packet) {
 		fmt.Println("***thank u, next***")
 	}
 }
-func isInRange(ip string) bool {
+func isInRange(ip string) bool { //if its uplink
 	return strings.HasPrefix(ip, "10.60.0") || strings.HasPrefix(ip, "10.61.0")
 }
