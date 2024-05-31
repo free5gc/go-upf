@@ -29,7 +29,11 @@ func GetSRRContent(srrID uint8) ([]*QoSControlInfo, error) {
 
 // put in a separate file isnide montior
 // find QoS what needs to be monitored and threshold for that!
-func GetQoSFlowMonitoringContent(srrInfos []*QoSControlInfo) {
+func GetQoSFlowMonitoringContent() {
+	srrInfos, err := GetSRRContent(uint8(1))
+	if err != nil {
+		return
+	}
 	for _, srrInfo := range srrInfos {
 		qfi := srrInfo.QFI
 		ReqQoSMonit := srrInfo.RequestedQoSMonitoring
@@ -40,12 +44,11 @@ func GetQoSFlowMonitoringContent(srrInfos []*QoSControlInfo) {
 		RoundTripPacketDelayThresholds := srrInfo.RoundTripPacketDelayThresholds
 		MinimumWaitTime := srrInfo.MinimumWaitTime
 		MeasurementPeriod := srrInfo.MeasurementPeriod
-		var qfi_int int = int(qfi)
 		var qfi_reference string
-		if qfi_int == 1 {
+		if qfi == uint8(1) {
 			qfi_reference = "10.100.200.3"
 		}
-		if qfi_int == 2 {
+		if qfi == uint8(2) {
 			qfi_reference = "10.100.200.4"
 		}
 		QoSflow_RequestedMonitoring.Store(qfi_reference, ReqQoSMonit)
