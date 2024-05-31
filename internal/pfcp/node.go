@@ -40,7 +40,7 @@ type Sess struct {
 	QERIDs   map[uint32]struct{}         // key: QER_ID
 	URRIDs   map[uint32]*URRInfo         // key: URR_ID
 	BARIDs   map[uint8]struct{}          // key: BAR_ID
-	SRRIDs   map[uint8][]*QoSControlInfo // key: SRR_ID //fir each SRRID there can be multiple QoSControlblabla
+	SRRIDs   map[uint8][]*QoSControlInfo // key: SRR_ID | for each SRRID there can be multiple QoSControlblabla
 	q        map[uint16]chan []byte      // key: PDR_ID
 	qlen     int
 	log      *logrus.Entry
@@ -58,9 +58,8 @@ type QoSControlInfo struct {
 }
 
 var (
-	// Use a sync.RWMutex to allow concurrent reads and writes to the SRR map
-	Sotred_srrs_to_be_used_by_upf = make(map[uint8][]*QoSControlInfo)
-	SrrMapLock                    = sync.RWMutex{}
+	SotredSrrsToBeUsedByUpf = make(map[uint8][]*QoSControlInfo)
+	SrrMapLock              = sync.RWMutex{}
 )
 
 func (s *Sess) Close() []report.USAReport {
@@ -383,7 +382,7 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 		return err
 	}
 	SrrMapLock.Lock()
-	Sotred_srrs_to_be_used_by_upf[id] = srrQoSControlInfos
+	SotredSrrsToBeUsedByUpf[id] = srrQoSControlInfos
 	SrrMapLock.Unlock()
 
 	s.SRRIDs[id] = srrQoSControlInfos

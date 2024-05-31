@@ -1,4 +1,4 @@
-package monitor
+package pfcp
 
 import (
 	"fmt"
@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aalayanahmad/go-upf/shared"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -26,16 +25,23 @@ var (
 	start_time_of_each_UE_destination_combo                    = make(map[string]time.Time) // upLink only
 	latest_latency_measure_per_UE_destination_combo            = make(map[string]uint32)    // upLink only
 	time_of_last_issued_report_per_UE_destination_combo        = make(map[string]time.Time) // upLink only
-	mu                                                         sync.Mutex
+	mu1                                                        sync.Mutex
 )
 
-var toBeReported_Chan = make(chan shared.ToBeReported, 555) //buffer size
-
-type Monitor interface {
-	GetValuesToBeReported_Chan() <-chan shared.ToBeReported
+type ToBeReported struct {
+	QFI                      uint8
+	QoSMonitoringMeasurement uint32
+	EventTimeStamp           time.Time //change to uint32
+	StartTime                time.Time //change to uint32
 }
 
-func GetValuesToBeReported_Chan() <-chan shared.ToBeReported {
+var toBeReported_Chan = make(chan ToBeReported, 555) //buffer size
+
+type Monitor interface {
+	GetValuesToBeReported_Chan() <-chan ToBeReported
+}
+
+func GetValuesToBeReported_Chan() <-chan ToBeReported {
 	return toBeReported_Chan
 }
 func CapturePackets(interface_name string, file_to_save_captured_packets string) {
@@ -123,7 +129,7 @@ func processPacket(packet gopacket.Packet) {
 	if gtpLayer != nil && innerIPv4 != nil {
 		srcIP := innerIPv4.SrcIP.String()
 		dstIP := innerIPv4.DstIP.String()
-		mu.Lock()
+		mu1.Lock()
 		frequency, exists := QoSflow_ReportedFrequency.Load(dstIP)
 		if !exists {
 			return
@@ -154,13 +160,13 @@ func processPacket(packet gopacket.Packet) {
 				ul_thresdhold_for_this_flow, exists := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
 				if !exists {
 					fmt.Println("No values for this flow")
-					mu.Unlock()
+					mu1.Unlock()
 					return
 				}
 				ul_threshold, ok := ul_thresdhold_for_this_flow.(uint32)
 				if !ok {
 					fmt.Println("Loaded value is not of type uint32")
-					mu.Unlock()
+					mu1.Unlock()
 					return
 				}
 				last_arrival_time_for_this_src_and_dest, exists := time_of_last_arrived_packet_from_each_UE_destination_combo[key]
@@ -179,7 +185,7 @@ func processPacket(packet gopacket.Packet) {
 								if dstIP == "10.100.200.4" {
 									qfi_val = 2
 								}
-								new_values_to_fill := shared.ToBeReported{
+								new_values_to_fill := ToBeReported{
 									QFI:                      qfi_val,
 									QoSMonitoringMeasurement: latency_in_ms,
 									EventTimeStamp:           currentTime,
@@ -192,7 +198,7 @@ func processPacket(packet gopacket.Packet) {
 						}
 					}
 					time_of_last_arrived_packet_from_each_UE_destination_combo[key] = currentTime
-					mu.Unlock()
+					mu1.Unlock()
 				}
 
 				fmt.Printf("Inner IPv4 Src IP: %s, Dst IP: %s\n", srcIP, dstIP)

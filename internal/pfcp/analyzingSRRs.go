@@ -1,10 +1,8 @@
-package monitor
+package pfcp
 
 import (
 	"fmt"
 	"sync"
-
-	"github.com/aalayanahmad/go-upf/internal/pfcp"
 )
 
 // without UE applies the same to all UEs connect to a certain destination
@@ -17,11 +15,11 @@ var QoSflow_RoundTripPacketDelayThresholdso sync.Map
 var QoSflow_MinimumWaitTime sync.Map
 var QoSflow_MeasurementPeriod sync.Map
 
-func GetSRRContent(srrID uint8) ([]*pfcp.QoSControlInfo, error) {
-	pfcp.SrrMapLock.RLock()
-	defer pfcp.SrrMapLock.RUnlock()
+func GetSRRContent(srrID uint8) ([]*QoSControlInfo, error) {
+	SrrMapLock.RLock()
+	defer SrrMapLock.RUnlock()
 
-	srrInfos, exists := pfcp.Sotred_srrs_to_be_used_by_upf[srrID]
+	srrInfos, exists := SotredSrrsToBeUsedByUpf[srrID]
 	if !exists {
 		return nil, fmt.Errorf("SRR ID %d not found", srrID)
 	}
@@ -31,7 +29,7 @@ func GetSRRContent(srrID uint8) ([]*pfcp.QoSControlInfo, error) {
 
 // put in a separate file isnide montior
 // find QoS what needs to be monitored and threshold for that!
-func GetQoSFlowMonitoringContent(srrInfos []*pfcp.QoSControlInfo) {
+func GetQoSFlowMonitoringContent(srrInfos []*QoSControlInfo) {
 	for _, srrInfo := range srrInfos {
 		qfi := srrInfo.QFI
 		ReqQoSMonit := srrInfo.RequestedQoSMonitoring
