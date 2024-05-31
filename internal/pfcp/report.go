@@ -10,6 +10,7 @@ import (
 	"github.com/aalayanahmad/go-pfcp/message"
 	"github.com/aalayanahmad/go-upf/internal/report"
 	"github.com/aalayanahmad/go-upf/pkg/factory"
+	"github.com/aalayanahmad/go-upf/shared"
 	"github.com/pkg/errors"
 )
 
@@ -56,12 +57,6 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 
 	if len(usars) > 0 {
 		err := s.serveUSAReport(laddr, sr.SEID, usars)
-		if err != nil {
-			s.log.Errorln(err)
-		}
-	}
-	if len(sesrs) > 0 {
-		err := s.serveSESReport(laddr, sr.SEID, sesrs)
 		if err != nil {
 			s.log.Errorln(err)
 		}
@@ -174,7 +169,7 @@ func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 
 func new_values_listener() {
 	go func() {
-		toFillTheReport_Chan := to_fill_the_report.GetValuesToFill_Chan()
+		toFillTheReport_Chan := shared.To_fill_the_report.GetValuesToFill_Chan()
 		for new_value := range toFillTheReport_Chan {
 			mu.Lock()
 			qfi_value = new_value.QFI

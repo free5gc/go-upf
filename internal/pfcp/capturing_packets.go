@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aalayanahmad/go-upf/shared"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -28,10 +29,14 @@ var (
 	mu                                                         sync.Mutex
 )
 
-var toFillTheReport_Chan = make(chan shared.to_fill_the_report)
+var toBeReported_Chan = make(chan shared.ToBeReported, 555) //buffer size
 
-func GetValuesToFill_Chan() <-chan shared.to_fill_the_report {
-	return toFillTheReport_Chan
+type Monitor interface {
+	GetValuesToBeReported_Chan() <-chan shared.ToBeReported
+}
+
+func GetValuesToBeReported_Chan() <-chan shared.ToBeReported {
+	return toBeReported_Chan
 }
 func CapturePackets(interface_name string, file_to_save_captured_packets string) {
 	handle, err := pcap.OpenLive(interface_name, 2048, true, pcap.BlockForever)
@@ -174,13 +179,13 @@ func processPacket(packet gopacket.Packet) {
 								if dstIP == "10.100.200.4" {
 									qfi_val = 2
 								}
-								new_values_to_fill := shared.to_fill_the_report{
+								new_values_to_fill := shared.ToBeReported{
 									QFI:                      qfi_val,
 									QoSMonitoringMeasurement: latency_in_ms,
 									EventTimeStamp:           currentTime,
 									StartTime:                start_time_of_each_UE_destination_combo[key],
 								}
-								toFillTheReport_Chan <- new_values_to_fill
+								toBeReported_Chan <- new_values_to_fill
 							}
 							latest_latency_measure_per_UE_destination_combo[key] = latency_in_ms
 							fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
