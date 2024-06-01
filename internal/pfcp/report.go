@@ -157,7 +157,7 @@ func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 			ie.NewSRRID(1),
 			ie.NewQoSMonitoringReport(
 				ie.NewQFI(qfi_value),
-				ie.NewQoSMonitoringMeasurement(0x0, monitoring_measurement, 0x0, 0x0),
+				ie.NewQoSMonitoringMeasurement(0x0, monitoring_measurement, 0x0, 0x0), //check which bit is for monitoring
 				ie.NewEventTimeStamp(event_happened_at),
 				ie.NewStartTime(start_time),
 			),
