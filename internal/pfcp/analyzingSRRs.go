@@ -5,13 +5,13 @@ import (
 	"sync"
 )
 
-// without UE applies the same to all UEs connect to a certain destination
+// QoS flows are based on destination IPs in our case
 var QoSflow_RequestedMonitoring sync.Map
 var QoSflow_ReportedFrequency sync.Map
 var QoSflow_PacketDelayThresholds sync.Map
 var QoSflow_DownlinkPacketDelayThresholds sync.Map
 var QoSflow_UplinkPacketDelayThresholds sync.Map
-var QoSflow_RoundTripPacketDelayThresholdso sync.Map
+var QoSflow_RoundTripPacketDelayThresholds sync.Map
 var QoSflow_MinimumWaitTime sync.Map
 var QoSflow_MeasurementPeriod sync.Map
 
@@ -27,13 +27,13 @@ func GetSRRContent(srrID uint8) ([]*QoSControlInfo, error) {
 	return srrInfos, nil
 }
 
-// put in a separate file isnide montior
-// find QoS what needs to be monitored and threshold for that!
-func GetQoSFlowMonitoringContent() {
+// will be used by capturePackets to retrieve all required QoSFlow for monitoring
+func GetQoSFlowMonitoringContent() error {
 	srrInfos, err := GetSRRContent(uint8(1))
 	if err != nil {
-		return
+		return err
 	}
+	var qfi_destination string
 	for _, srrInfo := range srrInfos {
 		qfi := srrInfo.QFI
 		ReqQoSMonit := srrInfo.RequestedQoSMonitoring
@@ -44,20 +44,20 @@ func GetQoSFlowMonitoringContent() {
 		RoundTripPacketDelayThresholds := srrInfo.RoundTripPacketDelayThresholds
 		MinimumWaitTime := srrInfo.MinimumWaitTime
 		MeasurementPeriod := srrInfo.MeasurementPeriod
-		var qfi_reference string
 		if qfi == uint8(1) {
-			qfi_reference = "10.100.200.3"
+			qfi_destination = "10.100.200.3" //change according to destination1 IP
 		}
 		if qfi == uint8(2) {
-			qfi_reference = "10.100.200.4"
+			qfi_destination = "10.100.200.4" //change according to destination2 IP
 		}
-		QoSflow_RequestedMonitoring.Store(qfi_reference, ReqQoSMonit)
-		QoSflow_ReportedFrequency.Store(qfi_reference, ReportingFrequency)
-		QoSflow_PacketDelayThresholds.Store(qfi_reference, PacketDelayThresholds)
-		QoSflow_DownlinkPacketDelayThresholds.Store(qfi_reference, DownlinkPacketDelayThresholds)
-		QoSflow_UplinkPacketDelayThresholds.Store(qfi_reference, UplinkPacketDelayThresholds)
-		QoSflow_RoundTripPacketDelayThresholdso.Store(qfi_reference, RoundTripPacketDelayThresholds)
-		QoSflow_MinimumWaitTime.Store(qfi_reference, MinimumWaitTime)
-		QoSflow_MeasurementPeriod.Store(qfi_reference, MeasurementPeriod)
+		QoSflow_RequestedMonitoring.Store(qfi_destination, ReqQoSMonit)
+		QoSflow_ReportedFrequency.Store(qfi_destination, ReportingFrequency)
+		QoSflow_PacketDelayThresholds.Store(qfi_destination, PacketDelayThresholds)
+		QoSflow_DownlinkPacketDelayThresholds.Store(qfi_destination, DownlinkPacketDelayThresholds)
+		QoSflow_UplinkPacketDelayThresholds.Store(qfi_destination, UplinkPacketDelayThresholds)
+		QoSflow_RoundTripPacketDelayThresholds.Store(qfi_destination, RoundTripPacketDelayThresholds)
+		QoSflow_MinimumWaitTime.Store(qfi_destination, MinimumWaitTime)
+		QoSflow_MeasurementPeriod.Store(qfi_destination, MeasurementPeriod)
 	}
+	return nil
 }
