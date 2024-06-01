@@ -28,7 +28,6 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 	}
 
 	var usars []report.USAReport
-	var sesrs []report.SESReport
 	for _, rpt := range sr.Reports {
 		switch r := rpt.(type) {
 		case report.DLDReport:
@@ -48,7 +47,10 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 			usars = append(usars, r)
 		case report.SESReport:
 			s.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
-			sesrs = append(sesrs, r)
+			err := s.serveSESReport(laddr, sr.SEID)
+			if err != nil {
+				s.log.Errorln(err)
+			}
 		default:
 			s.log.Warnf("Unsupported Report: SEID(%#x), type(%d)", sr.SEID, rpt.Type())
 		}
@@ -137,7 +139,7 @@ var (
 )
 
 // send reprot!!
-func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, pdrid uint16) error {
+func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64) error {
 	s.log.Infoln("serveSESReport")
 
 	sess, err := s.lnode.Sess(lSeid)
@@ -166,16 +168,16 @@ func (s *PfcpServer) serveSESReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 	return errors.Wrap(err, "serveSESReport")
 }
 
-func new_values_listener() {
-	go func() {
-		toFillTheReport_Chan := GetValuesToBeReported_Chan()
-		for new_value := range toFillTheReport_Chan {
-			mu.Lock()
-			qfi_value = new_value.QFI
-			monitoring_measurement = new_value.QoSMonitoringMeasurement
-			event_happened_at = new_value.EventTimeStamp
-			start_time = new_value.StartTime
-			mu.Unlock()
-		}
-	}()
-}
+// func new_values_listener() {
+// 	go func() {
+// 		toFillTheReport_Chan := GetValuesToBeReported_Chan()
+// 		for new_value := range toFillTheReport_Chan {
+// 			mu.Lock()
+// 			qfi_value = new_value.QFI
+// 			monitoring_measurement = new_value.QoSMonitoringMeasurement
+// 			event_happened_at = new_value.EventTimeStamp
+// 			start_time = new_value.StartTime
+// 			mu.Unlock()
+// 		}
+// 	}()
+// }
