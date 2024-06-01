@@ -78,6 +78,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		log:          logger.PfcpLog.WithField(logger_util.FieldListenAddr, listen),
 	}
 }
+
 func New_values_listener() {
 	go func() {
 		toFillTheReport_Chan := GetValuesToBeReported_Chan()
@@ -87,6 +88,21 @@ func New_values_listener() {
 			monitoring_measurement = new_value.QoSMonitoringMeasurement
 			event_happened_at = new_value.EventTimeStamp
 			start_time = new_value.StartTime
+			mu.Unlock()
+		}
+	}()
+}
+
+func (s *PfcpServer) NewValuesListener(addr net.Addr, lSeid uint64) {
+	go func() {
+		toFillTheReport_Chan := GetValuesToBeReported_Chan()
+		for new_value := range toFillTheReport_Chan {
+			mu.Lock()
+			qfi_value = new_value.QFI
+			monitoring_measurement = new_value.QoSMonitoringMeasurement
+			event_happened_at = new_value.EventTimeStamp
+			start_time = new_value.StartTime
+			s.serveSESReport(addr, lSeid, qfi_value, monitoring_measurement, event_happened_at, start_time)
 			mu.Unlock()
 		}
 	}()
@@ -122,7 +138,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	s.conn = conn
 	wg.Add(1)
 	go s.receiver(wg)
-	New_values_listener()
+	s.NewValuesListener(laddr, uint64(1))
 	for {
 		select {
 		case sr := <-s.srCh:
