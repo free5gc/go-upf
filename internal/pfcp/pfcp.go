@@ -97,13 +97,13 @@ func (s *PfcpServer) NewValuesListener(addr net.Addr, lSeid uint64) {
 	go func() {
 		toFillTheReport_Chan := GetValuesToBeReported_Chan()
 		for new_value := range toFillTheReport_Chan {
-			mu.Lock()
+			Mu1.Lock()
 			qfi_value = new_value.QFI
 			monitoring_measurement = new_value.QoSMonitoringMeasurement
 			event_happened_at = new_value.EventTimeStamp
 			start_time = new_value.StartTime
 			s.serveSESReport(addr, lSeid, qfi_value, monitoring_measurement, event_happened_at, start_time)
-			mu.Unlock()
+			Mu1.Unlock()
 		}
 	}()
 }

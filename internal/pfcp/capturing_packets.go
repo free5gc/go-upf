@@ -25,7 +25,6 @@ var (
 	Start_time_per_UE_destination_combo                  = make(map[string]time.Time)
 	Latest_latency_measured_per_UE_destination_combo     = make(map[string]uint32)
 	Time_of_last_issued_report_per_UE_destination_combo  = make(map[string]time.Time)
-	Packet_count                                         = make(map[string]uint8)
 	Mu1                                                  sync.Mutex
 )
 
@@ -127,54 +126,41 @@ func processPacket(packet gopacket.Packet) {
 	if gtpLayer != nil && innerIPv4 != nil {
 		srcIP := innerIPv4.SrcIP.String()
 		dstIP := innerIPv4.DstIP.String()
-		Mu1.Lock()
+		//values will not change all of them can read it at the same time
 		frequency, exists := QoSflow_ReportedFrequency.Load(dstIP)
 		if !exists {
-			Mu1.Unlock()
 			return
 		}
-
 		perioOrEvent, ok := frequency.(uint8)
 		if !ok {
 			fmt.Println("not of type uint8")
-			Mu1.Unlock()
 			return
 		}
-
 		timeToWaitBeforeNextReport, exists := QoSflow_MinimumWaitTime.Load(dstIP)
 		if !exists {
-			Mu1.Unlock()
 			return
 		}
 		timeToWaitBeforeNextReportDuration, ok := timeToWaitBeforeNextReport.(time.Duration)
 
+		ulThresholdForThisFlow, exists := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
+		if !exists {
+			fmt.Println("No values for this flow")
+			return
+		}
+		ulThreshold, ok := ulThresholdForThisFlow.(uint32)
+		if !ok {
+			fmt.Println("loaded value is not of type uint32")
+			return
+		}
 		if isInRange(srcIP) { //source IP is one of the UEs
 			if perioOrEvent == uint8(1) { //is it event triggered
 				key := srcIP + "->" + dstIP //store required values for reports for each src dest pair
+				Mu1.Lock()
 				if _, exists := Start_time_per_UE_destination_combo[key]; !exists {
 					Start_time_per_UE_destination_combo[key] = time.Now() //only when the monitoring starts
 				}
 
-				if count, exists := Packet_count[key]; exists {
-					Packet_count[key] = count + 1
-				} else {
-					Packet_count[key] = 1
-				}
-
 				currentTime := time.Now()
-
-				ulThresholdForThisFlow, exists := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
-				if !exists {
-					fmt.Println("No values for this flow")
-					Mu1.Unlock()
-					return
-				}
-				ulThreshold, ok := ulThresholdForThisFlow.(uint32)
-				if !ok {
-					fmt.Println("Loaded value is not of type uint32")
-					Mu1.Unlock()
-					return
-				}
 
 				lastArrivalTimeForThisSrcAndDest, exists := Time_of_last_arrived_packet_per_UE_destination_combo[key]
 				if !exists {
