@@ -97,13 +97,13 @@ func (s *Sess) Close() []report.USAReport {
 			s.log.Errorf("Remove BAR err: %+v", err)
 		}
 	}
-	for id := range s.SRRIDs {
-		i := ie.NewRemoveSRR(ie.NewSRRID(id))
-		err := s.RemoveSRR(i)
-		if err != nil {
-			s.log.Errorf("Remove SRR err: %+v", err)
-		}
-	}
+	// for id := range s.SRRIDs {
+	// 	i := ie.NewRemoveSRR(ie.NewSRRID(id))
+	// 	err := s.RemoveSRR(i)
+	// 	if err != nil {
+	// 		s.log.Errorf("Remove SRR err: %+v", err)
+	// 	}
+	// }
 	for id := range s.PDRIDs {
 		i := ie.NewRemovePDR(ie.NewPDRID(id))
 		rs, err := s.RemovePDR(i)
@@ -377,10 +377,10 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 		}
 	}
 
-	err := s.rnode.driver.CreateSRR(s.LocalID, req)
-	if err != nil {
-		return err
-	}
+	// err := s.rnode.driver.CreateSRR(s.LocalID, req)
+	// if err != nil {
+	// 	return err
+	// }
 	SrrMapLock.Lock()
 	SotredSrrsToBeUsedByUpf[id] = srrQoSControlInfos
 	SrrMapLock.Unlock()
@@ -389,38 +389,38 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 	return nil
 }
 
-func (s *Sess) UpdateSRR(req *ie.IE) error {
-	id, err := req.SRRID()
-	if err != nil {
-		return err
-	}
+// func (s *Sess) UpdateSRR(req *ie.IE) error {
+// 	id, err := req.SRRID()
+// 	if err != nil {
+// 		return err
+// 	}
 
-	_, ok := s.SRRIDs[id]
-	if !ok {
-		return errors.Errorf("UpdateSRR: SRR(%#x) not found", id)
-	}
-	return s.rnode.driver.UpdateSRR(s.LocalID, req)
-}
+// 	_, ok := s.SRRIDs[id]
+// 	if !ok {
+// 		return errors.Errorf("UpdateSRR: SRR(%#x) not found", id)
+// 	}
+// 	return s.rnode.driver.UpdateSRR(s.LocalID, req)
+// }
 
-func (s *Sess) RemoveSRR(req *ie.IE) error {
-	id, err := req.SRRID()
-	if err != nil {
-		return err
-	}
+// func (s *Sess) RemoveSRR(req *ie.IE) error {
+// 	id, err := req.SRRID()
+// 	if err != nil {
+// 		return err
+// 	}
 
-	_, ok := s.SRRIDs[id]
-	if !ok {
-		return errors.Errorf("RemoveSRR: SRR(%#x) not found", id)
-	}
+// 	_, ok := s.SRRIDs[id]
+// 	if !ok {
+// 		return errors.Errorf("RemoveSRR: SRR(%#x) not found", id)
+// 	}
 
-	err = s.rnode.driver.RemoveSRR(s.LocalID, req)
-	if err != nil {
-		return err
-	}
+// 	err = s.rnode.driver.RemoveSRR(s.LocalID, req)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	delete(s.SRRIDs, id)
-	return nil
-}
+// 	delete(s.SRRIDs, id)
+// 	return nil
+// }
 
 func (s *Sess) CreateFAR(req *ie.IE) error {
 	id, err := req.FARID()

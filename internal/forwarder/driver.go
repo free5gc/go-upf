@@ -37,9 +37,9 @@ type Driver interface {
 	UpdateBAR(uint64, *ie.IE) error
 	RemoveBAR(uint64, *ie.IE) error
 
-	CreateSRR(uint64, *ie.IE) error
-	UpdateSRR(uint64, *ie.IE) error
-	RemoveSRR(uint64, *ie.IE) error
+	// CreateSRR(uint64, *ie.IE) error
+	// UpdateSRR(uint64, *ie.IE) error
+	// RemoveSRR(uint64, *ie.IE) error
 
 	HandleReport(report.Handler)
 }
