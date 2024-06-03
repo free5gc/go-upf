@@ -8,7 +8,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/free5gc/go-gtp5gnl v1.4.6
 	github.com/free5gc/util v1.0.6
-	github.com/google/gopacket v1.1.18
+	github.com/google/gopacket v1.1.19
 	github.com/hashicorp/go-version v1.6.0
 	github.com/khirono/go-genl v1.0.1
 	github.com/khirono/go-nl v1.0.5
