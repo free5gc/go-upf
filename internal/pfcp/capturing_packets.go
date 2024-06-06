@@ -42,11 +42,16 @@ func GetValuesToBeReported_Chan() <-chan ToBeReported { //everytime they change 
 }
 
 func CapturePackets(interface_name string, file_to_save_captured_packets string) {
-	err := GetQoSFlowMonitoringContent()
-	if err != nil {
-		fmt.Println("error:", err)
-		fmt.Println("no SRR")
-		return //no SRR was found
+	for {
+		err := GetQoSFlowMonitoringContent()
+		if err == nil {
+			fmt.Println("SRR found")
+			break // Exit the loop once an SRR is found
+		} else {
+			fmt.Println("error:", err)
+			fmt.Println("no SRR")
+		}
+		time.Sleep(5 * time.Second) // Adjust the interval as needed
 	}
 
 	handle, err := pcap.OpenLive(interface_name, 2048, true, pcap.BlockForever)
