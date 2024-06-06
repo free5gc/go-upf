@@ -267,6 +267,7 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 	var id uint8
 	srrQoSControlInfos := []*QoSControlInfo{}
 	for _, srr_ie := range req.ChildIEs {
+		fmt.Printf("checking child IES")
 		qfi := &ie.IE{}
 		requested_qos_monitoring := &ie.IE{}
 		reporting_frequency := &ie.IE{}
@@ -295,6 +296,9 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 				}
 				if qosControl_ie.Type == ie.ReportingFrequency {
 					reporting_frequency = qosControl_ie
+				}
+				if qosControl_ie.Type == ie.PacketDelayThresholds {
+					packet_delay_thresholds = qosControl_ie
 				}
 				if qosControl_ie.Type == ie.MinimumWaitTime {
 					minimum_wait_time = qosControl_ie

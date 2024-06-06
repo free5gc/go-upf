@@ -25,6 +25,7 @@ var (
 	Start_time_per_UE_destination_combo                  = make(map[string]time.Time)
 	Latest_latency_measured_per_UE_destination_combo     = make(map[string]uint32)
 	Time_of_last_issued_report_per_UE_destination_combo  = make(map[string]time.Time)
+	SRRFound                                             = false
 	Mu1                                                  sync.Mutex
 )
 
@@ -41,18 +42,30 @@ func GetValuesToBeReported_Chan() <-chan ToBeReported { //everytime they change 
 	return toBeReported_Chan
 }
 
-func CapturePackets(interface_name string, file_to_save_captured_packets string) {
-	for {
-		err := GetQoSFlowMonitoringContent()
-		if err == nil {
-			fmt.Println("SRR found")
-			break // Exit the loop once an SRR is found
-		} else {
-			fmt.Println("error:", err)
-			fmt.Println("no SRR")
+func StartPacketCapture(interface_name string, file_to_save_captured_packets string) {
+	go func() {
+		for {
+			err := GetQoSFlowMonitoringContent()
+			if err == nil {
+				fmt.Println("SRR found")
+				Mu1.Lock()
+				if SRRFound {
+					Mu1.Unlock()
+					return
+				}
+				SRRFound = true
+				Mu1.Unlock()
+				go CapturePackets(interface_name, file_to_save_captured_packets)
+				break // Exit the loop once an SRR is found
+			} else {
+				fmt.Println("error:", err)
+				fmt.Println("no SRR")
+			}
+			time.Sleep(3 * time.Second) // Adjust the interval as needed
 		}
-		time.Sleep(5 * time.Second) // Adjust the interval as needed
-	}
+	}()
+}
+func CapturePackets(interface_name string, file_to_save_captured_packets string) {
 
 	handle, err := pcap.OpenLive(interface_name, 2048, true, pcap.BlockForever)
 	if err != nil {
