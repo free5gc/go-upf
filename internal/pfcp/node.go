@@ -279,6 +279,7 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 		if srr_ie.Type == ie.SRRID {
 			srr_id, err := srr_ie.SRRID()
 			if err != nil {
+				fmt.Printf("Error getting SRRID: %v\n", err)
 				return err
 			}
 			id = srr_id
@@ -305,6 +306,7 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 			//for qfi
 			qfi_value, err := qfi.QFI()
 			if err != nil {
+				fmt.Printf("Error getting QFI: %v\n", err)
 				return err
 			}
 			//for RequestedQoSMonitoring:
@@ -347,6 +349,7 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 			}
 			fields, err := packet_delay_thresholds.PacketDelayThresholds()
 			if err != nil {
+				fmt.Printf("Error getting PacketDelayThresholds: %v\n", err)
 				return err
 			}
 			dl_thres := fields.DownlinkPacketDelayThresholds
@@ -355,11 +358,13 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 			//for minimum_wait_time:
 			min_wait_t, err := minimum_wait_time.MinimumWaitTime()
 			if err != nil {
+				fmt.Printf("Error getting MinimumWaitTime: %v\n", err)
 				return err
 			}
 			//for measurement_period:
 			mes_period, err := measurement_period.MeasurementPeriod()
 			if err != nil {
+				fmt.Printf("Error getting MeasurementPeriod: %v\n", err)
 				return err
 			}
 			QoSControlInfo1 := &QoSControlInfo{
@@ -377,10 +382,6 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 		}
 	}
 
-	// err := s.rnode.driver.CreateSRR(s.LocalID, req)
-	// if err != nil {
-	// 	return err
-	// }
 	SrrMapLock.Lock()
 	SotredSrrsToBeUsedByUpf[id] = srrQoSControlInfos
 	SrrMapLock.Unlock()
