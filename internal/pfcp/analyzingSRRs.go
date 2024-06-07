@@ -23,7 +23,7 @@ func GetSRRContent(srrID uint8) ([]*QoSControlInfo, error) {
 	if !exists {
 		return nil, fmt.Errorf("SRR ID %d not found", srrID)
 	}
-
+	fmt.Println("found srr")
 	return srrInfos, nil
 }
 
@@ -36,14 +36,23 @@ func GetQoSFlowMonitoringContent() error {
 	var qfi_destination string
 	for _, srrInfo := range srrInfos {
 		qfi := srrInfo.QFI
+		fmt.Println("qfi", qfi)
 		ReqQoSMonit := srrInfo.RequestedQoSMonitoring
+		fmt.Println("requestMont", ReqQoSMonit)
 		ReportingFrequency := srrInfo.ReportingFrequency
+		fmt.Println("ReportingFrequency", ReportingFrequency)
 		PacketDelayThresholds := srrInfo.PacketDelayThresholds
+		fmt.Println("PacketDelayThresholds", PacketDelayThresholds)
 		DownlinkPacketDelayThresholds := srrInfo.DownlinkPacketDelayThresholds
+		fmt.Println("DownlinkPacketDelayThresholds", DownlinkPacketDelayThresholds)
 		UplinkPacketDelayThresholds := srrInfo.UplinkPacketDelayThresholds
+		fmt.Println("UplinkPacketDelayThresholds", UplinkPacketDelayThresholds)
 		RoundTripPacketDelayThresholds := srrInfo.RoundTripPacketDelayThresholds
+		fmt.Println("RoundTripPacketDelayThresholds", RoundTripPacketDelayThresholds)
 		MinimumWaitTime := srrInfo.MinimumWaitTime
+		fmt.Println("MinimumWaitTime", MinimumWaitTime)
 		MeasurementPeriod := srrInfo.MeasurementPeriod
+		fmt.Println("MeasurementPeriod", MeasurementPeriod)
 		if qfi == uint8(1) {
 			qfi_destination = "10.100.200.2" //change according to destination1 IP
 		}
