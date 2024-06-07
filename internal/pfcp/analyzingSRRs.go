@@ -45,7 +45,7 @@ func GetQoSFlowMonitoringContent() error {
 		MinimumWaitTime := srrInfo.MinimumWaitTime
 		MeasurementPeriod := srrInfo.MeasurementPeriod
 		if qfi == uint8(1) {
-			qfi_destination = "10.100.200.3" //change according to destination1 IP
+			qfi_destination = "10.100.200.2" //change according to destination1 IP
 		}
 		if qfi == uint8(2) {
 			qfi_destination = "10.100.200.4" //change according to destination2 IP

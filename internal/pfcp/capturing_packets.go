@@ -191,7 +191,11 @@ func processPacket(packet gopacket.Packet) {
 					latencyInMs := uint32(latency.Milliseconds())
 					if latencyInMs > ulThreshold {
 						var qfiVal uint8
-						if dstIP == "10.100.200.3" || dstIP == "10.100.200.4" {
+						if dstIP == "10.100.200.2" {
+							qfiVal = 1
+						}
+
+						if dstIP == "10.100.200.4" {
 							qfiVal = 2
 						}
 						Time_of_last_issued_report_per_UE_destination_combo[key] = currentTime
@@ -211,8 +215,8 @@ func processPacket(packet gopacket.Packet) {
 						latency_in_ms := uint32(latency.Milliseconds())
 						if latency_in_ms > ulThreshold {
 							var qfi_val uint8
-							if dstIP == "10.100.200.3" {
-								qfi_val = 2
+							if dstIP == "10.100.200.2" {
+								qfi_val = 1
 							}
 
 							if dstIP == "10.100.200.4" {
