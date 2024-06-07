@@ -125,6 +125,7 @@ func worker(packetQueue <-chan gopacket.Packet, stopChan <-chan struct{}, wg *sy
 }
 
 func processPacket(packet gopacket.Packet) {
+	fmt.Println("eneted process packet")
 	var outerIPv4, innerIPv4 *layers.IPv4
 	var gtpLayer *layers.GTPv1U
 
@@ -147,15 +148,17 @@ func processPacket(packet gopacket.Packet) {
 		//values will not change all of them can read it at the same time
 		frequency, exists := QoSflow_ReportedFrequency.Load(dstIP)
 		if !exists {
+			fmt.Println("no reported frequency for this flow")
 			return
 		}
 		perioOrEvent, ok := frequency.(uint8)
 		if !ok {
-			fmt.Println("not of type uint8")
+			fmt.Println("not of type uint8 or does not exist")
 			return
 		}
 		timeToWaitBeforeNextReport, exists := QoSflow_MinimumWaitTime.Load(dstIP)
 		if !exists {
+			fmt.Println("no time to wait before next report for this flow")
 			return
 		}
 		timeToWaitBeforeNextReportDuration, ok := timeToWaitBeforeNextReport.(time.Duration)
