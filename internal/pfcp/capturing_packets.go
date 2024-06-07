@@ -151,7 +151,9 @@ func processPacket(packet gopacket.Packet) {
 			fmt.Println("no reported frequency for this flow")
 			return
 		}
+
 		perioOrEvent, ok := frequency.(uint8)
+		fmt.Println(frequency)
 		if !ok {
 			fmt.Println("not of type uint8 or does not exist")
 			return
