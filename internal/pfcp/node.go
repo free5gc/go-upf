@@ -846,6 +846,7 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 		QERIDs:   make(map[uint32]struct{}),
 		URRIDs:   make(map[uint32]*URRInfo),
 		BARIDs:   make(map[uint8]struct{}),
+		SRRIDs:   make(map[uint8][]*QoSControlInfo),
 		q:        make(map[uint16]chan []byte),
 		qlen:     qlen,
 	}
