@@ -171,6 +171,7 @@ func processPacket(packet gopacket.Packet) {
 			return
 		}
 		if isInRange(srcIP) { //source IP is one of the UEs
+			fmt.Println("there is an UL packet")
 			if perioOrEvent == uint8(1) { //is it event triggered
 				key := srcIP + "->" + dstIP //store required values for reports for each src dest pair
 				Mu1.Lock()
