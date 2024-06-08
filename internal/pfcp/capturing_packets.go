@@ -47,24 +47,18 @@ func StartPacketCapture(interface_name string, file_to_save_captured_packets str
 		for {
 			err := GetQoSFlowMonitoringContent()
 			if err == nil {
-				fmt.Println("SRR found")
-				Mu1.Lock()
-				if SRRFound {
-					Mu1.Unlock()
-					return
-				}
+				fmt.Println(" SRR found in StartPacketCapture ")
 				SRRFound = true
-				Mu1.Unlock()
 				go CapturePackets(interface_name, file_to_save_captured_packets)
-				break // Exit the loop once an SRR is found
+				break
 			} else {
-				fmt.Println("error:", err)
-				fmt.Println("no SRR")
+				fmt.Println("no SRR! error:", err)
 			}
-			time.Sleep(3 * time.Second) // Adjust the interval as needed
+			time.Sleep(1 * time.Second)
 		}
 	}()
 }
+
 func CapturePackets(interface_name string, file_to_save_captured_packets string) {
 
 	handle, err := pcap.OpenLive(interface_name, 2048, true, pcap.BlockForever)

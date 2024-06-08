@@ -266,18 +266,17 @@ func (s *Sess) RemovePDR(req *ie.IE) ([]report.USAReport, error) {
 func (s *Sess) CreateSRR(req *ie.IE) error {
 	var id uint8
 	srrQoSControlInfos := []*QoSControlInfo{}
+	qfi := &ie.IE{}
+	requested_qos_monitoring := &ie.IE{}
+	reporting_frequency := &ie.IE{}
+	packet_delay_thresholds := &ie.IE{}
+	minimum_wait_time := &ie.IE{}
+	measurement_period := &ie.IE{}
+
 	for _, srr_ie := range req.ChildIEs {
-		fmt.Printf("checking child IES")
-		qfi := &ie.IE{}
-		requested_qos_monitoring := &ie.IE{}
-		reporting_frequency := &ie.IE{}
-		packet_delay_thresholds := &ie.IE{}
-		minimum_wait_time := &ie.IE{}
-		measurement_period := &ie.IE{}
-		//put all of these in a SRRInfo struct
-		srrQoSControlInfos := []*QoSControlInfo{}
 
 		if srr_ie.Type == ie.SRRID {
+			fmt.Println("SRRID")
 			srr_id, err := srr_ie.SRRID()
 			if err != nil {
 				fmt.Printf("Error getting SRRID: %v\n", err)
@@ -287,23 +286,31 @@ func (s *Sess) CreateSRR(req *ie.IE) error {
 		}
 
 		if srr_ie.Type == ie.QoSMonitoringPerQoSFlowControlInformation {
+			fmt.Println("QoSMonitoringPerQoSFlowControlInformation")
 			for _, qosControl_ie := range srr_ie.ChildIEs {
+				fmt.Println("children of QoSMonitoringPerQoSFlowControlInformation")
 				if qosControl_ie.Type == ie.QFI {
+					fmt.Println("QFI")
 					qfi = qosControl_ie
 				}
 				if qosControl_ie.Type == ie.RequestedQoSMonitoring {
+					fmt.Println("RequestedQoSMonitoring")
 					requested_qos_monitoring = qosControl_ie
 				}
 				if qosControl_ie.Type == ie.ReportingFrequency {
+					fmt.Println("ReportingFrequency")
 					reporting_frequency = qosControl_ie
 				}
 				if qosControl_ie.Type == ie.PacketDelayThresholds {
+					fmt.Println("PacketDelayThresholds")
 					packet_delay_thresholds = qosControl_ie
 				}
 				if qosControl_ie.Type == ie.MinimumWaitTime {
+					fmt.Println("MinimumWaitTime")
 					minimum_wait_time = qosControl_ie
 				}
 				if qosControl_ie.Type == ie.MeasurementPeriod {
+					fmt.Println("MeasurementPeriod")
 					measurement_period = qosControl_ie
 				}
 			}
