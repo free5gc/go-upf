@@ -35,7 +35,9 @@ func GetQoSFlowMonitoringContent() error {
 		return err
 	}
 	var qfi_destination string
+	log.Println("retrieving values")
 	for _, srrInfo := range srrInfos {
+		log.Println("in SRR info line")
 		qfi := srrInfo.QFI
 		log.Println("qfi", qfi)
 		ReqQoSMonit := srrInfo.RequestedQoSMonitoring
