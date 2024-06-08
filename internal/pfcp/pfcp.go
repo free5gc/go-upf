@@ -102,6 +102,7 @@ func (s *PfcpServer) NewValuesListener(addr net.Addr, lSeid uint64) {
 			monitoring_measurement = new_value.QoSMonitoringMeasurement
 			event_happened_at = new_value.EventTimeStamp
 			start_time = new_value.StartTime
+			fmt.Print("address: ", addr)
 			s.serveSESReport(addr, lSeid, qfi_value, monitoring_measurement, event_happened_at, start_time)
 			Mu1.Unlock()
 		}
@@ -129,7 +130,14 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		s.log.Errorf("Resolve err: %+v", err)
 		return
 	}
-
+	address := "10.100.200.12"
+	port := 8805
+	sendUDPAddr := fmt.Sprintf("%s:%d", address, port)
+	sendAddr, err := net.ResolveUDPAddr("udp4", sendUDPAddr)
+	if err != nil {
+		s.log.Errorf("Resolve send address err: %+v", err)
+		return
+	}
 	conn, err := net.ListenUDP("udp4", laddr)
 	if err != nil {
 		s.log.Errorf("Listen err: %+v", err)
@@ -138,7 +146,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	s.conn = conn
 	wg.Add(1)
 	go s.receiver(wg)
-	s.NewValuesListener(laddr, uint64(1))
+	s.NewValuesListener(sendAddr, uint64(1))
 	for {
 		select {
 		case sr := <-s.srCh:

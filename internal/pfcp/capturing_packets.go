@@ -140,6 +140,7 @@ func processPacket(packet gopacket.Packet) {
 		srcIP := innerIPv4.SrcIP.String()
 		dstIP := innerIPv4.DstIP.String()
 		//values will not change all of them can read it at the same time
+		Mu1.Lock()
 		frequency, exists := QoSflow_ReportedFrequency.Load(dstIP)
 		if !exists {
 			fmt.Println("no reported frequency for this flow")
@@ -173,7 +174,6 @@ func processPacket(packet gopacket.Packet) {
 			fmt.Println("there is an UL packet")
 			if perioOrEvent == uint8(1) { //is it event triggered
 				key := srcIP + "->" + dstIP //store required values for reports for each src dest pair
-				Mu1.Lock()
 				if _, exists := Start_time_per_UE_destination_combo[key]; !exists {
 					Start_time_per_UE_destination_combo[key] = time.Now() //only when the monitoring starts
 				}
