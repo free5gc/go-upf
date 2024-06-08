@@ -144,6 +144,7 @@ func processPacket(packet gopacket.Packet) {
 		frequency, exists := QoSflow_ReportedFrequency.Load(dstIP)
 		if !exists {
 			fmt.Println("no reported frequency for this flow")
+			Mu1.Unlock()
 			return
 		}
 
@@ -151,11 +152,13 @@ func processPacket(packet gopacket.Packet) {
 		fmt.Println(frequency)
 		if !ok {
 			fmt.Println("not of type uint8 or does not exist")
+			Mu1.Unlock()
 			return
 		}
 		timeToWaitBeforeNextReport, exists := QoSflow_MinimumWaitTime.Load(dstIP)
 		if !exists {
 			fmt.Println("no time to wait before next report for this flow")
+			Mu1.Unlock()
 			return
 		}
 		timeToWaitBeforeNextReportDuration, ok := timeToWaitBeforeNextReport.(time.Duration)
@@ -163,13 +166,16 @@ func processPacket(packet gopacket.Packet) {
 		ulThresholdForThisFlow, exists := QoSflow_UplinkPacketDelayThresholds.Load(dstIP)
 		if !exists {
 			fmt.Println("No values for this flow")
+			Mu1.Unlock()
 			return
 		}
 		ulThreshold, ok := ulThresholdForThisFlow.(uint32)
 		if !ok {
 			fmt.Println("loaded value is not of type uint32")
+			Mu1.Unlock()
 			return
 		}
+		fmt.Println("here")
 		if isInRange(srcIP) { //source IP is one of the UEs
 			fmt.Println("there is an UL packet")
 			if perioOrEvent == uint8(1) { //is it event triggered
