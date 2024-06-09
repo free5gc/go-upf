@@ -201,7 +201,7 @@ func processPacket(packet gopacket.Packet) {
 							qfiVal = 1
 						}
 
-						if dstIP == "10.100.200.4" {
+						if dstIP == "10.100.200.3" {
 							qfiVal = 2
 						}
 						Time_of_last_issued_report_per_UE_destination_combo[key] = currentTime
@@ -225,7 +225,7 @@ func processPacket(packet gopacket.Packet) {
 								qfi_val = 1
 							}
 
-							if dstIP == "10.100.200.4" {
+							if dstIP == "10.100.200.3" {
 								qfi_val = 2
 							}
 							new_values_to_fill := ToBeReported{

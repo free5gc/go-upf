@@ -60,7 +60,7 @@ func GetQoSFlowMonitoringContent() error {
 			qfi_destination = "10.100.200.2" //change according to destination1 IP
 		}
 		if qfi == uint8(2) {
-			qfi_destination = "10.100.200.4" //change according to destination2 IP
+			qfi_destination = "10.100.200.3" //change according to destination2 IP
 		}
 		QoSflow_RequestedMonitoring.Store(qfi_destination, ReqQoSMonit)
 		QoSflow_ReportedFrequency.Store(qfi_destination, ReportingFrequency)
