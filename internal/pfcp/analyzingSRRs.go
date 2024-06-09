@@ -63,13 +63,21 @@ func GetQoSFlowMonitoringContent() error {
 			qfi_destination = "10.100.200.3" //change according to destination2 IP
 		}
 		QoSflow_RequestedMonitoring.Store(qfi_destination, ReqQoSMonit)
+		log.Println("stored RequestedMonitoring for", qfi_destination)
 		QoSflow_ReportedFrequency.Store(qfi_destination, ReportingFrequency)
+		log.Println("stored ReportedFrequency for", qfi_destination)
 		QoSflow_PacketDelayThresholds.Store(qfi_destination, PacketDelayThresholds)
+		log.Println("stored PacketDelayThresholds for", qfi_destination)
 		QoSflow_DownlinkPacketDelayThresholds.Store(qfi_destination, DownlinkPacketDelayThresholds)
+		log.Println("stored DownlinkPacketDelayThresholds for", qfi_destination)
 		QoSflow_UplinkPacketDelayThresholds.Store(qfi_destination, UplinkPacketDelayThresholds)
+		log.Println("stored UplinkPacketDelayThresholds for", qfi_destination)
 		QoSflow_RoundTripPacketDelayThresholds.Store(qfi_destination, RoundTripPacketDelayThresholds)
+		log.Println("stored RoundTripPacketDelayThresholds for", qfi_destination)
 		QoSflow_MinimumWaitTime.Store(qfi_destination, MinimumWaitTime)
+		log.Println("stored MinimumWaitTime for", qfi_destination)
 		QoSflow_MeasurementPeriod.Store(qfi_destination, MeasurementPeriod)
+		log.Println("stored MeasurementPeriod for", qfi_destination)
 	}
 	return nil
 }

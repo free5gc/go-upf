@@ -139,6 +139,7 @@ func processPacket(packet gopacket.Packet) {
 	if gtpLayer != nil && innerIPv4 != nil {
 		srcIP := innerIPv4.SrcIP.String()
 		dstIP := innerIPv4.DstIP.String()
+		fmt.Println("dest is:", dstIP)
 		//values will not change all of them can read it at the same time
 		Mu1.Lock()
 		frequency, exists := QoSflow_ReportedFrequency.Load(dstIP)
@@ -180,18 +181,24 @@ func processPacket(packet gopacket.Packet) {
 			fmt.Println("there is an UL packet")
 			if perioOrEvent == uint8(1) { //is it event triggered
 				key := srcIP + "->" + dstIP //store required values for reports for each src dest pair
+
+				//if first packet add start time as time NOW
 				if _, exists := Start_time_per_UE_destination_combo[key]; !exists {
 					Start_time_per_UE_destination_combo[key] = time.Now() //only when the monitoring starts
+					Time_of_last_arrived_packet_per_UE_destination_combo[key] = time.Now()
 				}
-
+				//else
 				currentTime := time.Now()
-
+				//save the last time a packet from this source and dest arrived REDUNDANT
 				lastArrivalTimeForThisSrcAndDest, exists := Time_of_last_arrived_packet_per_UE_destination_combo[key]
+
 				if !exists {
+					//if there is none add
 					lastArrivalTimeForThisSrcAndDest = currentTime
 				}
 
 				timeSinceLastReport, exists := Time_of_last_issued_report_per_UE_destination_combo[key]
+				//no report was issued so no even was triggered but it is not the first pccket
 				if lastArrivalTimeForThisSrcAndDest != currentTime && !exists {
 					latency := currentTime.Sub(lastArrivalTimeForThisSrcAndDest)
 					latencyInMs := uint32(latency.Milliseconds())
@@ -215,6 +222,7 @@ func processPacket(packet gopacket.Packet) {
 					}
 					Latest_latency_measured_per_UE_destination_combo[key] = latencyInMs
 					fmt.Printf("Key: %s, Latency: %v ms\n", key, latencyInMs)
+					//a previous report was issued
 				} else if lastArrivalTimeForThisSrcAndDest != currentTime && exists {
 					if time.Since(timeSinceLastReport) >= timeToWaitBeforeNextReportDuration {
 						latency := currentTime.Sub(lastArrivalTimeForThisSrcAndDest)
@@ -240,7 +248,7 @@ func processPacket(packet gopacket.Packet) {
 						fmt.Printf("Key: %s, Latency: %v ms\n", key, latency_in_ms)
 					}
 				}
-				Time_of_last_arrived_packet_per_UE_destination_combo[key] = currentTime
+				Time_of_last_arrived_packet_per_UE_destination_combo[key] = time.Now()
 			}
 		}
 		Mu1.Unlock()
