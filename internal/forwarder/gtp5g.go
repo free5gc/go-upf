@@ -3,6 +3,7 @@ package forwarder
 import (
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -1647,6 +1648,17 @@ func (g *Gtp5g) WritePacket(far *gtp5gnl.FAR, qer *gtp5gnl.QER, pkt []byte) erro
 	if far.Param == nil || far.Param.Creation == nil {
 		return errors.New("far param not found")
 	}
+	qfi_to_mark := uint8(0)
+	src_ip, dst_ip, header_problem := ipv4_src_and_dest_ips(pkt)
+	if header_problem != nil {
+		g.log.Warnf("there is a problem with the header: %+v", header_problem)
+	} else {
+		g.log.Tracef("source is:  %+v", src_ip)
+		g.log.Tracef("destination is:  %+v", dst_ip)
+		qfi_to_mark = determine_qfi(src_ip, dst_ip)
+		g.log.Tracef("qfi marked as: %+v", qfi_to_mark)
+	}
+
 	hc := far.Param.Creation
 	addr := &net.UDPAddr{
 		IP:   hc.PeerAddr,
@@ -1662,7 +1674,7 @@ func (g *Gtp5g) WritePacket(far *gtp5gnl.FAR, qer *gtp5gnl.QER, pkt []byte) erro
 		msg.Exts = []gtpv1.Encoder{
 			gtpv1.PDUSessionContainer{
 				PDUType:   0,
-				QoSFlowID: qer.QFI,
+				QoSFlowID: qfi_to_mark,
 			},
 		}
 	}
@@ -1674,4 +1686,46 @@ func (g *Gtp5g) WritePacket(far *gtp5gnl.FAR, qer *gtp5gnl.QER, pkt []byte) erro
 	}
 	_, err = g.link.WriteTo(b, addr)
 	return err
+}
+
+// assuming our UL packets are TCP (IPv4), we need to parse the source and the destination
+func ipv4_src_and_dest_ips(inner_ipv4_pkt []byte) (src_ip, dst_ip string, err error) {
+
+	fmt.Println("i am inside ipv4_src_and_dest_ips")
+	if len(inner_ipv4_pkt) < 20 {
+		return "", "", fmt.Errorf("packet too short to contain a valid IPv4 header")
+	}
+
+	ip_header_length := int(inner_ipv4_pkt[0]&0x0F) * 4
+
+	if len(inner_ipv4_pkt) < ip_header_length {
+		return "", "", fmt.Errorf("packet length less than IPv4 header length")
+	}
+
+	// src ip is bytes 12, 13, 14, 15
+	src_ip = net.IPv4(inner_ipv4_pkt[12], inner_ipv4_pkt[13], inner_ipv4_pkt[14], inner_ipv4_pkt[15]).String()
+	// dst ip is bytes 16, 17, 18, 19
+	dst_ip = net.IPv4(inner_ipv4_pkt[16], inner_ipv4_pkt[17], inner_ipv4_pkt[18], inner_ipv4_pkt[19]).String()
+
+	fmt.Println("source is:", src_ip)
+	fmt.Println("destination is:", dst_ip)
+
+	return src_ip, dst_ip, nil
+}
+
+// based on the parsed source and destination ips we must find the qfi
+func determine_qfi(src_ip string, dst_ip string) (qfi uint8) {
+	// assume for both UL traffic with srcX and dstY and DL traffic with srcY and dstX the QFI will be the same
+	if (is_uplink_or_downlink(src_ip) && dst_ip == "10.100.200.2") || (is_uplink_or_downlink(dst_ip) && src_ip == "10.100.200.2") {
+		return uint8(1)
+	} else if (is_uplink_or_downlink(src_ip) && dst_ip == "10.100.200.3") || (is_uplink_or_downlink(dst_ip) && src_ip == "10.100.200.3") {
+		return uint8(2)
+	} else {
+		return uint8(0)
+	}
+}
+
+// to determine if this packet is an UL packet
+func is_uplink_or_downlink(ip string) bool {
+	return strings.HasPrefix(ip, "10.60.0.") || strings.HasPrefix(ip, "10.61.0.")
 }
