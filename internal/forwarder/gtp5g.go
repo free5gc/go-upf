@@ -162,7 +162,7 @@ func (g *Gtp5g) checkVersion() error {
 	}
 	if nowVer.LessThan(expMinVer) || nowVer.GreaterThanOrEqual(expMaxVer) {
 		return errors.Errorf(
-			"gtp5g version(%v) should be %s <= verion < %s , please update it",
+			"gtp5g version(%v) should be %s <= version < %s , please update it",
 			nowVer, expectedMinGtp5gVersion, expectedMaxGtp5gVersion)
 	}
 
