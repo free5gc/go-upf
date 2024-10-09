@@ -77,7 +77,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	}
 
 	CreatedPDRList := make([]*ie.IE, 0)
-	
+
 	for _, i := range req.CreatePDR {
 		err = sess.CreatePDR(i)
 		if err != nil {
@@ -92,7 +92,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorln("ueIPv4: ", ueIPv4)
 
 			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
-				ie.NewUEIPAddress(1, ueIPv4, "", 0, 0),
+				// ie.NewUEIPAddress(2, "60.60.0.6", "", 0, 0),
+				ie.NewUEIPAddress(2, ueIPv4, "", 0, 0),
 			))
 		}
 	}
@@ -105,10 +106,9 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	// TODO: support v6
 	var v6 net.IP
 
-
-	ies := append(CreatedPDRList, 
-		newIeNodeID(s.nodeID), 
-		ie.NewCause(ie.CauseRequestAccepted), 
+	ies := append(CreatedPDRList,
+		newIeNodeID(s.nodeID),
+		ie.NewCause(ie.CauseRequestAccepted),
 		ie.NewFSEID(sess.LocalID, v4, v6))
 
 	rsp := message.NewSessionEstablishmentResponse(
@@ -438,7 +438,6 @@ func (s *PfcpServer) handleSessionReportRequestTimeout(
 // getUEAddressFromPDR returns the UEIPaddress() from the PDR IE.
 func getUEAddressFromPDR(pdr *ie.IE) *ie.UEIPAddressFields {
 	ies, err := pdr.CreatePDR()
-
 	if err != nil {
 		return nil
 	}
@@ -464,30 +463,30 @@ func getUEAddressFromPDR(pdr *ie.IE) *ie.UEIPAddressFields {
 	return nil
 }
 
-func getFTEIDFromPDR(pdr *ie.IE) *ie.FTEIDFields {
-	ies, err := pdr.CreatePDR()
+// func getFTEIDFromPDR(pdr *ie.IE) *ie.FTEIDFields {
+// 	ies, err := pdr.CreatePDR()
 
-	if err != nil {
-		return nil
-	}
+// 	if err != nil {
+// 		return nil
+// 	}
 
-	for _, i := range ies {
-		// only care about PDI
-		if i.Type == ie.PDI {
-			ies, err := i.PDI()
-			if err != nil {
-				return nil
-			}
-			for _, x := range ies {
-				if x.Type == ie.FTEID {
-					fields, err := x.FTEID()
-					if err != nil {
-						return nil
-					}
-					return fields
-				}
-			}
-		}
-	}
-	return nil
-}
+// 	for _, i := range ies {
+// 		// only care about PDI
+// 		if i.Type == ie.PDI {
+// 			ies, err := i.PDI()
+// 			if err != nil {
+// 				return nil
+// 			}
+// 			for _, x := range ies {
+// 				if x.Type == ie.FTEID {
+// 					fields, err := x.FTEID()
+// 					if err != nil {
+// 						return nil
+// 					}
+// 					return fields
+// 				}
+// 			}
+// 		}
+// 	}
+// 	return nil
+// }
