@@ -85,14 +85,12 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		}
 
 		ueIPAddress := getUEAddressFromPDR(i)
-		sess.log.Errorln("UEIPAddress: ", ueIPAddress)
+		pdrId := getPDRIDFromPDR(i)
 
 		if ueIPAddress != nil {
 			ueIPv4 := ueIPAddress.IPv4Address.String()
-			sess.log.Errorln("ueIPv4: ", ueIPv4)
-
 			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
-				// ie.NewUEIPAddress(2, "60.60.0.6", "", 0, 0),
+				ie.NewPDRID(pdrId),
 				ie.NewUEIPAddress(2, ueIPv4, "", 0, 0),
 			))
 		}
@@ -106,7 +104,9 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	// TODO: support v6
 	var v6 net.IP
 
-	ies := append(CreatedPDRList,
+	ies := make([]*ie.IE, 0)
+	ies = append(ies, CreatedPDRList...)
+	ies = append(ies,
 		newIeNodeID(s.nodeID),
 		ie.NewCause(ie.CauseRequestAccepted),
 		ie.NewFSEID(sess.LocalID, v4, v6))
@@ -463,30 +463,20 @@ func getUEAddressFromPDR(pdr *ie.IE) *ie.UEIPAddressFields {
 	return nil
 }
 
-// func getFTEIDFromPDR(pdr *ie.IE) *ie.FTEIDFields {
-// 	ies, err := pdr.CreatePDR()
+func getPDRIDFromPDR(pdr *ie.IE) uint16 {
+	ies, err := pdr.CreatePDR()
+	if err != nil {
+		return 0
+	}
 
-// 	if err != nil {
-// 		return nil
-// 	}
-
-// 	for _, i := range ies {
-// 		// only care about PDI
-// 		if i.Type == ie.PDI {
-// 			ies, err := i.PDI()
-// 			if err != nil {
-// 				return nil
-// 			}
-// 			for _, x := range ies {
-// 				if x.Type == ie.FTEID {
-// 					fields, err := x.FTEID()
-// 					if err != nil {
-// 						return nil
-// 					}
-// 					return fields
-// 				}
-// 			}
-// 		}
-// 	}
-// 	return nil
-// }
+	for _, i := range ies {
+		if i.Type == ie.PDRID {
+			id, err := i.PDRID()
+			if err != nil {
+				return 0
+			}
+			return id
+		}
+	}
+	return 0
+}
