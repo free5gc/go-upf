@@ -76,10 +76,23 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		}
 	}
 
+	CreatedPDRList := make([]*ie.IE, 0)
+
 	for _, i := range req.CreatePDR {
 		err = sess.CreatePDR(i)
 		if err != nil {
 			sess.log.Errorf("Est CreatePDR error: %+v", err)
+		}
+
+		ueIPAddress := getUEAddressFromPDR(i)
+		pdrId := getPDRIDFromPDR(i)
+
+		if ueIPAddress != nil {
+			ueIPv4 := ueIPAddress.IPv4Address.String()
+			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
+				ie.NewPDRID(pdrId),
+				ie.NewUEIPAddress(2, ueIPv4, "", 0, 0),
+			))
 		}
 	}
 
@@ -91,16 +104,20 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	// TODO: support v6
 	var v6 net.IP
 
+	ies := make([]*ie.IE, 0)
+	ies = append(ies, CreatedPDRList...)
+	ies = append(ies,
+		newIeNodeID(s.nodeID),
+		ie.NewCause(ie.CauseRequestAccepted),
+		ie.NewFSEID(sess.LocalID, v4, v6))
+
 	rsp := message.NewSessionEstablishmentResponse(
 		0,             // mp
 		0,             // fo
 		sess.RemoteID, // seid
 		req.Header.SequenceNumber,
 		0, // pri
-		newIeNodeID(s.nodeID),
-		ie.NewCause(ie.CauseRequestAccepted),
-		ie.NewFSEID(sess.LocalID, v4, v6),
-		ie.NewCreatePDR(req.CreatePDR...),
+		ies...,
 	)
 
 	err = s.sendRspTo(rsp, addr)
@@ -416,4 +433,50 @@ func (s *PfcpServer) handleSessionReportRequestTimeout(
 ) {
 	s.log.Warnf("handleSessionReportRequestTimeout: SEID[%#x]", req.SEID())
 	// TODO?
+}
+
+// getUEAddressFromPDR returns the UEIPaddress() from the PDR IE.
+func getUEAddressFromPDR(pdr *ie.IE) *ie.UEIPAddressFields {
+	ies, err := pdr.CreatePDR()
+	if err != nil {
+		return nil
+	}
+
+	for _, i := range ies {
+		// only care about PDI
+		if i.Type == ie.PDI {
+			ies, err := i.PDI()
+			if err != nil {
+				return nil
+			}
+			for _, x := range ies {
+				if x.Type == ie.UEIPAddress {
+					fields, err := x.UEIPAddress()
+					if err != nil {
+						return nil
+					}
+					return fields
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func getPDRIDFromPDR(pdr *ie.IE) uint16 {
+	ies, err := pdr.CreatePDR()
+	if err != nil {
+		return 0
+	}
+
+	for _, i := range ies {
+		if i.Type == ie.PDRID {
+			id, err := i.PDRID()
+			if err != nil {
+				return 0
+			}
+			return id
+		}
+	}
+	return 0
 }
