@@ -3,145 +3,109 @@ package pfcp
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
 	logger_util "github.com/free5gc/util/logger"
 )
 
-func TestNode(t *testing.T) {
-	n := NewRemoteNode(
-		"smf1",
-		nil,
-		&LocalNode{},
-		forwarder.Empty{},
-		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
-	)
-	t.Run("delete 0 no effect", func(t *testing.T) {
-		n.DeleteSess(0)
-	})
-	t.Run("sess 0 is not found", func(t *testing.T) {
-		_, err := n.Sess(0)
-		if err == nil {
-			t.Errorf("want false; but got %v\n", err)
+func TestRemoteNode(t *testing.T) {
+	t.Run("sess is not found before create", func(t *testing.T) {
+		n := NewRemoteNode(
+			"smf1",
+			nil,
+			&LocalNode{},
+			forwarder.Empty{},
+			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
+		)
+		for i := 0; i < 3; i++ {
+			_, err := n.Sess(uint64(i))
+			assert.NotNil(t, err)
 		}
 	})
-	t.Run("sess 1 is not found", func(t *testing.T) {
-		_, err := n.Sess(1)
-		if err == nil {
-			t.Errorf("want false; but got %v\n", err)
+
+	t.Run("new multiple session", func(t *testing.T) {
+		n := NewRemoteNode(
+			"smf1",
+			nil,
+			&LocalNode{},
+			forwarder.Empty{},
+			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
+		)
+
+		testcases := []struct {
+			localID  uint64
+			remoteID uint64
+		}{
+			{1, 10}, {2, 20}, {3, 30},
+		}
+
+		for _, tc := range testcases {
+			sess := n.NewSess(tc.remoteID)
+			assert.Equal(t, tc.localID, sess.LocalID)
+			assert.Equal(t, tc.remoteID, sess.RemoteID)
+		}
+
+		// assure the session stored in the node
+		for _, tc := range testcases {
+			sess, err := n.Sess(tc.localID)
+			assert.Nil(t, err)
+			assert.Equal(t, tc.localID, sess.LocalID)
+			assert.Equal(t, tc.remoteID, sess.RemoteID)
 		}
 	})
-	t.Run("sess 2 is not found", func(t *testing.T) {
-		_, err := n.Sess(2)
-		if err == nil {
-			t.Errorf("want false; but got %v\n", err)
-		}
+
+	t.Run("delete 0 no effect before create", func(t *testing.T) {
+		n := NewRemoteNode(
+			"smf1",
+			nil,
+			&LocalNode{},
+			forwarder.Empty{},
+			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
+		)
+		report := n.DeleteSess(0)
+		assert.Nil(t, report)
 	})
-	t.Run("new 1", func(t *testing.T) {
-		sess := n.NewSess(10)
-		if sess.LocalID != 1 {
-			t.Errorf("want 1; but got %v\n", sess.LocalID)
+	t.Run("delete should success after create", func(t *testing.T) {
+		n := NewRemoteNode(
+			"smf1",
+			nil,
+			&LocalNode{},
+			forwarder.Empty{},
+			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
+		)
+
+		testcases := []struct {
+			localID  uint64
+			remoteID uint64
+		}{
+			{1, 10}, {2, 20}, {3, 30},
 		}
-		if sess.RemoteID != 10 {
-			t.Errorf("want 10; but got %v\n", sess.RemoteID)
+
+		for _, tc := range testcases {
+			n.NewSess(tc.remoteID)
 		}
-	})
-	t.Run("new 2", func(t *testing.T) {
-		sess := n.NewSess(20)
-		if sess.LocalID != 2 {
-			t.Errorf("want 2; but got %v\n", sess.LocalID)
+
+		for _, tc := range testcases {
+			n.DeleteSess(tc.localID)
 		}
-		if sess.RemoteID != 20 {
-			t.Errorf("want 20; but got %v\n", sess.RemoteID)
+
+		// assure the session is deleted
+		for _, tc := range testcases {
+			_, err := n.Sess(tc.localID)
+			assert.NotNil(t, err)
 		}
-	})
-	t.Run("new 3", func(t *testing.T) {
-		sess := n.NewSess(30)
-		if sess.LocalID != 3 {
-			t.Errorf("want 3; but got %v\n", sess.LocalID)
-		}
-		if sess.RemoteID != 30 {
-			t.Errorf("want 30; but got %v\n", sess.RemoteID)
-		}
-	})
-	t.Run("sess 1", func(t *testing.T) {
-		sess, err := n.Sess(1)
-		if err != nil {
-			t.Fatalf("want true; but got %v\n", err)
-		}
-		if sess.LocalID != 1 {
-			t.Errorf("want 1; but got %v\n", sess.LocalID)
-		}
-		if sess.RemoteID != 10 {
-			t.Errorf("want 10; but got %v\n", sess.RemoteID)
-		}
-	})
-	t.Run("sess 2", func(t *testing.T) {
-		sess, err := n.Sess(2)
-		if err != nil {
-			t.Fatalf("want true; but got %v\n", err)
-		}
-		if sess.LocalID != 2 {
-			t.Errorf("want 2; but got %v\n", sess.LocalID)
-		}
-		if sess.RemoteID != 20 {
-			t.Errorf("want 20; but got %v\n", sess.RemoteID)
-		}
-	})
-	t.Run("sess 3", func(t *testing.T) {
-		sess, err := n.Sess(3)
-		if err != nil {
-			t.Fatalf("want true; but got %v\n", err)
-		}
-		if sess.LocalID != 3 {
-			t.Errorf("want 3; but got %v\n", sess.LocalID)
-		}
-		if sess.RemoteID != 30 {
-			t.Errorf("want 30; but got %v\n", sess.RemoteID)
-		}
-	})
-	t.Run("sess 4 is not found", func(t *testing.T) {
-		_, err := n.Sess(4)
-		if err == nil {
-			t.Errorf("want false; but got %v\n", err)
-		}
-	})
-	t.Run("delete 2", func(t *testing.T) {
-		n.DeleteSess(2)
-	})
-	t.Run("sess 2 is not found", func(t *testing.T) {
-		_, err := n.Sess(2)
-		if err == nil {
-			t.Errorf("want false; but got %v\n", err)
-		}
-	})
-	t.Run("delete 1", func(t *testing.T) {
-		n.DeleteSess(1)
-	})
-	t.Run("sess 1 is not found", func(t *testing.T) {
-		_, err := n.Sess(1)
-		if err == nil {
-			t.Errorf("want false; but got %v\n", err)
-		}
-	})
-	t.Run("delete 1 no effect", func(t *testing.T) {
-		n.DeleteSess(1)
-	})
-	t.Run("delete 4 no effect", func(t *testing.T) {
-		n.DeleteSess(4)
-	})
-	t.Run("new 4", func(t *testing.T) {
-		sess := n.NewSess(40)
-		if sess.LocalID != 1 {
-			t.Errorf("want 1; but got %v\n", sess.LocalID)
-		}
-		if sess.RemoteID != 40 {
-			t.Errorf("want 40; but got %v\n", sess.RemoteID)
+
+		// delete again should have no effect
+		for _, tc := range testcases {
+			report := n.DeleteSess(tc.localID)
+			assert.Nil(t, report)
 		}
 	})
 }
 
-func TestNode_multipleSMF(t *testing.T) {
+func TestRemoteNode_multipleSMF(t *testing.T) {
 	var lnode LocalNode
 	n1 := NewRemoteNode(
 		"smf1",
@@ -252,5 +216,25 @@ func TestNode_multipleSMF(t *testing.T) {
 		if sess.RemoteID != 10 {
 			t.Errorf("want 10; but got %v\n", sess.RemoteID)
 		}
+	})
+}
+
+func TestLocalNode(t *testing.T) {
+	t.Run("new session", func(t *testing.T) {
+		lnode := LocalNode{}
+		sess := lnode.NewSess(10, BUFFQ_LEN)
+		assert.Equal(t, uint64(1), sess.LocalID)
+		assert.Equal(t, uint64(10), sess.RemoteID)
+	})
+
+	t.Run("recycle LocalID", func(t *testing.T) {
+		lnode := LocalNode{
+			sess: []*Sess{},
+			free: []uint64{},
+		}
+		sess := lnode.NewSess(10, BUFFQ_LEN)
+		recycleLocalID := 1
+		assert.Equal(t, uint64(recycleLocalID), sess.LocalID)
+		assert.Equal(t, uint64(10), sess.RemoteID)
 	})
 }
