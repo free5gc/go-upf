@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/davecgh/go-spew v1.1.1
-	github.com/free5gc/go-gtp5gnl v1.4.6
+	github.com/free5gc/go-gtp5gnl v1.4.7-0.20241008130314-a3088e4cb7fa
 	github.com/free5gc/util v1.0.6
 	github.com/hashicorp/go-version v1.6.0
 	github.com/khirono/go-genl v1.0.1

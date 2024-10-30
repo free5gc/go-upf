@@ -12,8 +12,8 @@ github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d/go.mod h1:ma
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/free5gc/go-gtp5gnl v1.4.6 h1:xqwyGjrRNRGwo3/HyfXMh/fQ56QnCUzQKP2XR5/i1cE=
-github.com/free5gc/go-gtp5gnl v1.4.6/go.mod h1:TT5aXB90NuSPMehuIK9lV2yJFnq6Qjw37ZqNB1QAKh0=
+github.com/free5gc/go-gtp5gnl v1.4.7-0.20241008130314-a3088e4cb7fa h1:D5OzFSttS6WY2XRspxtPKoHyCVkRLH9kqteQ1bGfOg0=
+github.com/free5gc/go-gtp5gnl v1.4.7-0.20241008130314-a3088e4cb7fa/go.mod h1:TT5aXB90NuSPMehuIK9lV2yJFnq6Qjw37ZqNB1QAKh0=
 github.com/free5gc/util v1.0.6 h1:dBt9drcXtYKE/cY5XuQcuffgsYclPIpIArhSeS6M+DQ=
 github.com/free5gc/util v1.0.6/go.mod h1:eSGN7POUM8LNTvg/E591XR6447a6/w1jFWGKNZPHcXw=
 github.com/gabriel-vasile/mimetype v1.4.2 h1:w5qFW6JKBz9Y393Y4q372O9A7cUSequkh1Q7OhCmWKU=

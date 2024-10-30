@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	expectedMinGtp5gVersion string = "0.8.6"
-	expectedMaxGtp5gVersion string = "0.9.0"
+	expectedMinGtp5gVersion string = "0.9.2"
+	expectedMaxGtp5gVersion string = "0.10.0"
 )
 
 type Gtp5g struct {
@@ -326,6 +326,10 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 			if err != nil {
 				break
 			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDI_SRC_INTF,
+				Value: nl.AttrU8(v),
+			})
 			srcIf = v
 		case ie.FTEID:
 			v, err := x.FTEID()
