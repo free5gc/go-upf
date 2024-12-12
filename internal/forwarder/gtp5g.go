@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	expectedMinGtp5gVersion string = "0.9.3"
+	expectedMinGtp5gVersion string = "0.9.5"
 	expectedMaxGtp5gVersion string = "0.10.0"
 )
 
