@@ -491,14 +491,13 @@ type ApplyAction struct {
 }
 
 func (a *ApplyAction) Unmarshal(b []byte) error {
-	var v []byte
 	if len(b) < 1 {
 		return errors.Errorf("ApplyAction Unmarshal: less than 1 bytes")
-	} else if len(b) < 2 {
-		// slice len might be 1 or 2; enlarge slice to 2 bytes at least
-		v = make([]byte, len(b)+1)
-		copy(v, b)
 	}
+
+	// slice len might be 1 or 2; enlarge slice to 2 bytes at least
+	v := make([]byte, max(2, len(b)))
+	copy(v, b)
 	a.Flags = binary.LittleEndian.Uint16(v)
 	return nil
 }
