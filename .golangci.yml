@@ -44,7 +44,7 @@ run:
 # output configuration options
 output:
   # colored-line-number|line-number|json|tab|checkstyle|code-climate, default is "colored-line-number"
-  format: colored-line-number
+  formats: colored-line-number
   # print lines of code with issue, default is true
   print-issued-lines: true
   # print linter name in the end of issue text, default is true
@@ -127,10 +127,7 @@ linters-settings:
     # minimal confidence for issues, default is 0.8
     min-confidence: 0.8
   gomnd:
-    settings:
-      mnd:
-        # the list of enabled checks, see https://github.com/tommy-muehle/go-mnd/#checks for description.
-        checks: argument,case,condition,operation,return,assign
+    checks: argument,case,condition,operation,return,assign,call,parameter
   gomodguard:
     allowed:
       modules:                                                        # List of allowed modules
@@ -149,7 +146,6 @@ linters-settings:
         #     reason: "testing if blocked version constraint works."  # Reason why the version constraint exists. (Optional)
   govet:
     # report about shadowed variables
-    check-shadowing: true
     # settings per analyzer
     settings:
       printf: # analyzer name, run `go tool vet help` to see all analyzers
@@ -161,9 +157,8 @@ linters-settings:
     # enable or disable analyzers by name
     enable:
       - atomicalign
-    enable-all: false
-    disable:
       - shadow
+    enable-all: false
     disable-all: false
   depguard:
     list-type: blacklist
@@ -237,10 +232,10 @@ linters:
     - staticcheck
     - unused
     - gosimple
-    - structcheck
-    - varcheck
+    # - structcheck
+    # - varcheck
     - ineffassign
-    - deadcode
+    # - deadcode
     - typecheck
     # Additional
     - lll
