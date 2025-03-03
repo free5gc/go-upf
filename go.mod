@@ -13,8 +13,8 @@ require (
 	github.com/khirono/go-rtnllink v1.1.1
 	github.com/khirono/go-rtnlroute v1.0.1
 	github.com/pkg/errors v0.9.1
-	github.com/sirupsen/logrus v1.8.1
-	github.com/stretchr/testify v1.8.3
+	github.com/sirupsen/logrus v1.9.3
+	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli v1.22.5
 	github.com/wmnsk/go-pfcp v0.0.23-0.20231009074152-d5a9c1f47114
 	gopkg.in/yaml.v2 v2.4.0
@@ -31,6 +31,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.14.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.4 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
