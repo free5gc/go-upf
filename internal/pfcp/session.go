@@ -84,15 +84,33 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est CreatePDR error: %+v", err)
 		}
 
-		ueIPAddress := getUEAddressFromPDR(i)
 		pdrId := getPDRIDFromPDR(i)
+		if pdrId != 0 {
+			// In the current implementation, free5GC UPF doesn't allocate UE IP addresses
+			// If UPF allocation is implemented in the future, this check should be updated
+			// to determine if this specific IP was allocated by the UPF
+			allocatedByUPF := false
 
-		if ueIPAddress != nil {
-			ueIPv4 := ueIPAddress.IPv4Address.String()
-			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
-				ie.NewPDRID(pdrId),
-				ie.NewUEIPAddress(2, ueIPv4, "", 0, 0),
-			))
+			if allocatedByUPF {
+				// Only include UE IP Address in Created PDR if allocated by UPF
+				ueIPAddress := getUEAddressFromPDR(i)
+				if ueIPAddress != nil && ueIPAddress.IPv4Address != nil {
+					ueIPv4 := ueIPAddress.IPv4Address.String()
+					CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
+						ie.NewPDRID(pdrId),
+						ie.NewUEIPAddress(2, ueIPv4, "", 0, 0),
+					))
+				} else {
+					CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
+						ie.NewPDRID(pdrId),
+					))
+				}
+			} else {
+				// Just include PDR ID if IP was allocated by SMF
+				CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
+					ie.NewPDRID(pdrId),
+				))
+			}
 		}
 	}
 
