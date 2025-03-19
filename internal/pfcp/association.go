@@ -41,7 +41,8 @@ func (s *PfcpServer) handleAssociationSetupRequest(
 		newIeNodeID(s.nodeID),
 		ie.NewCause(ie.CauseRequestAccepted),
 		ie.NewRecoveryTimeStamp(s.recoveryTime),
-		ie.NewUPFunctionFeatures(0, 0, 0, 0, 0, 0, 0, 0),
+		// TODO:
+		// ie.NewUPFunctionFeatures(),
 	)
 
 	err = s.sendRspTo(rsp, addr)
