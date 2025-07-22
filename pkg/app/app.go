@@ -29,7 +29,7 @@ func NewApp(cfg *factory.Config) (*UpfApp, error) {
 		cfg: cfg,
 	}
 	upf.SetLogLevel(cfg.Logger.Level)
-	upf.SetLogReportCaller(cfg.Logger.ReportCaller)
+	upf.SetReportCaller(cfg.Logger.ReportCaller)
 	return upf, nil
 }
 
@@ -52,7 +52,7 @@ func (a *UpfApp) SetLogLevel(level string) {
 	logger.Log.SetLevel(lvl)
 }
 
-func (a *UpfApp) SetLogReportCaller(reportCaller bool) {
+func (a *UpfApp) SetReportCaller(reportCaller bool) {
 	logger.MainLog.Infof("Report Caller is set to [%v]", reportCaller)
 	if reportCaller == logger.Log.ReportCaller {
 		return
