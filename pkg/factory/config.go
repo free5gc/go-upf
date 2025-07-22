@@ -15,6 +15,8 @@ const (
 	UpfGtpDefaultPort    = 2152
 )
 
+var UpfConfig *Config
+
 type Config struct {
 	Version     string    `yaml:"version"     valid:"required,in(1.0.3)"`
 	Description string    `yaml:"description" valid:"optional"`
