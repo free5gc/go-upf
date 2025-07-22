@@ -61,6 +61,10 @@ func (a *UpfApp) SetLogReportCaller(reportCaller bool) {
 	logger.Log.SetReportCaller(reportCaller)
 }
 
+func (a *UpfApp) SetLogEnable(enable bool) {
+
+}
+
 func (u *UpfApp) Run() error {
 	var cancel context.CancelFunc
 	u.ctx, cancel = context.WithCancel(context.Background())
