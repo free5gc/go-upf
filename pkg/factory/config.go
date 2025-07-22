@@ -32,7 +32,7 @@ type Pfcp struct {
 }
 
 type Gtpu struct {
-	Forwarder string   `yaml:"forwarder" valid:"required,in(gtp5g)"`
+	Forwarder string   `yaml:"forwarder" valid:"required,in(gtp5g|dummy)"`
 	IfList    []IfInfo `yaml:"ifList"    valid:"optional"`
 }
 

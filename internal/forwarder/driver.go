@@ -78,6 +78,9 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 			}
 		}
 		return driver, nil
+	} else if cfgGtpu.Forwarder == "dummy" {
+		logger.MainLog.Infof("Using Dummy Forwarder")
+		return NewDummy(wg, cfgGtpu.IfList)
 	}
 	return nil, errors.Errorf("not support forwarder:%q", cfgGtpu.Forwarder)
 }
