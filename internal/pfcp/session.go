@@ -2,6 +2,7 @@ package pfcp
 
 import (
 	"net"
+	"strings"
 
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
@@ -186,7 +187,11 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	for _, i := range req.CreateURR {
 		err = sess.CreateURR(i)
 		if err != nil {
-			sess.log.Errorf("Mod CreateURR error: %+v", err)
+			if strings.Contains(err.Error(), "file exists") {
+				sess.log.Warnf("Mod CreateURR error: %+v", err)
+			} else {
+				sess.log.Errorf("Mod CreateURR error: %+v", err)
+			}
 		}
 	}
 
