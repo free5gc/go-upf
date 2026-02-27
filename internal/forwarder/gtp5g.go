@@ -542,7 +542,8 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 		case ie.PDI:
 			v, err := g.newPdi(i)
 			if err != nil {
-				return errors.Wrap(err, "UpdatePDR: failed to parse PDI")
+				logger.FwderLog.Warnf("UpdatePDR: failed to parse PDI: %v", err)
+				break
 			}
 			if v != nil {
 				attrs = append(attrs, nl.Attr{
