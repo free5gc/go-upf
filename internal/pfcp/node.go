@@ -101,15 +101,21 @@ func (s *Sess) CreatePDR(req *ie.IE) error {
 	}
 
 	var pdrid uint16
+	var hasPDRID, hasPrecedence, hasPDI bool
 	urrids := make(map[uint32]struct{})
 	for _, i := range ies {
 		switch i.Type {
 		case ie.PDRID:
 			v, err1 := i.PDRID()
 			if err1 != nil {
-				break
+				return errors.Errorf("CreatePDR: failed to parse PDR ID: %v", err1)
 			}
 			pdrid = v
+			hasPDRID = true
+		case ie.Precedence:
+			hasPrecedence = true
+		case ie.PDI:
+			hasPDI = true
 		case ie.URRID:
 			v, err1 := i.URRID()
 			if err1 != nil {
@@ -121,6 +127,16 @@ func (s *Sess) CreatePDR(req *ie.IE) error {
 				urrInfo.refPdrNum++
 			}
 		}
+	}
+
+	if !hasPDRID {
+		return errors.New("CreatePDR: missing mandatory IE: PDR ID")
+	}
+	if !hasPrecedence {
+		return errors.Errorf("CreatePDR: PDR(%#x) missing mandatory IE: Precedence", pdrid)
+	}
+	if !hasPDI {
+		return errors.Errorf("CreatePDR: PDR(%#x) missing mandatory IE: PDI", pdrid)
 	}
 
 	s.PDRIDs[pdrid] = &PDRInfo{
