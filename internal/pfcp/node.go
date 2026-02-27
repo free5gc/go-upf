@@ -183,15 +183,17 @@ func (s *Sess) UpdatePDR(req *ie.IE) ([]report.USAReport, error) {
 	}
 
 	var pdrid uint16
+	var hasPDRID bool
 	newUrrids := make(map[uint32]struct{})
 	for _, i := range ies {
 		switch i.Type {
 		case ie.PDRID:
 			v, err1 := i.PDRID()
 			if err1 != nil {
-				break
+				return nil, errors.Errorf("UpdatePDR: failed to parse PDR ID: %v", err1)
 			}
 			pdrid = v
+			hasPDRID = true
 		case ie.URRID:
 			v, err1 := i.URRID()
 			if err1 != nil {
@@ -199,6 +201,10 @@ func (s *Sess) UpdatePDR(req *ie.IE) ([]report.USAReport, error) {
 			}
 			newUrrids[v] = struct{}{}
 		}
+	}
+
+	if !hasPDRID {
+		return nil, errors.New("UpdatePDR: missing mandatory IE: PDR ID")
 	}
 
 	pdrInfo, ok := s.PDRIDs[pdrid]
