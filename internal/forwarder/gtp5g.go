@@ -343,7 +343,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 		case ie.SourceInterface:
 			v, err := x.SourceInterface()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "newPdi: failed to parse SourceInterface")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDI_SRC_INTF,
@@ -353,7 +353,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 		case ie.FTEID:
 			v, err := x.FTEID()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "newPdi: failed to parse FTEID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type: gtp5gnl.PDI_F_TEID,
@@ -372,7 +372,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 		case ie.UEIPAddress:
 			v, err := x.UEIPAddress()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "newPdi: failed to parse UEIPAddress")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDI_UE_ADDR_IPV4,
@@ -465,9 +465,7 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 		case ie.QERID:
 			v, err := i.QERID()
 			if err != nil {
-				// QER is optional, log but continue
-				logger.FwderLog.Warnf("CreatePDR: Failed to parse QERID: %v", err)
-				break
+				return errors.Wrap(err, "CreatePDR: failed to parse QERID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_QER_ID,
@@ -476,9 +474,7 @@ func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
 		case ie.URRID:
 			v, err := i.URRID()
 			if err != nil {
-				// URR is optional, log but continue
-				logger.FwderLog.Warnf("CreatePDR: Failed to parse URRID: %v", err)
-				break
+				return errors.Wrap(err, "CreatePDR: failed to parse URRID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_URR_ID,
@@ -524,9 +520,7 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 		case ie.Precedence:
 			v, err := i.Precedence()
 			if err != nil {
-				// Precedence is optional in Update, log but continue
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse Precedence: %v", err)
-				break
+				return errors.Wrap(err, "UpdatePDR: failed to parse Precedence")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_PRECEDENCE,
@@ -535,8 +529,7 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 		case ie.PDI:
 			v, err := g.newPdi(i)
 			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: failed to parse PDI: %v", err)
-				break
+				return errors.Wrap(err, "UpdatePDR: failed to parse PDI")
 			}
 			if v != nil {
 				attrs = append(attrs, nl.Attr{
@@ -547,8 +540,7 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 		case ie.OuterHeaderRemoval:
 			v, err := i.OuterHeaderRemovalDescription()
 			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse OuterHeaderRemoval: %v", err)
-				break
+				return errors.Wrap(err, "UpdatePDR: failed to parse OuterHeaderRemoval")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_OUTER_HEADER_REMOVAL,
@@ -558,8 +550,7 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 		case ie.FARID:
 			v, err := i.FARID()
 			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse FARID: %v", err)
-				break
+				return errors.Wrap(err, "UpdatePDR: failed to parse FARID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_FAR_ID,
@@ -568,8 +559,7 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 		case ie.QERID:
 			v, err := i.QERID()
 			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse QERID: %v", err)
-				break
+				return errors.Wrap(err, "UpdatePDR: failed to parse QERID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_QER_ID,
@@ -578,8 +568,7 @@ func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
 		case ie.URRID:
 			v, err := i.URRID()
 			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse URRID: %v", err)
-				break
+				return errors.Wrap(err, "UpdatePDR: failed to parse URRID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_URR_ID,
@@ -612,8 +601,7 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 			// Use parser from util/pfcp to work around go-pfcp bug with C-TAG/S-TAG
 			v, err := pfcp.ParseOuterHeaderCreation(x.Payload)
 			if err != nil {
-				g.log.Warnf("Invalid OuterHeaderCreation IE: %v", err)
-				break
+				return nil, errors.Wrap(err, "newForwardingParameter: failed to parse OuterHeaderCreation")
 			}
 			var hc nl.AttrList
 			hc = append(hc, nl.Attr{
@@ -649,7 +637,7 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 		case ie.ForwardingPolicy:
 			v, err := x.ForwardingPolicyIdentifier()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "newForwardingParameter: failed to parse ForwardingPolicy")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY,
@@ -658,7 +646,7 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 		case ie.PFCPSMReqFlags:
 			v, err := x.PFCPSMReqFlags()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "newForwardingParameter: failed to parse PFCPSMReqFlags")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FORWARDING_PARAMETER_PFCPSM_REQ_FLAGS,
@@ -707,7 +695,7 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 			}
 			v, err := g.newForwardingParameter(xs)
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateFAR: failed to parse ForwardingParameters")
 			}
 			if v != nil {
 				attrs = append(attrs, nl.Attr{
@@ -718,7 +706,7 @@ func (g *Gtp5g) CreateFAR(lSeid uint64, req *ie.IE) error {
 		case ie.BARID:
 			v, err := i.BARID()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateFAR: failed to parse BARID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_BAR_ID,
@@ -769,7 +757,7 @@ func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 			}
 			v, err := g.newForwardingParameter(xs)
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateFAR: failed to parse UpdateForwardingParameters")
 			}
 			if v != nil {
 				attrs = append(attrs, nl.Attr{
@@ -780,7 +768,7 @@ func (g *Gtp5g) UpdateFAR(lSeid uint64, req *ie.IE) error {
 		case ie.BARID:
 			v, err := i.BARID()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateFAR: failed to parse BARID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_BAR_ID,
@@ -816,14 +804,14 @@ func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 			// M
 			v, err := i.QERID()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse QERID")
 			}
 			qerid = uint64(v)
 		case ie.QERCorrelationID:
 			// C
 			v, err := i.QERCorrelationID()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse QERCorrelationID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_CORR_ID,
@@ -833,7 +821,7 @@ func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 			// M
 			v, err := i.GateStatus()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse GateStatus")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_GATE,
@@ -843,11 +831,11 @@ func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			ul, err := i.MBRUL()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse MBRUL")
 			}
 			dl, err := i.MBRDL()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse MBRDL")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type: gtp5gnl.QER_MBR,
@@ -874,11 +862,11 @@ func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			ul, err := i.GBRUL()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse GBRUL")
 			}
 			dl, err := i.GBRDL()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse GBRDL")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type: gtp5gnl.QER_GBR,
@@ -905,7 +893,7 @@ func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			v, err := i.QFI()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse QFI")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_QFI,
@@ -915,7 +903,7 @@ func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			v, err := i.RQI()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse RQI")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_RQI,
@@ -925,7 +913,7 @@ func (g *Gtp5g) CreateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			v, err := i.PagingPolicyIndicator()
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateQER: failed to parse PagingPolicyIndicator")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_PPI,
@@ -952,14 +940,14 @@ func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 			// M
 			v, err := i.QERID()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse QERID")
 			}
 			qerid = uint64(v)
 		case ie.QERCorrelationID:
 			// C
 			v, err := i.QERCorrelationID()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse QERCorrelationID")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_CORR_ID,
@@ -969,7 +957,7 @@ func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 			// M
 			v, err := i.GateStatus()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse GateStatus")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_GATE,
@@ -979,11 +967,11 @@ func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			ul, err := i.MBRUL()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse MBRUL")
 			}
 			dl, err := i.MBRDL()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse MBRDL")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type: gtp5gnl.QER_MBR,
@@ -1010,11 +998,11 @@ func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			ul, err := i.GBRUL()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse GBRUL")
 			}
 			dl, err := i.GBRDL()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse GBRDL")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type: gtp5gnl.QER_GBR,
@@ -1041,7 +1029,7 @@ func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			v, err := i.QFI()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse QFI")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_QFI,
@@ -1051,7 +1039,7 @@ func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			v, err := i.RQI()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse RQI")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_RQI,
@@ -1061,7 +1049,7 @@ func (g *Gtp5g) UpdateQER(lSeid uint64, req *ie.IE) error {
 			// C
 			v, err := i.PagingPolicyIndicator()
 			if err != nil {
-				break
+				return errors.Wrap(err, "UpdateQER: failed to parse PagingPolicyIndicator")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.QER_PPI,
@@ -1217,7 +1205,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 		case ie.VolumeThreshold:
 			v, err := g.newVolumeThreshold(i)
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateURR: failed to parse VolumeThreshold")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_VOLUME_THRESHOLD,
@@ -1226,7 +1214,7 @@ func (g *Gtp5g) CreateURR(lSeid uint64, req *ie.IE) error {
 		case ie.VolumeQuota:
 			v, err := g.newVolumeQuota(i)
 			if err != nil {
-				break
+				return errors.Wrap(err, "CreateURR: failed to parse VolumeQuota")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_VOLUME_QUOTA,
@@ -1308,7 +1296,7 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 		case ie.VolumeThreshold:
 			v, err1 := g.newVolumeThreshold(i)
 			if err1 != nil {
-				break
+				return nil, errors.Wrap(err1, "UpdateURR: failed to parse VolumeThreshold")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_VOLUME_THRESHOLD,
@@ -1317,7 +1305,7 @@ func (g *Gtp5g) UpdateURR(lSeid uint64, req *ie.IE) ([]report.USAReport, error) 
 		case ie.VolumeQuota:
 			v, err1 := g.newVolumeQuota(i)
 			if err1 != nil {
-				break
+				return nil, errors.Wrap(err1, "UpdateURR: failed to parse VolumeQuota")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.URR_VOLUME_QUOTA,
