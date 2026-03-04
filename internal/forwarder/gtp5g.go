@@ -22,6 +22,7 @@ import (
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 	logger_util "github.com/free5gc/util/logger"
+	"github.com/free5gc/util/pfcp"
 )
 
 const (
@@ -255,20 +256,16 @@ func convertSlice(ports [][]uint16) []byte {
 
 func (g *Gtp5g) newSdfFilter(i *ie.IE, srcIf uint8) (nl.AttrList, error) {
 	var attrs nl.AttrList
-
 	// i.Payload[0] corresponds to Octet 5 (Flags) in the spec
 	flags := i.Payload[0]
 	hasFD := (flags & 0x01) != 0 // Bit 1: Flow Description
 	offset := 2
-
 	if hasFD {
 		if len(i.Payload) < offset+2 {
 			return nil, errors.New("SDF Filter IE with FD flag needs Length of Flow Description")
 		}
 		// Read FDLength from i.Payload[2-3] (Octets 7-8 in spec)
 		fdLength := uint16(i.Payload[offset])<<8 | uint16(i.Payload[offset+1])
-
-		// Validate FDLength doesn't exceed available payload
 		// Flow Description data starts at i.Payload[4] (Octet 9)
 		flowDescStart := offset + 2
 		availableBytes := len(i.Payload) - flowDescStart
@@ -278,13 +275,10 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE, srcIf uint8) (nl.AttrList, error) {
 				fdLength, availableBytes)
 		}
 	}
-
-	// Now it's safe to parse - the payload has been pre-validated
 	v, err := i.SDFFilter()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse SDF Filter")
 	}
-
 	// Process validated SDF Filter fields
 	if v.HasFD() {
 		swapSrcDst := (srcIf == ie.SrcInterfaceAccess)
@@ -297,7 +291,6 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE, srcIf uint8) (nl.AttrList, error) {
 			Value: fd,
 		})
 	}
-
 	if v.HasTTC() {
 		// TODO:
 		// v.ToSTrafficClass string
@@ -616,8 +609,10 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 		case ie.DestinationInterface:
 		case ie.NetworkInstance:
 		case ie.OuterHeaderCreation:
-			v, err := x.OuterHeaderCreation()
+			// Use parser from util/pfcp to work around go-pfcp bug with C-TAG/S-TAG
+			v, err := pfcp.ParseOuterHeaderCreation(x.Payload)
 			if err != nil {
+				g.log.Warnf("Invalid OuterHeaderCreation IE: %v", err)
 				break
 			}
 			var hc nl.AttrList
@@ -625,7 +620,7 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 				Type:  gtp5gnl.OUTER_HEADER_CREATION_DESCRIPTION,
 				Value: nl.AttrU16(v.OuterHeaderCreationDescription),
 			})
-			if x.HasTEID() {
+			if v.HasTEID() {
 				hc = append(hc, nl.Attr{
 					Type:  gtp5gnl.OUTER_HEADER_CREATION_O_TEID,
 					Value: nl.AttrU32(v.TEID),
@@ -641,7 +636,7 @@ func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
 					Value: nl.AttrU16(v.PortNumber),
 				})
 			}
-			if x.HasIPv4() {
+			if v.HasIPv4() {
 				hc = append(hc, nl.Attr{
 					Type:  gtp5gnl.OUTER_HEADER_CREATION_PEER_ADDR_IPV4,
 					Value: nl.AttrBytes(v.IPv4Address),
