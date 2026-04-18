@@ -27,7 +27,7 @@ import (
 
 const (
 	expectedMinGtp5gVersion string = "0.9.5"
-	expectedMaxGtp5gVersion string = "0.10.0"
+	expectedMaxGtp5gVersion string = "0.11.0"
 )
 
 type Gtp5g struct {
