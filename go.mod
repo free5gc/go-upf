@@ -1,12 +1,12 @@
 module github.com/free5gc/go-upf
 
-go 1.25.5
+go 1.26.2
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/davecgh/go-spew v1.1.1
-	github.com/free5gc/go-gtp5gnl v1.6.1
-	github.com/free5gc/util v1.3.2-0.20260228091348-fb7d1127055f
+	github.com/free5gc/go-gtp5gnl v1.6.2
+	github.com/free5gc/util v1.3.2
 	github.com/hashicorp/go-version v1.6.0
 	github.com/khirono/go-genl v1.0.1
 	github.com/khirono/go-nl v1.0.5
