@@ -22,7 +22,18 @@ type Config struct {
 	Gtpu        *Gtpu     `yaml:"gtpu"        valid:"required"`
 	DnnList     []DnnList `yaml:"dnnList"     valid:"required"`
 	Logger      *Logger   `yaml:"logger"      valid:"required"`
+	// NrfUri is optional. When set, the UPF registers its Nupf_EventExposure service with the NRF.
+	NrfUri string `yaml:"nrfUri" valid:"optional"`
 }
+
+const (
+	// UpfEventExposurePort is the port for the Nupf_EventExposure HTTP server.
+	UpfEventExposurePort = 8090
+	// UpfMonitoringURRIDBase is the starting URR ID for UPF-self-allocated monitoring URRs.
+	// URR IDs above this value are reserved for Event Exposure monitoring, avoiding
+	// collision with SMF-allocated URR IDs which typically start at low values.
+	UpfMonitoringURRIDBase uint32 = 0xF0000001
+)
 
 type Pfcp struct {
 	Addr           string        `yaml:"addr"           valid:"required,host"`

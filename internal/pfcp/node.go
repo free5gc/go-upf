@@ -3,6 +3,7 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -17,8 +18,12 @@ const (
 	BUFFQ_LEN = 512
 )
 
+// PDRInfo stores per-PDR state in the session.
 type PDRInfo struct {
 	RelatedURRIDs map[uint32]struct{}
+	// LastIE is the most recent CreatePDR or UpdatePDR IE for this PDR.
+	// It is used to reconstruct UpdatePDR IEs when adding monitoring URRs.
+	LastIE *ie.IE
 }
 
 type URRInfo struct {
@@ -41,6 +46,10 @@ type Sess struct {
 	q        map[uint16]chan []byte // key: PDR_ID
 	qlen     int
 	log      *logrus.Entry
+	// Session metadata extracted from PDRs (set during establishment, read-only after).
+	// Used by Nupf_EventExposure for PDU session matching.
+	UeIpAddr net.IP // UE IPv4 address from PDI UE-IP-Address IE
+	Dnn      string // DNN (Network Instance) from PDI Network-Instance IE
 }
 
 var (
@@ -146,6 +155,9 @@ func (s *Sess) Close() []report.USAReport {
 func (s *Sess) diassociateURR(urrid uint32) []report.USAReport {
 	urrInfo, ok := s.URRIDs[urrid]
 	if !ok {
+		return nil
+	}
+	if urrInfo.removed {
 		return nil
 	}
 
@@ -459,6 +471,18 @@ func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
 
 	s.PDRIDs[plan.PDRID] = &PDRInfo{
 		RelatedURRIDs: urrids,
+		LastIE:        plan.OriginalIE,
+	}
+
+	// Extract session metadata from the PDR's PDI for Nupf_EventExposure matching.
+	if plan.OriginalIE != nil && (s.UeIpAddr == nil || s.Dnn == "") {
+		ueIP, dnn := extractSessionMetadata(plan.OriginalIE)
+		if ueIP != nil && s.UeIpAddr == nil {
+			s.UeIpAddr = ueIP
+		}
+		if dnn != "" && s.Dnn == "" {
+			s.Dnn = dnn
+		}
 	}
 }
 
@@ -485,6 +509,10 @@ func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
 		}
 	}
 	pdrInfo.RelatedURRIDs = newUrrids
+	// Update LastIE to the latest modification so we can reconstruct UpdatePDR IEs correctly.
+	if plan.OriginalIE != nil {
+		pdrInfo.LastIE = plan.OriginalIE
+	}
 
 	return usars
 }
@@ -602,6 +630,57 @@ func (s *Sess) CleanupRemovedURRs() {
 	}
 }
 
+// extractSessionMetadata extracts UE IP address and DNN from a PDR IE.
+// These are used by Nupf_EventExposure to match subscriptions to PDU sessions.
+// Returns (ueIP, dnn) — either or both may be nil/empty if not found.
+func extractSessionMetadata(pdrIE *ie.IE) (net.IP, string) {
+	var subIEs []*ie.IE
+	var err error
+
+	switch pdrIE.Type {
+	case ie.CreatePDR:
+		subIEs, err = pdrIE.CreatePDR()
+	case ie.UpdatePDR:
+		subIEs, err = pdrIE.UpdatePDR()
+	default:
+		return nil, ""
+	}
+	if err != nil {
+		return nil, ""
+	}
+
+	for _, sub := range subIEs {
+		if sub.Type != ie.PDI {
+			continue
+		}
+		pdiIEs, err := sub.PDI()
+		if err != nil {
+			continue
+		}
+		var ueIP net.IP
+		var dnn string
+		for _, pdi := range pdiIEs {
+			switch pdi.Type {
+			case ie.UEIPAddress:
+				v, err := pdi.UEIPAddress()
+				if err == nil && v.IPv4Address != nil {
+					ueIP = make(net.IP, len(v.IPv4Address))
+					copy(ueIP, v.IPv4Address)
+				}
+			case ie.NetworkInstance:
+				v, err := pdi.NetworkInstance()
+				if err == nil {
+					dnn = v
+				}
+			}
+		}
+		if ueIP != nil || dnn != "" {
+			return ueIP, dnn
+		}
+	}
+	return nil, ""
+}
+
 type RemoteNode struct {
 	ID     string
 	addr   net.Addr
@@ -671,11 +750,28 @@ func (n *RemoteNode) DeleteSess(lSeid uint64) []report.USAReport {
 }
 
 type LocalNode struct {
+	mu   sync.RWMutex // protects sess and free
 	sess []*Sess
 	free []uint64
 }
 
+// GetAllSessions returns a snapshot of all active sessions.
+// Safe to call from goroutines other than the PfcpServer main loop.
+func (n *LocalNode) GetAllSessions() []*Sess {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	result := make([]*Sess, 0, len(n.sess))
+	for _, s := range n.sess {
+		if s != nil {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
 func (n *LocalNode) Reset() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	for _, sess := range n.sess {
 		if sess != nil {
 			sess.Close()
@@ -689,6 +785,9 @@ func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 	if lSeid == 0 {
 		return nil, errors.New("Sess: invalid lSeid:0")
 	}
+
+	n.mu.RLock()
+	defer n.mu.RUnlock()
 
 	// Length as int; compare as uint64 to match lSeid type.
 	sessLen := len(n.sess)
@@ -706,6 +805,8 @@ func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 }
 
 func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
 	for _, s := range n.sess {
 		if s.RemoteID == rSeid && s.rnode.addr.String() == addr.String() {
 			return s, nil
@@ -725,6 +826,8 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 		q:        make(map[uint16]chan []byte),
 		qlen:     qlen,
 	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	last := len(n.free) - 1
 	if last >= 0 {
 		s.LocalID = n.free[last]
@@ -742,22 +845,27 @@ func (n *LocalNode) DeleteSess(lSeid uint64) ([]report.USAReport, error) {
 		return nil, errors.New("DeleteSess: invalid lSeid:0")
 	}
 
+	n.mu.Lock()
 	// Capacity as int; compare as uint64 to match lSeid type.
 	sessCap := len(n.sess)
 	if lSeid > uint64(sessCap) {
+		n.mu.Unlock()
 		return nil, errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
 	}
 
 	// Safe: 1 <= lSeid <= sessCap ensures valid conversion and index.
 	idx := int(lSeid) - 1
 	if n.sess[idx] == nil {
+		n.mu.Unlock()
 		return nil, errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
 	}
 
-	n.sess[idx].log.Infoln("sess deleted")
-	usars := n.sess[idx].Close()
+	sess := n.sess[idx]
 	n.sess[idx] = nil
 	n.free = append(n.free, lSeid)
+	n.mu.Unlock()
 
+	sess.log.Infoln("sess deleted")
+	usars := sess.Close()
 	return usars, nil
 }

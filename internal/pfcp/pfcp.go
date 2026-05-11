@@ -10,6 +10,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
@@ -23,8 +24,21 @@ const (
 	RECEIVE_CHANNEL_LEN       = 512
 	REPORT_CHANNEL_LEN        = 128
 	TRANS_TIMEOUT_CHANNEL_LEN = 64
+	MONITORING_CHANNEL_LEN    = 32
 	MAX_PFCP_MSG_LEN          = 65536
 )
+
+// monitoringReq is a request to add or remove a monitoring URR on a session.
+// Requests are sent through monitoringCh to be processed by the PfcpServer
+// main goroutine, ensuring thread-safe session state modifications.
+type monitoringReq struct {
+	add       bool
+	remove    bool
+	lSeid     uint64
+	urrid     uint32
+	repPeriod time.Duration
+	respCh    chan error
+}
 
 type ReceivePacket struct {
 	RemoteAddr net.Addr
@@ -50,6 +64,7 @@ type PfcpServer struct {
 	rcvCh        chan ReceivePacket
 	srCh         chan report.SessReport
 	trToCh       chan TransactionTimeout
+	monitoringCh chan monitoringReq
 	conn         *net.UDPConn
 	recoveryTime time.Time
 	driver       forwarder.Driver
@@ -70,6 +85,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		rcvCh:        make(chan ReceivePacket, RECEIVE_CHANNEL_LEN),
 		srCh:         make(chan report.SessReport, REPORT_CHANNEL_LEN),
 		trToCh:       make(chan TransactionTimeout, TRANS_TIMEOUT_CHANNEL_LEN),
+		monitoringCh: make(chan monitoringReq, MONITORING_CHANNEL_LEN),
 		recoveryTime: time.Now(),
 		driver:       driver,
 		rnodes:       make(map[string]*RemoteNode),
@@ -77,6 +93,11 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		rxTrans:      make(map[string]*RxTransaction),
 		log:          logger.PfcpLog.WithField(logger_util.FieldListenAddr, listen),
 	}
+}
+
+// GetLocalNode returns the local PFCP node. Used by Nupf_EventExposure to enumerate sessions.
+func (s *PfcpServer) GetLocalNode() *LocalNode {
+	return &s.lnode
 }
 
 func (s *PfcpServer) main(wg *sync.WaitGroup) {
@@ -116,6 +137,17 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		case sr := <-s.srCh:
 			s.log.Tracef("receive SessReport from srCh")
 			s.ServeReport(&sr)
+		case req := <-s.monitoringCh:
+			s.log.Tracef("receive monitoring request from monitoringCh")
+			var err error
+			if req.add {
+				err = s.doAddMonitoringURR(req.lSeid, req.urrid, req.repPeriod)
+			} else if req.remove {
+				err = s.doRemoveMonitoringURR(req.lSeid, req.urrid)
+			} else {
+				err = errors.New("invalid monitoring request")
+			}
+			req.respCh <- err
 		case rcvPkt := <-s.rcvCh:
 			s.log.Tracef("receive buf(len=%d) from rcvCh", len(rcvPkt.Buf))
 			if len(rcvPkt.Buf) == 0 {
@@ -428,4 +460,180 @@ func validatePfcpPacketLength(buf []byte) error {
 	}
 
 	return nil
+}
+
+// AddMonitoringURR asynchronously creates a monitoring URR on the specified session.
+// Safe to call from any goroutine; executes in the PfcpServer main loop.
+func (s *PfcpServer) AddMonitoringURR(lSeid uint64, urrid uint32, repPeriod time.Duration) error {
+	respCh := make(chan error, 1)
+	s.monitoringCh <- monitoringReq{add: true, lSeid: lSeid, urrid: urrid, repPeriod: repPeriod, respCh: respCh}
+	return <-respCh
+}
+
+// RemoveMonitoringURR asynchronously removes a monitoring URR from the specified session.
+// Safe to call from any goroutine; executes in the PfcpServer main loop.
+func (s *PfcpServer) RemoveMonitoringURR(lSeid uint64, urrid uint32) error {
+	respCh := make(chan error, 1)
+	s.monitoringCh <- monitoringReq{remove: true, lSeid: lSeid, urrid: urrid, respCh: respCh}
+	return <-respCh
+}
+
+// doAddMonitoringURR creates a URR and links it to all PDRs of the session.
+// Must run in the PfcpServer main goroutine.
+func (s *PfcpServer) doAddMonitoringURR(lSeid uint64, urrid uint32, repPeriod time.Duration) error {
+	sess, err := s.lnode.Sess(lSeid)
+	if err != nil {
+		return err
+	}
+
+	// Build CreateURR IE: VOLUM measurement, PERIO trigger, given period.
+	// ReportingTriggers IE requires at least 2 octets (per go-pfcp and TS 29.244).
+	// Octet 5: PERIO=bit0=0x01; Octet 6: 0x00 (no additional triggers).
+	urrIE := ie.NewCreateURR(
+		ie.NewURRID(urrid),
+		ie.NewMeasurementMethod(0, 1, 0),    // VOLUM=1
+		ie.NewReportingTriggers(0x01, 0x00), // PERIO (2-octet form required)
+		ie.NewMeasurementPeriod(repPeriod),
+	)
+
+	urrPlan, err := sess.ValidateCreateURR(urrIE)
+	if err != nil {
+		return errors.Wrap(err, "ValidateCreateURR")
+	}
+
+	plan := forwarder.NewModificationPlan(lSeid)
+	plan.CreateURRs = []*forwarder.URRPlan{urrPlan}
+
+	// Add URRID to each PDR that has a stored IE so we can reconstruct UpdatePDR.
+	for pdrid, pdrInfo := range sess.PDRIDs {
+		if pdrInfo.LastIE == nil {
+			continue
+		}
+		combined := make(map[uint32]struct{}, len(pdrInfo.RelatedURRIDs)+1)
+		for id := range pdrInfo.RelatedURRIDs {
+			combined[id] = struct{}{}
+		}
+		combined[urrid] = struct{}{}
+
+		updateIE, buildErr := buildUpdatePDRIEForURRSet(pdrInfo.LastIE, pdrid, combined)
+		if buildErr != nil {
+			s.log.Warnf("buildUpdatePDRIEForURRSet pdr[%d]: %v", pdrid, buildErr)
+			continue
+		}
+		p, buildErr := sess.ValidateUpdatePDR(updateIE, plan)
+		if buildErr != nil {
+			s.log.Warnf("ValidateUpdatePDR pdr[%d]: %v", pdrid, buildErr)
+			continue
+		}
+		plan.UpdatePDRs = append(plan.UpdatePDRs, p)
+	}
+
+	_, err = s.driver.ExecuteModificationPlan(plan)
+	if err != nil {
+		return errors.Wrap(err, "ExecuteModificationPlan")
+	}
+
+	sess.ApplyCreateURR(urrPlan)
+	for _, p := range plan.UpdatePDRs {
+		sess.ApplyUpdatePDR(p)
+	}
+	return nil
+}
+
+// doRemoveMonitoringURR removes a monitoring URR from the session and unlinks it from PDRs.
+// Must run in the PfcpServer main goroutine.
+func (s *PfcpServer) doRemoveMonitoringURR(lSeid uint64, urrid uint32) error {
+	sess, err := s.lnode.Sess(lSeid)
+	if err != nil {
+		return err
+	}
+
+	if _, exists := sess.URRIDs[urrid]; !exists {
+		return nil // Already removed
+	}
+
+	plan := forwarder.NewModificationPlan(lSeid)
+	removeURRIE := ie.NewRemoveURR(ie.NewURRID(urrid))
+	urrPlan, err := sess.ValidateRemoveURR(removeURRIE, plan)
+	if err != nil {
+		return errors.Wrap(err, "ValidateRemoveURR")
+	}
+	plan.RemoveURRs = append(plan.RemoveURRs, urrPlan)
+
+	for pdrid, pdrInfo := range sess.PDRIDs {
+		if _, linked := pdrInfo.RelatedURRIDs[urrid]; !linked {
+			continue
+		}
+		if pdrInfo.LastIE == nil {
+			continue
+		}
+		reduced := make(map[uint32]struct{}, len(pdrInfo.RelatedURRIDs))
+		for id := range pdrInfo.RelatedURRIDs {
+			if id != urrid {
+				reduced[id] = struct{}{}
+			}
+		}
+		updateIE, buildErr := buildUpdatePDRIEForURRSet(pdrInfo.LastIE, pdrid, reduced)
+		if buildErr != nil {
+			s.log.Warnf("buildUpdatePDRIEForURRSet pdr[%d]: %v", pdrid, buildErr)
+			continue
+		}
+		p, buildErr := sess.ValidateUpdatePDR(updateIE, plan)
+		if buildErr != nil {
+			s.log.Warnf("ValidateUpdatePDR pdr[%d]: %v", pdrid, buildErr)
+			continue
+		}
+		plan.UpdatePDRs = append(plan.UpdatePDRs, p)
+	}
+
+	_, err = s.driver.ExecuteModificationPlan(plan)
+	if err != nil {
+		return errors.Wrap(err, "ExecuteModificationPlan")
+	}
+
+	sess.ApplyRemoveURR(urrPlan)
+	for _, p := range plan.UpdatePDRs {
+		sess.ApplyUpdatePDR(p)
+	}
+	return nil
+}
+
+// buildUpdatePDRIEForURRSet reconstructs an UpdatePDR IE from a stored CreatePDR/UpdatePDR IE,
+// replacing the URRID sub-IEs with the given set. This is needed because gtp5g kernel driver
+// uses NLM_F_REPLACE which requires all PDR attributes to be resent on update.
+func buildUpdatePDRIEForURRSet(lastIE *ie.IE, pdrid uint16, urrIDs map[uint32]struct{}) (*ie.IE, error) {
+	var subIEs []*ie.IE
+	var err error
+	switch lastIE.Type {
+	case ie.CreatePDR:
+		subIEs, err = lastIE.CreatePDR()
+	case ie.UpdatePDR:
+		subIEs, err = lastIE.UpdatePDR()
+	default:
+		return nil, fmt.Errorf("unknown PDR IE type %d", lastIE.Type)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]*ie.IE, 0, len(subIEs)+len(urrIDs))
+	pdridFound := false
+	for _, sub := range subIEs {
+		if sub.Type == ie.URRID {
+			continue // Strip existing URRID IEs; we will re-add below
+		}
+		if sub.Type == ie.PDRID {
+			pdridFound = true
+			out = append(out, ie.NewPDRID(pdrid))
+		} else {
+			out = append(out, sub)
+		}
+	}
+	if !pdridFound {
+		out = append(out, ie.NewPDRID(pdrid))
+	}
+	for id := range urrIDs {
+		out = append(out, ie.NewURRID(id))
+	}
+	return ie.NewUpdatePDR(out...), nil
 }

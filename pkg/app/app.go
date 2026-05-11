@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/free5gc/go-upf/internal/exposure"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/pfcp"
@@ -17,11 +19,12 @@ import (
 )
 
 type UpfApp struct {
-	ctx        context.Context
-	wg         sync.WaitGroup
-	cfg        *factory.Config
-	driver     forwarder.Driver
-	pfcpServer *pfcp.PfcpServer
+	ctx            context.Context
+	wg             sync.WaitGroup
+	cfg            *factory.Config
+	driver         forwarder.Driver
+	pfcpServer     *pfcp.PfcpServer
+	exposureServer *exposure.Server
 }
 
 func NewApp(cfg *factory.Config) (*UpfApp, error) {
@@ -78,8 +81,26 @@ func (u *UpfApp) Run() error {
 	}
 
 	u.pfcpServer = pfcp.NewPfcpServer(u.cfg, u.driver)
-	u.driver.HandleReport(u.pfcpServer)
+
+	// Create Nupf_EventExposure server
+	exposureAddr := fmt.Sprintf("%s:%d", u.cfg.Pfcp.Addr, factory.UpfEventExposurePort)
+	nodeAdapter := NewNodeAdapter(u.pfcpServer.GetLocalNode())
+	u.exposureServer = exposure.NewServer(exposureAddr, u.pfcpServer, nodeAdapter)
+
+	// Wire report handler: multiplexer routes monitoring reports to exposure server
+	mux := NewReportMultiplexer(u.pfcpServer, u.exposureServer)
+	u.driver.HandleReport(mux)
+
 	u.pfcpServer.Start(&u.wg)
+
+	// Start the exposure HTTP server
+	u.wg.Add(1)
+	go func() {
+		defer u.wg.Done()
+		if err := u.exposureServer.Run(u.ctx); err != nil {
+			logger.MainLog.Warnf("Exposure server stopped: %v", err)
+		}
+	}()
 
 	logger.MainLog.Infoln("UPF started")
 
