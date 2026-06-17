@@ -42,7 +42,12 @@ func TestHandleCreateSubscription(t *testing.T) {
 
 		body, err := json.Marshal(reqBody)
 		require.NoError(t, err)
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/nupf-ee/v1/ee-subscriptions", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodPost,
+			"/nupf-ee/v1/ee-subscriptions",
+			bytes.NewReader(body),
+		)
 		rr := httptest.NewRecorder()
 
 		server.handleCreateSubscription(rr, req)
@@ -71,7 +76,12 @@ func TestHandleCreateSubscription(t *testing.T) {
 
 		body, err := json.Marshal(reqBody)
 		require.NoError(t, err)
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/nupf-ee/v1/ee-subscriptions", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodPost,
+			"/nupf-ee/v1/ee-subscriptions",
+			bytes.NewReader(body),
+		)
 		rr := httptest.NewRecorder()
 
 		server.handleCreateSubscription(rr, req)
@@ -89,7 +99,12 @@ func TestHandleCreateSubscription(t *testing.T) {
 
 		body, err := json.Marshal(reqBody)
 		require.NoError(t, err)
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/nupf-ee/v1/ee-subscriptions", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodPost,
+			"/nupf-ee/v1/ee-subscriptions",
+			bytes.NewReader(body),
+		)
 		rr := httptest.NewRecorder()
 
 		server.handleCreateSubscription(rr, req)
@@ -112,7 +127,12 @@ func TestHandleCreateSubscription(t *testing.T) {
 
 		body, err := json.Marshal(reqBody)
 		require.NoError(t, err)
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/nupf-ee/v1/ee-subscriptions", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodPost,
+			"/nupf-ee/v1/ee-subscriptions",
+			bytes.NewReader(body),
+		)
 		rr := httptest.NewRecorder()
 
 		server.handleCreateSubscription(rr, req)
@@ -134,7 +154,12 @@ func TestHandleCreateSubscription(t *testing.T) {
 		id, err := store.CreateSubscription(sub)
 		require.NoError(t, err)
 
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/nupf-ee/v1/ee-subscriptions/"+id, nil)
+		req := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodDelete,
+			"/nupf-ee/v1/ee-subscriptions/"+id,
+			nil,
+		)
 		rr := httptest.NewRecorder()
 
 		server.handleDeleteSubscriptionByID(rr, req)

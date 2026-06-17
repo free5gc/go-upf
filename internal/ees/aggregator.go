@@ -170,7 +170,8 @@ func (aggregator *Aggregator) TickOnce(ctx context.Context) (int, error) {
 		// we MUST send a zero-value report to fulfill the "immediate" requirement
 		// and then delete the subscription.
 		if subscription.Mode == ModeOnDemand && (!hasReports || len(sessionMap) == 0) {
-			aggregator.logger.Infof("ees ONE_TIME subscription %s has no buffered data, sending zero-value report", subscription.ID)
+			aggregator.logger.Infof("ees ONE_TIME subscription %s has no buffered data, "+
+				"sending zero-value report", subscription.ID)
 
 			// Try to find active sessions for this UE to provide at least some identity info
 			zeroReports := aggregator.generateZeroReports(subscription)
