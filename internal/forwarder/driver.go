@@ -16,28 +16,41 @@ import (
 type Driver interface {
 	Close()
 
-	CreatePDR(uint64, *ie.IE) error
-	UpdatePDR(uint64, *ie.IE) error
-	RemovePDR(uint64, *ie.IE) error
-
-	CreateFAR(uint64, *ie.IE) error
-	UpdateFAR(uint64, *ie.IE) error
-	RemoveFAR(uint64, *ie.IE) error
-
-	CreateQER(uint64, *ie.IE) error
-	UpdateQER(uint64, *ie.IE) error
-	RemoveQER(uint64, *ie.IE) error
-
-	CreateURR(uint64, *ie.IE) error
-	UpdateURR(uint64, *ie.IE) ([]report.USAReport, error)
-	RemoveURR(uint64, *ie.IE) ([]report.USAReport, error)
+	// QueryURR is used internally by diassociateURR when a PDR is removed/updated
 	QueryURR(uint64, uint32) ([]report.USAReport, error)
 
-	CreateBAR(uint64, *ie.IE) error
-	UpdateBAR(uint64, *ie.IE) error
-	RemoveBAR(uint64, *ie.IE) error
-
 	HandleReport(report.Handler)
+
+	// Plan-based methods for two-phase commit
+	// Build*Plan methods parse and validate IEs without executing
+	BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
+	BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
+	BuildRemovePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
+
+	BuildCreateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error)
+	BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error)
+	BuildRemoveFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error)
+
+	BuildCreateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error)
+	BuildUpdateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error)
+	BuildRemoveQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error)
+
+	BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
+	BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
+	BuildRemoveURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
+	BuildQueryURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
+
+	BuildCreateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
+	BuildUpdateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
+	BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
+
+	// ExecuteModificationPlan executes all operations in the plan
+	// Uses best-effort execution: continues on failure, logs errors
+	ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error)
+
+	// ExecuteEstablishmentPlan executes Create operations for session establishment
+	// Uses fail-fast: returns error on first failure
+	ExecuteEstablishmentPlan(plan *ModificationPlan) (*ExecutionResult, error)
 }
 
 func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
