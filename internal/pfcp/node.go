@@ -3,11 +3,13 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 
+	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 	logger_util "github.com/free5gc/util/logger"
@@ -30,17 +32,18 @@ type URRInfo struct {
 }
 
 type Sess struct {
-	rnode    *RemoteNode
-	LocalID  uint64
-	RemoteID uint64
-	PDRIDs   map[uint16]*PDRInfo    // key: PDR_ID
-	FARIDs   map[uint32]struct{}    // key: FAR_ID
-	QERIDs   map[uint32]struct{}    // key: QER_ID
-	URRIDs   map[uint32]*URRInfo    // key: URR_ID
-	BARIDs   map[uint8]struct{}     // key: BAR_ID
-	q        map[uint16]chan []byte // key: PDR_ID
-	qlen     int
-	log      *logrus.Entry
+	rnode      *RemoteNode
+	LocalID    uint64
+	RemoteID   uint64
+	UeIPv4Addr string                 // Added: UE IPv4 Address derived from PDR
+	PDRIDs     map[uint16]*PDRInfo    // key: PDR_ID
+	FARIDs     map[uint32]struct{}    // key: FAR_ID
+	QERIDs     map[uint32]struct{}    // key: QER_ID
+	URRIDs     map[uint32]*URRInfo    // key: URR_ID
+	BARIDs     map[uint8]struct{}     // key: BAR_ID
+	q          map[uint16]chan []byte // key: PDR_ID
+	qlen       int
+	log        *logrus.Entry
 }
 
 func (s *Sess) Close() []report.USAReport {
@@ -119,6 +122,19 @@ func (s *Sess) CreatePDR(req *ie.IE) error {
 			urrInfo, ok := s.URRIDs[v]
 			if ok {
 				urrInfo.refPdrNum++
+			}
+		case ie.PDI:
+			pdi, err1 := i.PDI()
+			if err1 == nil {
+				for _, subIE := range pdi {
+					if subIE.Type == ie.UEIPAddress {
+						if ueIP, err2 := subIE.UEIPAddress(); err2 == nil {
+							if ueIP.IPv4Address != nil {
+								s.UeIPv4Addr = ueIP.IPv4Address.String()
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -612,9 +628,13 @@ func (n *RemoteNode) DeleteSess(lSeid uint64) []report.USAReport {
 type LocalNode struct {
 	sess []*Sess
 	free []uint64
+	mu   sync.RWMutex
 }
 
 func (n *LocalNode) Reset() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	for _, sess := range n.sess {
 		if sess != nil {
 			sess.Close()
@@ -628,11 +648,19 @@ func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 	if lSeid == 0 {
 		return nil, errors.New("Sess: invalid lSeid:0")
 	}
-	i := int(lSeid) - 1
-	if i >= len(n.sess) {
+
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	// Length as int; compare as uint64 to match lSeid type.
+	sessLen := len(n.sess)
+	if lSeid > uint64(sessLen) {
 		return nil, errors.Errorf("Sess: sess not found (lSeid:%#x)", lSeid)
 	}
-	sess := n.sess[i]
+
+	// Safe: 1 <= lSeid <= sessLen guarantees the conversion and index are valid.
+	idx := int(lSeid) - 1
+	sess := n.sess[idx]
 	if sess == nil {
 		return nil, errors.Errorf("Sess: sess not found (lSeid:%#x)", lSeid)
 	}
@@ -640,8 +668,11 @@ func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 }
 
 func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
 	for _, s := range n.sess {
-		if s.RemoteID == rSeid && s.rnode.addr.String() == addr.String() {
+		if s != nil && s.RemoteID == rSeid && s.rnode.addr.String() == addr.String() {
 			return s, nil
 		}
 	}
@@ -649,6 +680,9 @@ func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
 }
 
 func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	s := &Sess{
 		RemoteID: rSeid,
 		PDRIDs:   make(map[uint16]*PDRInfo),
@@ -675,16 +709,88 @@ func (n *LocalNode) DeleteSess(lSeid uint64) ([]report.USAReport, error) {
 	if lSeid == 0 {
 		return nil, errors.New("DeleteSess: invalid lSeid:0")
 	}
-	i := int(lSeid) - 1
-	if i >= len(n.sess) {
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	// Capacity as int; compare as uint64 to match lSeid type.
+	sessCap := len(n.sess)
+	if lSeid > uint64(sessCap) {
 		return nil, errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
 	}
-	if n.sess[i] == nil {
+
+	// Safe: 1 <= lSeid <= sessCap ensures valid conversion and index.
+	idx := int(lSeid) - 1
+	if n.sess[idx] == nil {
 		return nil, errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
 	}
-	n.sess[i].log.Infoln("sess deleted")
-	usars := n.sess[i].Close()
-	n.sess[i] = nil
+
+	n.sess[idx].log.Infoln("sess deleted")
+	usars := n.sess[idx].Close()
+	n.sess[idx] = nil
 	n.free = append(n.free, lSeid)
+
 	return usars, nil
+}
+
+// GetSessionContextUEIP returns the UE IPv4 address for a given SEID.
+// This is more efficient than GetSessionContexts when only the IP is needed.
+func (n *LocalNode) GetSessionContextUEIP(lSeid uint64) (string, bool) {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	idx := int(lSeid) - 1
+	if idx < 0 || idx >= len(n.sess) || n.sess[idx] == nil {
+		return "", false
+	}
+	return n.sess[idx].UeIPv4Addr, true
+}
+
+// [New] Implement ees.SessionProvider interface
+// Allow EES to obtain the context of active Sessions (RemoteSEID and URRIDs)
+func (n *LocalNode) GetSessionContexts() map[uint64]ees.SessionContext {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	result := make(map[uint64]ees.SessionContext)
+
+	for _, sess := range n.sess {
+		if sess == nil {
+			continue
+		}
+
+		// Collect all URR IDs under this Session
+		var urrIDs []uint32
+		if sess.URRIDs != nil {
+			for urrID := range sess.URRIDs {
+				urrIDs = append(urrIDs, urrID)
+			}
+		}
+
+		// Only monitor when Session has URR (or decide whether to include empty Session based on requirements)
+		if len(urrIDs) > 0 {
+			// Populate PDRs
+			var pdrs []*ees.PDRContext
+
+			// Correct iteration over PDRIDs map
+			for pdrID, pdrInfo := range sess.PDRIDs {
+				var pdrURRIDs []uint32
+				for uid := range pdrInfo.RelatedURRIDs {
+					pdrURRIDs = append(pdrURRIDs, uid)
+				}
+				pdrs = append(pdrs, &ees.PDRContext{
+					PDRID:  pdrID,
+					URRIDs: pdrURRIDs,
+				})
+			}
+
+			result[sess.LocalID] = ees.SessionContext{
+				RemoteSEID: sess.RemoteID,
+				UeIPv4Addr: sess.UeIPv4Addr,
+				URRIDs:     urrIDs,
+				PDRs:       pdrs,
+			}
+		}
+	}
+	return result
 }

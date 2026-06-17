@@ -122,10 +122,18 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 				// receiver closed
 				return
 			}
+
 			msg, err := message.Parse(rcvPkt.Buf)
 			if err != nil {
 				s.log.Errorln(err)
 				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
+				continue
+			}
+
+			// This prevents malformed packets with inconsistent length fields
+			if err = validatePfcpPacketLength(rcvPkt.Buf); err != nil {
+				s.log.Warnf("Invalid PFCP packet from %s: %v", rcvPkt.RemoteAddr, err)
+				s.log.Tracef("Rejected packet:\n%+v", hex.Dump(rcvPkt.Buf))
 				continue
 			}
 
@@ -398,4 +406,30 @@ func setReqSeq(msgtmp message.Message, seq uint32) {
 		msg.SetSequenceNumber(seq)
 	default:
 	}
+}
+
+func (s *PfcpServer) GetLocalNode() *LocalNode {
+	return &s.lnode
+}
+
+func validatePfcpPacketLength(buf []byte) error {
+	// Minimum PFCP message: 8 bytes (header without SEID)
+	if len(buf) < 8 {
+		return fmt.Errorf("packet too short: %d bytes (minimum 8 bytes required)", len(buf))
+	}
+
+	// Read Message Length field (bytes 2-3, big-endian)
+	declaredLen := uint16(buf[2])<<8 | uint16(buf[3])
+
+	// Total = 4 bytes (fixed header) + declared message length
+	expectedTotalLen := int(declaredLen) + 4
+
+	// Check if declared length matches actual received length
+	actualLen := len(buf)
+	if actualLen != expectedTotalLen {
+		return fmt.Errorf("message length mismatch: header declares %d bytes total, but received %d bytes",
+			expectedTotalLen, actualLen)
+	}
+
+	return nil
 }

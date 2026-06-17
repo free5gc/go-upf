@@ -13,16 +13,37 @@ func (s *PfcpServer) handleAssociationSetupRequest(
 ) {
 	s.log.Infoln("handleAssociationSetupRequest")
 
+	// 1. Validate NodeID IE (Mandatory)
 	if req.NodeID == nil {
-		s.log.Errorln("not found NodeID")
+		s.log.Errorf("Association Setup failed: mandatory IE missing: NodeID")
 		return
 	}
+
+	// 2. Validate NodeID IE can be parsed correctly
 	rnodeid, err := req.NodeID.NodeID()
 	if err != nil {
-		s.log.Errorln(err)
+		s.log.Errorf("Association Setup failed: mandatory IE incorrect: NodeID parse error: %v", err)
 		return
 	}
-	s.log.Debugf("remote nodeid: %v\n", rnodeid)
+
+	// 3. Validate NodeID is not empty
+	if rnodeid == "" {
+		s.log.Errorf("Association Setup failed: mandatory IE incorrect: NodeID is empty")
+		return
+	}
+
+	// 4. Validate RecoveryTimeStamp IE (Mandatory)
+	if req.RecoveryTimeStamp == nil {
+		s.log.Errorf("Association Setup failed: mandatory IE missing: RecoveryTimeStamp")
+		return
+	}
+
+	// 5. Validate RecoveryTimeStamp can be parsed
+	_, err = req.RecoveryTimeStamp.RecoveryTimeStamp()
+	if err != nil {
+		s.log.Errorf("Association Setup failed: mandatory IE incorrect: RecoveryTimeStamp parse error: %v", err)
+		return
+	}
 
 	// deleting the existing PFCP association and associated PFCP sessions,
 	// if a PFCP association was already established for the Node ID
