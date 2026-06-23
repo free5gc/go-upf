@@ -110,41 +110,6 @@ func (s *Sess) Close() []report.USAReport {
 		s.log.Errorf("Execute Deletion Plan err: %v", err)
 	}
 
-	var pdrid uint16
-	urrids := make(map[uint32]struct{})
-	for _, i := range ies {
-		switch i.Type {
-		case ie.PDRID:
-			v, err1 := i.PDRID()
-			if err1 != nil {
-				break
-			}
-			pdrid = v
-		case ie.URRID:
-			v, err1 := i.URRID()
-			if err1 != nil {
-				break
-			}
-			urrids[v] = struct{}{}
-			urrInfo, ok := s.URRIDs[v]
-			if ok {
-				urrInfo.refPdrNum++
-			}
-		case ie.PDI:
-			pdi, err1 := i.PDI()
-			if err1 == nil {
-				for _, subIE := range pdi {
-					if subIE.Type == ie.UEIPAddress {
-						if ueIP, err2 := subIE.UEIPAddress(); err2 == nil {
-							if ueIP.IPv4Address != nil {
-								s.UeIPv4Addr = ueIP.IPv4Address.String()
-							}
-						}
-					}
-				}
-			}
-		}
-	}
 	for _, p := range plan.RemoveBARs {
 		s.ApplyRemoveBAR(p)
 	}
@@ -158,6 +123,7 @@ func (s *Sess) Close() []report.USAReport {
 		s.ApplyRemoveFAR(p)
 	}
 
+	var usars []report.USAReport
 	// Collect USAReports from execution result (RemoveURR)
 	if execResult != nil && len(execResult.USAReports) > 0 {
 		for i := range execResult.USAReports {

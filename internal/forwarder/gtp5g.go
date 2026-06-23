@@ -1770,35 +1770,7 @@ func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 		// TODO: should apply PERIO updateURR and receive final report from old URR
 	}
 
-	oid := gtp5gnl.OID{lSeid, urrid}
-	rs, err := gtp5gnl.UpdateURROID(g.client, g.link.link, oid, attrs)
-	if err != nil {
-		return nil, err
-	}
 
-	if rs == nil {
-		return nil, nil
-	}
-
-	for _, r := range rs {
-		usar := report.USAReport{
-			URRID:       r.URRID,
-			QueryUrrRef: r.QueryUrrRef,
-			StartTime:   r.StartTime,
-			EndTime:     r.EndTime,
-		}
-		usar.USARTrigger.Flags = r.USARTrigger
-		usar.VolumMeasure = report.VolumeMeasure{
-			TotalVolume:    r.VolMeasurement.TotalVolume,
-			UplinkVolume:   r.VolMeasurement.UplinkVolume,
-			DownlinkVolume: r.VolMeasurement.DownlinkVolume,
-			TotalPktNum:    r.VolMeasurement.TotalPktNum,
-			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-		}
-
-		// TODO: should apply PERIO updateURR and receive final report from old URR
-	}
 
 	return &URRPlan{
 		Op:            OpUpdate,
@@ -1832,29 +1804,6 @@ func (g *Gtp5g) BuildQueryURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 		return nil, err
 	}
 
-	if rs == nil {
-		return nil, nil
-	}
-
-	for _, r := range rs {
-		usar := report.USAReport{
-			URRID:       r.URRID,
-			QueryUrrRef: r.QueryUrrRef,
-			StartTime:   r.StartTime,
-			EndTime:     r.EndTime,
-		}
-		usar.USARTrigger.Flags = r.USARTrigger
-		usar.VolumMeasure = report.VolumeMeasure{
-			TotalVolume:    r.VolMeasurement.TotalVolume,
-			UplinkVolume:   r.VolMeasurement.UplinkVolume,
-			DownlinkVolume: r.VolMeasurement.DownlinkVolume,
-			TotalPktNum:    r.VolMeasurement.TotalPktNum,
-			UplinkPktNum:   r.VolMeasurement.UplinkPktNum,
-			DownlinkPktNum: r.VolMeasurement.DownlinkPktNum,
-		}
-
-		usars = append(usars, usar)
-	}
 
 	return &URRPlan{
 		Op:         OpRemove, // Query is not Create/Update/Remove, but we need a value
