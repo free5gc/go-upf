@@ -1770,8 +1770,6 @@ func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 		// TODO: should apply PERIO updateURR and receive final report from old URR
 	}
 
-
-
 	return &URRPlan{
 		Op:            OpUpdate,
 		OID:           gtp5gnl.OID{lSeid, urrid},
@@ -1803,7 +1801,6 @@ func (g *Gtp5g) BuildQueryURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	if err != nil {
 		return nil, err
 	}
-
 
 	return &URRPlan{
 		Op:         OpRemove, // Query is not Create/Update/Remove, but we need a value
