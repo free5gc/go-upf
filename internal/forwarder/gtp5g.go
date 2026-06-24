@@ -343,7 +343,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 		case ie.SourceInterface:
 			v, err := x.SourceInterface()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "newPdi: failed to parse SourceInterface")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDI_SRC_INTF,
@@ -382,7 +382,8 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 			// Validate SDF Filter IE payload length early (TS 29.244 Section 8.2.5)
 			// Minimum: 1 byte (flags) + 1 byte (spare) + at least 1 byte for content
 			if len(x.Payload) < 3 {
-				return nil, errors.Errorf("SDF Filter IE payload too short: %d bytes (minimum 3)", len(x.Payload))
+				logger.FwderLog.Warnf("SDF Filter IE payload too short: %d bytes", len(x.Payload))
+				break
 			}
 			sdfIEs = append(sdfIEs, x)
 		case ie.ApplicationID:
@@ -392,7 +393,8 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	for _, x := range sdfIEs {
 		v, err := g.newSdfFilter(x, srcIf)
 		if err != nil {
-			return nil, errors.Wrap(err, "newSdfFilter failed")
+			logger.FwderLog.Warnf("Failed to parse SDF Filter IE: %v", err)
+			continue
 		}
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.PDI_SDF_FILTER,
@@ -770,6 +772,7 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	var pdrid uint64
 	var attrs []nl.Attr
 	var urrids []uint32
+	var hasPDRID, hasPrecedence, hasPDI bool
 
 	ies, err := req.CreatePDR()
 	if err != nil {
@@ -784,11 +787,13 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 				return nil, errors.Wrap(err, "CreatePDR: failed to parse PDRID")
 			}
 			pdrid = uint64(v)
+			hasPDRID = true
 		case ie.Precedence:
 			v, err := i.Precedence()
 			if err != nil {
 				return nil, errors.Wrap(err, "CreatePDR: failed to parse Precedence")
 			}
+			hasPrecedence = true
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_PRECEDENCE,
 				Value: nl.AttrU32(v),
@@ -798,6 +803,7 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 			if err != nil {
 				return nil, errors.Wrap(err, "CreatePDR: failed to parse PDI")
 			}
+			hasPDI = true
 			if v != nil {
 				attrs = append(attrs, nl.Attr{
 					Type:  gtp5gnl.PDR_PDI,
@@ -807,7 +813,7 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		case ie.OuterHeaderRemoval:
 			v, err := i.OuterHeaderRemovalDescription()
 			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse OuterHeaderRemoval")
+				break
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_OUTER_HEADER_REMOVAL,
@@ -817,7 +823,7 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		case ie.FARID:
 			v, err := i.FARID()
 			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse FARID")
+				break
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_FAR_ID,
@@ -849,6 +855,16 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		}
 	}
 
+	if !hasPDRID {
+		return nil, errors.New("CreatePDR: missing mandatory IE: PDR ID")
+	}
+	if !hasPrecedence {
+		return nil, errors.Errorf("CreatePDR: PDR(%#x) missing mandatory IE: Precedence", pdrid)
+	}
+	if !hasPDI {
+		return nil, errors.Errorf("CreatePDR: PDR(%#x) missing mandatory IE: PDI", pdrid)
+	}
+
 	// TODO:
 	// Not in 3GPP spec, just used for routing
 	// var roleAddrIpv4 net.IP
@@ -876,6 +892,7 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	var pdrid uint64
 	var attrs []nl.Attr
 	var urrids []uint32
+	var hasPDRID bool
 
 	ies, err := req.UpdatePDR()
 	if err != nil {
@@ -890,6 +907,7 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 				return nil, errors.Wrap(err, "UpdatePDR: failed to parse PDRID")
 			}
 			pdrid = uint64(v)
+			hasPDRID = true
 		case ie.Precedence:
 			v, err := i.Precedence()
 			if err != nil {
@@ -904,7 +922,7 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		case ie.PDI:
 			v, err := g.newPdi(i)
 			if err != nil {
-				return nil, errors.Wrap(err, "UpdatePDR: failed to parse PDI")
+				break
 			}
 			if v != nil {
 				attrs = append(attrs, nl.Attr{
@@ -955,6 +973,10 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 			})
 			urrids = append(urrids, v)
 		}
+	}
+
+	if !hasPDRID {
+		return nil, errors.New("UpdatePDR: missing mandatory IE: PDR ID")
 	}
 
 	return &PDRPlan{
@@ -1070,12 +1092,12 @@ func (g *Gtp5g) BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
 		case ie.ApplyAction:
 			b, err := i.ApplyAction()
 			if err != nil {
-				return nil, err
+				break
 			}
 			var act report.ApplyAction
 			err = act.Unmarshal(b)
 			if err != nil {
-				return nil, err
+				break
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
@@ -1148,7 +1170,7 @@ func (g *Gtp5g) BuildCreateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
 		case ie.QERID:
 			v, err := i.QERID()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "CreateQER: failed to parse QERID")
 			}
 			qerid = uint64(v)
 		case ie.QERCorrelationID:
@@ -1258,7 +1280,7 @@ func (g *Gtp5g) BuildUpdateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
 		case ie.QERID:
 			v, err := i.QERID()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "UpdateQER: failed to parse QERID")
 			}
 			qerid = uint64(v)
 		case ie.QERCorrelationID:
@@ -1415,10 +1437,10 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 		case ie.MeasurementPeriod:
 			measurePeriod, err = i.MeasurementPeriod()
 			if err != nil {
-				return nil, err
+				break
 			}
 			if measurePeriod <= 0 {
-				return nil, errors.New("invalid measurement period")
+				break
 			}
 			// TODO: convert time.Duration -> ?
 			attrs = append(attrs, nl.Attr{
