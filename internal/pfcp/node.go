@@ -711,8 +711,16 @@ func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 
+	addrString := ""
+	if addr != nil {
+		addrString = addr.String()
+	}
+
 	for _, s := range n.sess {
-		if s != nil && s.RemoteID == rSeid && s.rnode.addr.String() == addr.String() {
+		if s == nil || s.rnode == nil || s.rnode.addr == nil {
+			continue
+		}
+		if s.RemoteID == rSeid && s.rnode.addr.String() == addrString {
 			return s, nil
 		}
 	}

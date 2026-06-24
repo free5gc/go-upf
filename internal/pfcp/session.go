@@ -638,7 +638,21 @@ func (s *PfcpServer) handleSessionReportResponse(
 
 	s.log.Debugf("seid: %#x\n", rsp.SEID())
 	if rsp.Header.SEID == 0 {
-		s.log.Warnf("rsp SEID is 0; no this session on remote; delete it on local")
+		if rsp.Cause == nil {
+			s.log.Errorf("rsp SEID is 0 without Cause IE")
+			return
+		}
+		cause, err := rsp.Cause.Cause()
+		if err != nil {
+			s.log.Errorf("rsp SEID is 0 with invalid Cause IE: %v", err)
+			return
+		}
+		if cause != ie.CauseSessionContextNotFound {
+			s.log.Errorf("rsp SEID is 0 with unexpected cause[%d]", cause)
+			return
+		}
+
+		s.log.Warnf("rsp SEID is 0 and cause is Session context not found; delete it on local")
 		sess, err := s.lnode.RemoteSess(req.SEID(), addr)
 		if err != nil {
 			s.log.Errorln(err)
