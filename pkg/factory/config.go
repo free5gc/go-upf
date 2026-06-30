@@ -59,9 +59,9 @@ type Logger struct {
 
 type EESConfig struct {
 	Enabled    bool   `yaml:"enabled"    valid:"optional"`
-	ListenAddr string `yaml:"listenAddr" valid:"optional"` // e.g. "0.0.0.0:8088"
+	IP         string `yaml:"ip"         valid:"optional"`
+	Port       int    `yaml:"port"       valid:"optional"`
 	PeriodSec  int    `yaml:"periodSec"  valid:"optional"`
-	LogLevel   string `yaml:"logLevel"   valid:"optional"` // reuse global level if empty
 }
 
 func (c *Config) GetVersion() string {

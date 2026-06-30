@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -253,10 +254,11 @@ func (u *UpfApp) initEES(reportDispatcher *Dispatcher) error {
 	go aggregator.Run(u.ctx)
 
 	// 5. Start API Server (simplified - no Shadow URR provisioning)
-	listenAddr := u.cfg.EES.ListenAddr
-	if listenAddr == "" {
-		listenAddr = ":8088"
+	port := u.cfg.EES.Port
+	if port == 0 {
+		port = 8088
 	}
+	listenAddr := fmt.Sprintf("%s:%d", u.cfg.EES.IP, port)
 	u.eesServer = ees.NewServer(subscriptionStore, aggregator, eesLogger)
 
 	go func() {
