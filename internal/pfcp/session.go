@@ -530,6 +530,18 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			))
 	}
 
+	// [New] Push collected USAReports to the internal Dispatcher so EES can receive them!
+	if len(usars) > 0 {
+		var rpts []report.Report
+		for i := range usars {
+			rpts = append(rpts, usars[i])
+		}
+		s.NotifySessReport(report.SessReport{
+			SEID:    sess.RemoteID,
+			Reports: rpts,
+		})
+	}
+
 	// Cleanup removed URRs
 	sess.CleanupRemovedURRs()
 
@@ -596,6 +608,18 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		if urrInfo.removed {
 			delete(sess.URRIDs, r.URRID)
 		}
+	}
+
+	// [New] Push collected USAReports to the internal Dispatcher so EES can receive them!
+	if len(usars) > 0 {
+		var rpts []report.Report
+		for i := range usars {
+			rpts = append(rpts, usars[i])
+		}
+		s.NotifySessReport(report.SessReport{
+			SEID:    sess.RemoteID,
+			Reports: rpts,
+		})
 	}
 
 	err = s.sendRspTo(rsp, addr)

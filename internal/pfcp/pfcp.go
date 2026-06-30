@@ -408,6 +408,10 @@ func setReqSeq(msgtmp message.Message, seq uint32) {
 	}
 }
 
+func (s *PfcpServer) GetLocalNode() *LocalNode {
+	return &s.lnode
+}
+
 func validatePfcpPacketLength(buf []byte) error {
 	// Minimum PFCP message: 8 bytes (header without SEID)
 	if len(buf) < 8 {
