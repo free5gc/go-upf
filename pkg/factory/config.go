@@ -58,10 +58,10 @@ type Logger struct {
 }
 
 type EESConfig struct {
-	Enabled    bool   `yaml:"enabled"    valid:"optional"`
-	IP         string `yaml:"ip"         valid:"optional"`
-	Port       int    `yaml:"port"       valid:"optional"`
-	PeriodSec  int    `yaml:"periodSec"  valid:"optional"`
+	Enabled   bool   `yaml:"enabled"    valid:"optional"`
+	IP        string `yaml:"ip"         valid:"optional"`
+	Port      int    `yaml:"port"       valid:"optional"`
+	PeriodSec int    `yaml:"periodSec"  valid:"optional"`
 }
 
 func (c *Config) GetVersion() string {
