@@ -421,11 +421,16 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	// ========================================================================
-	// PHASE 2: Execution - Execute all operations via gtp5gnl (best-effort)
+	// PHASE 2: Execution - Execute all operations via gtp5gnl (fail-fast)
 	// ========================================================================
 	execResult, err1 := sess.rnode.driver.ExecuteModificationPlan(plan)
 	if err1 != nil {
-		s.log.Errorf("Execute Modification Plan err: %v", err1)
+		// The rules created by this plan have been rolled back, so the session
+		// state must not be updated: reject the request instead of reporting
+		// success for rules that were not installed.
+		sess.log.Errorf("Mod execution error: %v", err1)
+		s.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
+		return
 	}
 
 	// ========================================================================

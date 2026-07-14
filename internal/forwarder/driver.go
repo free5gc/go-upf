@@ -45,7 +45,8 @@ type Driver interface {
 	BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
 
 	// ExecuteModificationPlan executes all operations in the plan
-	// Uses best-effort execution: continues on failure, logs errors
+	// Uses fail-fast: rolls back the rules created by this plan and returns
+	// an error on first failure
 	ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error)
 
 	// ExecuteEstablishmentPlan executes Create operations for session establishment

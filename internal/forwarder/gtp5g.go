@@ -1711,21 +1711,72 @@ func (g *Gtp5g) BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
 	}, nil
 }
 
-// ExecuteModificationPlan executes all operations in the plan
-// Uses best-effort execution: continues on failure, logs errors
+// createdRules records the rules this plan has already created in gtp5g,
+// so that they can be rolled back if a later operation of the same plan fails.
+type createdRules struct {
+	fars []*FARPlan
+	qers []*QERPlan
+	urrs []*URRPlan
+	bars []*BARPlan
+	pdrs []*PDRPlan
+}
+
+// rollbackCreatedRules removes the rules created by the current plan, in reverse
+// dependency order. Only rules whose creation succeeded are removed, so a rule
+// that already existed before the plan is never touched.
+func (g *Gtp5g) rollbackCreatedRules(plan *ModificationPlan, created *createdRules) {
+	for _, p := range created.pdrs {
+		if err := gtp5gnl.RemovePDROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemovePDR[%#x] failed: %v", p.PDRID, err)
+		}
+	}
+	for _, p := range created.bars {
+		if err := gtp5gnl.RemoveBAROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemoveBAR[%#x] failed: %v", p.BARID, err)
+		}
+	}
+	for _, p := range created.urrs {
+		g.ps.DelPeriodReportTimer(plan.SEID, p.URRID)
+		if _, err := gtp5gnl.RemoveURROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemoveURR[%#x] failed: %v", p.URRID, err)
+		}
+	}
+	for _, p := range created.qers {
+		if err := gtp5gnl.RemoveQEROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemoveQER[%#x] failed: %v", p.QERID, err)
+		}
+	}
+	for _, p := range created.fars {
+		if err := gtp5gnl.RemoveFAROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemoveFAR[%#x] failed: %v", p.FARID, err)
+		}
+	}
+}
+
+// ExecuteModificationPlan executes all operations in the plan.
+// Uses fail-fast semantics: on the first failure it rolls back the rules created
+// by this plan and returns an error, so that the caller can reject the request
+// instead of reporting success for rules that were never installed.
+// Remove/Update operations already executed cannot be rolled back; they are
+// applied only after all Create operations succeeded.
 func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error) {
 	result := NewExecutionResult()
+	created := &createdRules{}
 
 	for _, p := range plan.CreateFARs {
 		if err := gtp5gnl.CreateFAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreateFAR[%#x] failed: %v", p.FARID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreateFAR[%#x] failed", p.FARID)
 		}
+		created.fars = append(created.fars, p)
 	}
 
 	for _, p := range plan.CreateQERs {
 		if err := gtp5gnl.CreateQEROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreateQER[%#x] failed: %v", p.QERID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreateQER[%#x] failed", p.QERID)
 		}
+		created.qers = append(created.qers, p)
 	}
 
 	for _, p := range plan.CreateURRs {
@@ -1733,31 +1784,40 @@ func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResul
 			g.ps.AddPeriodReportTimer(plan.SEID, p.URRID, p.MeasurePeriod)
 		}
 		if err := gtp5gnl.CreateURROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreateURR[%#x] failed: %v", p.URRID, err)
+			g.ps.DelPeriodReportTimer(plan.SEID, p.URRID)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreateURR[%#x] failed", p.URRID)
 		}
+		created.urrs = append(created.urrs, p)
 	}
 
 	for _, p := range plan.CreateBARs {
 		if err := gtp5gnl.CreateBAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreateBAR[%#x] failed: %v", p.BARID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreateBAR[%#x] failed", p.BARID)
 		}
+		created.bars = append(created.bars, p)
 	}
 
 	for _, p := range plan.CreatePDRs {
 		if err := gtp5gnl.CreatePDROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreatePDR[%#x] failed: %v", p.PDRID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreatePDR[%#x] failed", p.PDRID)
 		}
+		created.pdrs = append(created.pdrs, p)
 	}
 
 	for _, p := range plan.RemovePDRs {
 		if err := gtp5gnl.RemovePDROID(g.client, g.link.link, p.OID); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: RemovePDR[%#x] failed: %v", p.PDRID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: RemovePDR[%#x] failed", p.PDRID)
 		}
 	}
 
 	for _, p := range plan.RemoveBARs {
 		if err := gtp5gnl.RemoveBAROID(g.client, g.link.link, p.OID); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: RemoveBAR[%#x] failed: %v", p.BARID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: RemoveBAR[%#x] failed", p.BARID)
 		}
 	}
 
@@ -1765,7 +1825,8 @@ func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResul
 		g.ps.DelPeriodReportTimer(plan.SEID, p.URRID)
 		rs, err := gtp5gnl.RemoveURROID(g.client, g.link.link, p.OID)
 		if err != nil {
-			g.log.Errorf("ExecuteModificationPlan: RemoveURR[%#x] failed: %v", p.URRID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: RemoveURR[%#x] failed", p.URRID)
 		}
 		for _, r := range rs {
 			result.USAReports = append(result.USAReports, g.convertUSAReport(r))
@@ -1774,19 +1835,22 @@ func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResul
 
 	for _, p := range plan.RemoveQERs {
 		if err := gtp5gnl.RemoveQEROID(g.client, g.link.link, p.OID); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: RemoveQER[%#x] failed: %v", p.QERID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: RemoveQER[%#x] failed", p.QERID)
 		}
 	}
 
 	for _, p := range plan.RemoveFARs {
 		if err := gtp5gnl.RemoveFAROID(g.client, g.link.link, p.OID); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: RemoveFAR[%#x] failed: %v", p.FARID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: RemoveFAR[%#x] failed", p.FARID)
 		}
 	}
 
 	for _, p := range plan.UpdateFARs {
 		if err := gtp5gnl.UpdateFAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: UpdateFAR[%#x] failed: %v", p.FARID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: UpdateFAR[%#x] failed", p.FARID)
 		}
 
 		if p.ApplyAction != nil {
@@ -1796,14 +1860,16 @@ func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResul
 
 	for _, p := range plan.UpdateQERs {
 		if err := gtp5gnl.UpdateQEROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: UpdateQER[%#x] failed: %v", p.QERID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: UpdateQER[%#x] failed", p.QERID)
 		}
 	}
 
 	for _, p := range plan.UpdateURRs {
 		rs, err := gtp5gnl.UpdateURROID(g.client, g.link.link, p.OID, p.Attrs)
 		if err != nil {
-			g.log.Errorf("ExecuteModificationPlan: UpdateURR[%#x] failed: %v", p.URRID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: UpdateURR[%#x] failed", p.URRID)
 		}
 		for _, r := range rs {
 			result.USAReports = append(result.USAReports, g.convertUSAReport(r))
@@ -1812,13 +1878,15 @@ func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResul
 
 	for _, p := range plan.UpdateBARs {
 		if err := gtp5gnl.UpdateBAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: UpdateBAR[%#x] failed: %v", p.BARID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: UpdateBAR[%#x] failed", p.BARID)
 		}
 	}
 
 	for _, p := range plan.UpdatePDRs {
 		if err := gtp5gnl.UpdatePDROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: UpdatePDR[%#x] failed: %v", p.PDRID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: UpdatePDR[%#x] failed", p.PDRID)
 		}
 	}
 
