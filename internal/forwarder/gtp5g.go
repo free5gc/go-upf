@@ -813,6 +813,7 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		case ie.OuterHeaderRemoval:
 			v, err := i.OuterHeaderRemovalDescription()
 			if err != nil {
+				logger.FwderLog.Warnf("CreatePDR: Failed to parse OuterHeaderRemoval: %v", err)
 				break
 			}
 			attrs = append(attrs, nl.Attr{
@@ -823,6 +824,7 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		case ie.FARID:
 			v, err := i.FARID()
 			if err != nil {
+				logger.FwderLog.Warnf("CreatePDR: Failed to parse FARID: %v", err)
 				break
 			}
 			attrs = append(attrs, nl.Attr{
@@ -922,6 +924,7 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		case ie.PDI:
 			v, err := g.newPdi(i)
 			if err != nil {
+				logger.FwderLog.Warnf("UpdatePDR: Failed to parse PDI: %v", err)
 				break
 			}
 			if v != nil {
@@ -1092,12 +1095,12 @@ func (g *Gtp5g) BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
 		case ie.ApplyAction:
 			b, err := i.ApplyAction()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "UpdateFAR: failed to parse ApplyAction")
 			}
 			var act report.ApplyAction
 			err = act.Unmarshal(b)
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "UpdateFAR: failed to unmarshal ApplyAction")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
@@ -1437,9 +1440,11 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 		case ie.MeasurementPeriod:
 			measurePeriod, err = i.MeasurementPeriod()
 			if err != nil {
+				logger.FwderLog.Warnf("CreateURR: Failed to parse MeasurementPeriod: %v", err)
 				break
 			}
 			if measurePeriod <= 0 {
+				logger.FwderLog.Warnf("CreateURR: MeasurementPeriod must be positive, got %v", measurePeriod)
 				break
 			}
 			// TODO: convert time.Duration -> ?
