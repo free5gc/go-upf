@@ -39,12 +39,14 @@ type Gtp5g struct {
 	psClient *gtp5gnl.Client
 	bsnl     *buffnetlink.Server
 	ps       *perio.Server
+	nat      *NatManager
 	log      *logrus.Entry
 }
 
 func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	g := &Gtp5g{
 		log: logger.FwderLog.WithField(logger_util.FieldCategory, "Gtp5g"),
+		nat: NewNatManager(),
 	}
 
 	mux, err := nl.NewMux()
@@ -139,6 +141,11 @@ func (g *Gtp5g) Close() {
 	if g.ps != nil {
 		g.ps.Close()
 	}
+	if g.nat != nil {
+		for _, err := range g.nat.Cleanup() {
+			g.log.Warnf("NAT cleanup err: %+v", err)
+		}
+	}
 }
 
 func (g *Gtp5g) checkVersion() error {
@@ -172,6 +179,13 @@ func (g *Gtp5g) checkVersion() error {
 
 func (g *Gtp5g) Link() *Gtp5gLink {
 	return g.link
+}
+
+func (g *Gtp5g) AddNatRule(cidr, ifName string) error {
+	if g.nat == nil {
+		g.nat = NewNatManager()
+	}
+	return g.nat.AddMasquerade(cidr, ifName)
 }
 
 func (g *Gtp5g) newFlowDesc(s string, swapSrcDst bool) (nl.AttrList, error) {

@@ -18,6 +18,10 @@ func (Empty) QueryURR(uint64, uint32) ([]report.USAReport, error) {
 func (Empty) HandleReport(report.Handler) {
 }
 
+func (Empty) AddNatRule(string, string) error {
+	return nil
+}
+
 // Plan-based methods for two-phase commit
 
 func (Empty) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {

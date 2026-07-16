@@ -21,6 +21,8 @@ type Driver interface {
 
 	HandleReport(report.Handler)
 
+	AddNatRule(cidr, ifName string) error
+
 	// Plan-based methods for two-phase commit
 	// Build*Plan methods parse and validate IEs without executing
 	BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
@@ -88,6 +90,13 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 			if err != nil {
 				driver.Close()
 				return nil, err
+			}
+			if dnn.NatIfName != "" {
+				err = driver.AddNatRule(dnn.Cidr, dnn.NatIfName)
+				if err != nil {
+					driver.Close()
+					return nil, err
+				}
 			}
 		}
 		return driver, nil
