@@ -337,6 +337,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	}
 
 	var srcIf uint8
+	var hasSourceInterface bool
 	var sdfIEs []*ie.IE
 	for _, x := range ies {
 		switch x.Type {
@@ -350,6 +351,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 				Value: nl.AttrU8(v),
 			})
 			srcIf = v
+			hasSourceInterface = true
 		case ie.FTEID:
 			v, err := x.FTEID()
 			if err != nil {
@@ -382,19 +384,21 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 			// Validate SDF Filter IE payload length early (TS 29.244 Section 8.2.5)
 			// Minimum: 1 byte (flags) + 1 byte (spare) + at least 1 byte for content
 			if len(x.Payload) < 3 {
-				logger.FwderLog.Warnf("SDF Filter IE payload too short: %d bytes", len(x.Payload))
-				break
+				return nil, errors.Errorf("SDF Filter IE payload too short: %d bytes (minimum 3)", len(x.Payload))
 			}
 			sdfIEs = append(sdfIEs, x)
 		case ie.ApplicationID:
 		}
 	}
 
+	if !hasSourceInterface {
+		return nil, errors.New("newPdi: missing mandatory IE: SourceInterface")
+	}
+
 	for _, x := range sdfIEs {
 		v, err := g.newSdfFilter(x, srcIf)
 		if err != nil {
-			logger.FwderLog.Warnf("Failed to parse SDF Filter IE: %v", err)
-			continue
+			return nil, errors.Wrap(err, "newPdi: failed to parse SDF Filter")
 		}
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.PDI_SDF_FILTER,
