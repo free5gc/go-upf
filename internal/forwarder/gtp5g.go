@@ -1711,21 +1711,78 @@ func (g *Gtp5g) BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
 	}, nil
 }
 
-// ExecuteModificationPlan executes all operations in the plan
-// Uses best-effort execution: continues on failure, logs errors
+// createdRules records the rules this plan has already created in gtp5g,
+// so that they can be rolled back if a later operation of the same plan fails.
+type createdRules struct {
+	fars []*FARPlan
+	qers []*QERPlan
+	urrs []*URRPlan
+	bars []*BARPlan
+	pdrs []*PDRPlan
+}
+
+// rollbackCreatedRules removes the rules created by the current plan, in reverse
+// dependency order. Only rules whose creation succeeded are removed, so a rule
+// that already existed before the plan is never touched.
+func (g *Gtp5g) rollbackCreatedRules(plan *ModificationPlan, created *createdRules) {
+	for _, p := range created.pdrs {
+		if err := gtp5gnl.RemovePDROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemovePDR[%#x] failed: %v", p.PDRID, err)
+		}
+	}
+	for _, p := range created.bars {
+		if err := gtp5gnl.RemoveBAROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemoveBAR[%#x] failed: %v", p.BARID, err)
+		}
+	}
+	for _, p := range created.urrs {
+		if _, err := gtp5gnl.RemoveURROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemoveURR[%#x] failed: %v", p.URRID, err)
+		}
+		g.ps.DelPeriodReportTimer(plan.SEID, p.URRID)
+	}
+	for _, p := range created.qers {
+		if err := gtp5gnl.RemoveQEROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemoveQER[%#x] failed: %v", p.QERID, err)
+		}
+	}
+	for _, p := range created.fars {
+		if err := gtp5gnl.RemoveFAROID(g.client, g.link.link, p.OID); err != nil {
+			g.log.Errorf("Rollback: RemoveFAR[%#x] failed: %v", p.FARID, err)
+		}
+	}
+}
+
+// ExecuteModificationPlan executes all operations in the plan.
+//
+// Create operations use fail-fast semantics: on the first Create failure the
+// rules already created by this plan are rolled back and an error is returned,
+// so the caller can reject the request instead of reporting success for rules
+// that were never installed. Because Create operations run before any Remove or
+// Update, the rollback at that point is always complete.
+//
+// Remove/Update/Query operations use best-effort semantics: failures are logged
+// and execution continues. These operations are not rolled back (a removed or
+// updated rule cannot be restored), and callers that build Remove-only plans
+// (e.g. session close in node.go) rely on this to clean up as much as possible.
 func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error) {
 	result := NewExecutionResult()
+	created := &createdRules{}
 
 	for _, p := range plan.CreateFARs {
 		if err := gtp5gnl.CreateFAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreateFAR[%#x] failed: %v", p.FARID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreateFAR[%#x] failed", p.FARID)
 		}
+		created.fars = append(created.fars, p)
 	}
 
 	for _, p := range plan.CreateQERs {
 		if err := gtp5gnl.CreateQEROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreateQER[%#x] failed: %v", p.QERID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreateQER[%#x] failed", p.QERID)
 		}
+		created.qers = append(created.qers, p)
 	}
 
 	for _, p := range plan.CreateURRs {
@@ -1733,22 +1790,32 @@ func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResul
 			g.ps.AddPeriodReportTimer(plan.SEID, p.URRID, p.MeasurePeriod)
 		}
 		if err := gtp5gnl.CreateURROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreateURR[%#x] failed: %v", p.URRID, err)
+			g.ps.DelPeriodReportTimer(plan.SEID, p.URRID)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreateURR[%#x] failed", p.URRID)
 		}
+		created.urrs = append(created.urrs, p)
 	}
 
 	for _, p := range plan.CreateBARs {
 		if err := gtp5gnl.CreateBAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreateBAR[%#x] failed: %v", p.BARID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreateBAR[%#x] failed", p.BARID)
 		}
+		created.bars = append(created.bars, p)
 	}
 
 	for _, p := range plan.CreatePDRs {
 		if err := gtp5gnl.CreatePDROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			g.log.Errorf("ExecuteModificationPlan: CreatePDR[%#x] failed: %v", p.PDRID, err)
+			g.rollbackCreatedRules(plan, created)
+			return nil, errors.Wrapf(err, "ModificationPlan: CreatePDR[%#x] failed", p.PDRID)
 		}
+		created.pdrs = append(created.pdrs, p)
 	}
 
+	// Remove/Update/Query operations are best-effort: all Create operations have
+	// already succeeded at this point, so a later failure here is logged and
+	// execution continues instead of rolling back the created rules.
 	for _, p := range plan.RemovePDRs {
 		if err := gtp5gnl.RemovePDROID(g.client, g.link.link, p.OID); err != nil {
 			g.log.Errorf("ExecuteModificationPlan: RemovePDR[%#x] failed: %v", p.PDRID, err)
