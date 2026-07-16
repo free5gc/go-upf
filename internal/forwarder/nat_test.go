@@ -24,7 +24,9 @@ func TestNatManagerAddMasqueradeRuleAlreadyExists(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected only iptables -C call, got %d calls", len(calls))
 	}
-	assertCommand(t, calls[0], "iptables", []string{"-t", "nat", "-C", "POSTROUTING", "-s", "10.60.0.0/16", "-o", "lo", "-j", "MASQUERADE"})
+	assertCommand(t, calls[0], "iptables", []string{
+		"-t", "nat", "-C", "POSTROUTING", "-s", "10.60.0.0/16", "-o", "lo", "-j", "MASQUERADE",
+	})
 
 	if errs := m.Cleanup(); len(errs) != 0 {
 		t.Fatalf("expected no cleanup errors, got %v", errs)
@@ -50,7 +52,9 @@ func TestNatManagerAddAndCleanupOwnedRule(t *testing.T) {
 	if len(calls) != 2 {
 		t.Fatalf("expected check and append calls, got %d calls", len(calls))
 	}
-	assertCommand(t, calls[1], "iptables", []string{"-t", "nat", "-A", "POSTROUTING", "-s", "10.60.0.0/16", "-o", "lo", "-j", "MASQUERADE"})
+	assertCommand(t, calls[1], "iptables", []string{
+		"-t", "nat", "-A", "POSTROUTING", "-s", "10.60.0.0/16", "-o", "lo", "-j", "MASQUERADE",
+	})
 
 	if errs := m.Cleanup(); len(errs) != 0 {
 		t.Fatalf("expected no cleanup errors, got %v", errs)
@@ -58,7 +62,9 @@ func TestNatManagerAddAndCleanupOwnedRule(t *testing.T) {
 	if len(calls) != 3 {
 		t.Fatalf("expected cleanup delete call, got %d calls", len(calls))
 	}
-	assertCommand(t, calls[2], "iptables", []string{"-t", "nat", "-D", "POSTROUTING", "-s", "10.60.0.0/16", "-o", "lo", "-j", "MASQUERADE"})
+	assertCommand(t, calls[2], "iptables", []string{
+		"-t", "nat", "-D", "POSTROUTING", "-s", "10.60.0.0/16", "-o", "lo", "-j", "MASQUERADE",
+	})
 }
 
 func TestNatManagerRejectsMissingInterface(t *testing.T) {
