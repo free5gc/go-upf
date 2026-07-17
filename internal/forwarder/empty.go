@@ -18,7 +18,7 @@ func (Empty) QueryURR(uint64, uint32) ([]report.USAReport, error) {
 func (Empty) HandleReport(report.Handler) {
 }
 
-func (Empty) AddNatRule(string, string) error {
+func (Empty) AddIptablesRules(string, string, bool) error {
 	return nil
 }
 

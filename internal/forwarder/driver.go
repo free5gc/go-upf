@@ -21,7 +21,7 @@ type Driver interface {
 
 	HandleReport(report.Handler)
 
-	AddNatRule(cidr, ifName string) error
+	AddIptablesRules(cidr, ifName string, ipForwardEnable bool) error
 
 	// Plan-based methods for two-phase commit
 	// Build*Plan methods parse and validate IEs without executing
@@ -92,7 +92,7 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 				return nil, err
 			}
 			if dnn.NatIfName != "" {
-				err = driver.AddNatRule(dnn.Cidr, dnn.NatIfName)
+				err = driver.AddIptablesRules(dnn.Cidr, dnn.NatIfName, dnn.IPForwardEnable)
 				if err != nil {
 					driver.Close()
 					return nil, err
