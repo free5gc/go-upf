@@ -91,8 +91,8 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 				driver.Close()
 				return nil, err
 			}
-			if dnn.NatIfName != "" {
-				err = iptables.AddDNNRules(dnn.Cidr, dnn.NatIfName, dnn.IPForwardEnable, dnn.TCPMss)
+			if dnn.NatIfName != "" || dnn.NatIfCIDR != "" {
+				err = iptables.AddDNNRules(dnn.Cidr, dnn.NatIfName, dnn.NatIfCIDR, dnn.IPForwardEnable, dnn.TCPMss)
 				if err != nil {
 					cleanupIptables(iptables)
 					driver.Close()

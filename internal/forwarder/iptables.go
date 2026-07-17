@@ -46,15 +46,13 @@ func runCommand(name string, args ...string) error {
 	return nil
 }
 
-func (m *IptablesManager) AddDNNRules(cidr, ifName string, ipForwardEnable bool, tcpMSS uint16) error {
+func (m *IptablesManager) AddDNNRules(cidr, ifName, ifCIDR string, ipForwardEnable bool, tcpMSS uint16) error {
 	if _, _, err := net.ParseCIDR(cidr); err != nil {
 		return fmt.Errorf("invalid NAT CIDR %q: %w", cidr, err)
 	}
-	if _, err := net.InterfaceByName(ifName); err != nil {
-		return fmt.Errorf(
-			"natifname %q not found in current network namespace; "+
-				"use an interface visible to the UPF process, or leave natifname empty and route %s externally: %w",
-			ifName, cidr, err)
+	ifName, err := resolveNatIfName(ifName, ifCIDR)
+	if err != nil {
+		return err
 	}
 
 	if err := m.addRule(masqueradeRule(cidr, ifName)); err != nil {
@@ -72,6 +70,70 @@ func (m *IptablesManager) AddDNNRules(cidr, ifName string, ipForwardEnable bool,
 		return fmt.Errorf("install TCP MSS clamp rule: %w", err)
 	}
 	return nil
+}
+
+func resolveNatIfName(ifName, ifCIDR string) (string, error) {
+	if ifName != "" {
+		if _, err := net.InterfaceByName(ifName); err != nil {
+			return "", fmt.Errorf(
+				"natifname %q not found in current network namespace; "+
+					"use an interface visible to the UPF process, or leave natifname empty and set natIfCIDR: %w",
+				ifName, err)
+		}
+		return ifName, nil
+	}
+
+	if ifCIDR == "" {
+		return "", fmt.Errorf("natifname or natIfCIDR is required to install iptables rules")
+	}
+	_, targetNet, err := net.ParseCIDR(ifCIDR)
+	if err != nil {
+		return "", fmt.Errorf("invalid natIfCIDR %q: %w", ifCIDR, err)
+	}
+
+	var matches []string
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", fmt.Errorf("list network interfaces: %w", err)
+	}
+	for _, iface := range interfaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return "", fmt.Errorf("list addresses for interface %q: %w", iface.Name, err)
+		}
+		for _, addr := range addrs {
+			ip := interfaceAddrIP(addr)
+			if ip == nil {
+				continue
+			}
+			if targetNet.Contains(ip) {
+				matches = append(matches, iface.Name)
+				break
+			}
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("natIfCIDR %q did not match any interface in current network namespace", ifCIDR)
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf(
+			"natIfCIDR %q matched multiple interfaces %s; set natifname explicitly",
+			ifCIDR, strings.Join(matches, ", "))
+	}
+}
+
+func interfaceAddrIP(addr net.Addr) net.IP {
+	switch v := addr.(type) {
+	case *net.IPNet:
+		return v.IP
+	case *net.IPAddr:
+		return v.IP
+	default:
+		return nil
+	}
 }
 
 func (m *IptablesManager) Cleanup() []error {
