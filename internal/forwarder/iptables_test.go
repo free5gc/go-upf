@@ -18,11 +18,11 @@ func TestIptablesManagerAddDNNRulesRuleAlreadyExists(t *testing.T) {
 		return nil
 	})
 
-	if err := m.AddDNNRules("10.60.0.0/16", "lo", true); err != nil {
+	if err := m.AddDNNRules("10.60.0.0/16", "lo", true, 0); err != nil {
 		t.Fatalf("AddDNNRules returned error: %v", err)
 	}
-	if len(calls) != 3 {
-		t.Fatalf("expected three iptables -C calls, got %d calls", len(calls))
+	if len(calls) != 4 {
+		t.Fatalf("expected four iptables -C calls, got %d calls", len(calls))
 	}
 	assertCommand(t, calls[0], "iptables", []string{
 		"-t", "nat", "-C", "POSTROUTING", "-s", "10.60.0.0/16", "-o", "lo", "-j", "MASQUERADE",
@@ -34,11 +34,15 @@ func TestIptablesManagerAddDNNRulesRuleAlreadyExists(t *testing.T) {
 		"-C", "FORWARD", "-d", "10.60.0.0/16", "-i", "lo", "-m", "state", "--state",
 		"RELATED,ESTABLISHED", "-j", "ACCEPT",
 	})
+	assertCommand(t, calls[3], "iptables", []string{
+		"-t", "mangle", "-C", "FORWARD", "-p", "tcp", "-m", "tcp", "--tcp-flags",
+		"SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu",
+	})
 
 	if errs := m.Cleanup(); len(errs) != 0 {
 		t.Fatalf("expected no cleanup errors, got %v", errs)
 	}
-	if len(calls) != 3 {
+	if len(calls) != 4 {
 		t.Fatalf("expected cleanup not to delete pre-existing rules, got %d calls", len(calls))
 	}
 }
@@ -53,11 +57,11 @@ func TestIptablesManagerAddAndCleanupOwnedRules(t *testing.T) {
 		return nil
 	})
 
-	if err := m.AddDNNRules("10.60.0.0/16", "lo", true); err != nil {
+	if err := m.AddDNNRules("10.60.0.0/16", "lo", true, 0); err != nil {
 		t.Fatalf("AddDNNRules returned error: %v", err)
 	}
-	if len(calls) != 6 {
-		t.Fatalf("expected check and append calls for three rules, got %d calls", len(calls))
+	if len(calls) != 8 {
+		t.Fatalf("expected check and append calls for four rules, got %d calls", len(calls))
 	}
 	assertCommand(t, calls[1], "iptables", []string{
 		"-t", "nat", "-A", "POSTROUTING", "-s", "10.60.0.0/16", "-o", "lo", "-j", "MASQUERADE",
@@ -69,21 +73,29 @@ func TestIptablesManagerAddAndCleanupOwnedRules(t *testing.T) {
 		"-A", "FORWARD", "-d", "10.60.0.0/16", "-i", "lo", "-m", "state", "--state",
 		"RELATED,ESTABLISHED", "-j", "ACCEPT",
 	})
+	assertCommand(t, calls[7], "iptables", []string{
+		"-t", "mangle", "-A", "FORWARD", "-p", "tcp", "-m", "tcp", "--tcp-flags",
+		"SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu",
+	})
 
 	if errs := m.Cleanup(); len(errs) != 0 {
 		t.Fatalf("expected no cleanup errors, got %v", errs)
 	}
-	if len(calls) != 9 {
-		t.Fatalf("expected cleanup delete calls for three rules, got %d calls", len(calls))
+	if len(calls) != 12 {
+		t.Fatalf("expected cleanup delete calls for four rules, got %d calls", len(calls))
 	}
-	assertCommand(t, calls[6], "iptables", []string{
+	assertCommand(t, calls[8], "iptables", []string{
+		"-t", "mangle", "-D", "FORWARD", "-p", "tcp", "-m", "tcp", "--tcp-flags",
+		"SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu",
+	})
+	assertCommand(t, calls[9], "iptables", []string{
 		"-D", "FORWARD", "-d", "10.60.0.0/16", "-i", "lo", "-m", "state", "--state",
 		"RELATED,ESTABLISHED", "-j", "ACCEPT",
 	})
-	assertCommand(t, calls[7], "iptables", []string{
+	assertCommand(t, calls[10], "iptables", []string{
 		"-D", "FORWARD", "-s", "10.60.0.0/16", "-o", "lo", "-j", "ACCEPT",
 	})
-	assertCommand(t, calls[8], "iptables", []string{
+	assertCommand(t, calls[11], "iptables", []string{
 		"-t", "nat", "-D", "POSTROUTING", "-s", "10.60.0.0/16", "-o", "lo", "-j", "MASQUERADE",
 	})
 }
@@ -98,7 +110,7 @@ func TestIptablesManagerSkipsForwardRulesWhenDisabled(t *testing.T) {
 		return nil
 	})
 
-	if err := m.AddDNNRules("10.60.0.0/16", "lo", false); err != nil {
+	if err := m.AddDNNRules("10.60.0.0/16", "lo", false, 0); err != nil {
 		t.Fatalf("AddDNNRules returned error: %v", err)
 	}
 	if len(calls) != 2 {
@@ -115,7 +127,7 @@ func TestIptablesManagerRejectsMissingInterface(t *testing.T) {
 		return nil
 	})
 
-	err := m.AddDNNRules("10.60.0.0/16", "definitely-missing-upf-iface", true)
+	err := m.AddDNNRules("10.60.0.0/16", "definitely-missing-upf-iface", true, 0)
 	if err == nil {
 		t.Fatal("expected missing interface error")
 	}
@@ -130,9 +142,28 @@ func TestIptablesManagerRejectsInvalidCIDR(t *testing.T) {
 		return nil
 	})
 
-	if err := m.AddDNNRules("not-a-cidr", "lo", true); err == nil {
+	if err := m.AddDNNRules("not-a-cidr", "lo", true, 0); err == nil {
 		t.Fatal("expected invalid CIDR error")
 	}
+}
+
+func TestIptablesManagerUsesConfiguredTCPMSS(t *testing.T) {
+	var calls []commandCall
+	m := newIptablesManager(func(name string, args ...string) error {
+		calls = append(calls, commandCall{name: name, args: append([]string(nil), args...)})
+		if len(args) >= 2 && args[0] == "-C" || len(args) >= 4 && args[2] == "-C" {
+			return errors.New("rule not found")
+		}
+		return nil
+	})
+
+	if err := m.AddDNNRules("10.60.0.0/16", "lo", true, 1400); err != nil {
+		t.Fatalf("AddDNNRules returned error: %v", err)
+	}
+	assertCommand(t, calls[7], "iptables", []string{
+		"-t", "mangle", "-A", "FORWARD", "-p", "tcp", "-m", "tcp", "--tcp-flags",
+		"SYN,RST", "SYN", "-j", "TCPMSS", "--set-mss", "1400",
+	})
 }
 
 func assertCommand(t *testing.T, got commandCall, wantName string, wantArgs []string) {

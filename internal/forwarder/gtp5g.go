@@ -39,14 +39,12 @@ type Gtp5g struct {
 	psClient *gtp5gnl.Client
 	bsnl     *buffnetlink.Server
 	ps       *perio.Server
-	iptables *IptablesManager
 	log      *logrus.Entry
 }
 
 func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	g := &Gtp5g{
-		log:      logger.FwderLog.WithField(logger_util.FieldCategory, "Gtp5g"),
-		iptables: NewIptablesManager(),
+		log: logger.FwderLog.WithField(logger_util.FieldCategory, "Gtp5g"),
 	}
 
 	mux, err := nl.NewMux()
@@ -141,11 +139,6 @@ func (g *Gtp5g) Close() {
 	if g.ps != nil {
 		g.ps.Close()
 	}
-	if g.iptables != nil {
-		for _, err := range g.iptables.Cleanup() {
-			g.log.Warnf("iptables cleanup err: %+v", err)
-		}
-	}
 }
 
 func (g *Gtp5g) checkVersion() error {
@@ -179,13 +172,6 @@ func (g *Gtp5g) checkVersion() error {
 
 func (g *Gtp5g) Link() *Gtp5gLink {
 	return g.link
-}
-
-func (g *Gtp5g) AddIptablesRules(cidr, ifName string, ipForwardEnable bool) error {
-	if g.iptables == nil {
-		g.iptables = NewIptablesManager()
-	}
-	return g.iptables.AddDNNRules(cidr, ifName, ipForwardEnable)
 }
 
 func (g *Gtp5g) newFlowDesc(s string, swapSrcDst bool) (nl.AttrList, error) {

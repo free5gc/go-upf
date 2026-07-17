@@ -46,7 +46,7 @@ func runCommand(name string, args ...string) error {
 	return nil
 }
 
-func (m *IptablesManager) AddDNNRules(cidr, ifName string, ipForwardEnable bool) error {
+func (m *IptablesManager) AddDNNRules(cidr, ifName string, ipForwardEnable bool, tcpMSS uint16) error {
 	if _, _, err := net.ParseCIDR(cidr); err != nil {
 		return fmt.Errorf("invalid NAT CIDR %q: %w", cidr, err)
 	}
@@ -67,6 +67,9 @@ func (m *IptablesManager) AddDNNRules(cidr, ifName string, ipForwardEnable bool)
 		if err := m.addRule(rule); err != nil {
 			return fmt.Errorf("install IP forward rule for %s via %s: %w", cidr, ifName, err)
 		}
+	}
+	if err := m.addRule(tcpMSSClampRule(tcpMSS)); err != nil {
+		return fmt.Errorf("install TCP MSS clamp rule: %w", err)
 	}
 	return nil
 }
@@ -135,5 +138,25 @@ func ipForwardRules(cidr, ifName string) []iptablesRule {
 				"-j", "ACCEPT",
 			},
 		},
+	}
+}
+
+func tcpMSSClampRule(tcpMSS uint16) iptablesRule {
+	args := []string{
+		"-p", "tcp",
+		"-m", "tcp",
+		"--tcp-flags", "SYN,RST", "SYN",
+		"-j", "TCPMSS",
+	}
+	if tcpMSS == 0 {
+		args = append(args, "--clamp-mss-to-pmtu")
+	} else {
+		args = append(args, "--set-mss", fmt.Sprintf("%d", tcpMSS))
+	}
+
+	return iptablesRule{
+		table: "mangle",
+		chain: "FORWARD",
+		args:  args,
 	}
 }
