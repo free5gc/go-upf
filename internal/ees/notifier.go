@@ -33,7 +33,7 @@ type Notifier struct {
 	maxResponseBodyLen int64
 }
 
-// NewNotifier creates a notifier with sane defaults.
+// NewNotifier creates a notifier with same defaults.
 // - request timeout: 5s
 // - connect + TLS handshake timeouts are governed by the http.Transport below.
 func NewNotifier(logger *logrus.Entry) *Notifier {
@@ -95,6 +95,9 @@ func (notifier *Notifier) Notify(subscription *Subscription, measures []UsageMea
 	now := time.Now()
 
 	for _, m := range measures {
+		if m.UeIpv4Addr == "" {
+			return fmt.Errorf("notify: missing UE IPv4 address in usage measure for subscriptionId=%s", subscription.ID)
+		}
 		item := NotificationItem{
 			EventType:  string(subscription.Event),
 			TimeStamp:  now,

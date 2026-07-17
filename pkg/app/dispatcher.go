@@ -1,8 +1,6 @@
 package app
 
 import (
-	"time"
-
 	"github.com/free5gc/go-upf/internal/report"
 )
 
@@ -13,11 +11,6 @@ type Dispatcher struct {
 	pfcpHandler report.Handler
 	// Secondary: EES Handler (optional, only receives reports)
 	eesHandler report.Handler
-
-	// PerioServer interface (for querying URR periods)
-	perioServer interface {
-		GetAnyURRPeriod(urrid uint32) time.Duration
-	}
 }
 
 // NewDispatcher creates a dispatcher.
@@ -55,11 +48,4 @@ func (d *Dispatcher) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
 		return d.pfcpHandler.PopBufPkt(seid, pdrid)
 	}
 	return nil, false
-}
-
-// SetPerioServer stores the perio server reference for URR period queries.
-func (d *Dispatcher) SetPerioServer(perioServer interface{}) {
-	if ps, ok := perioServer.(interface{ GetAnyURRPeriod(uint32) time.Duration }); ok {
-		d.perioServer = ps
-	}
 }

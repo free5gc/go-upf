@@ -66,43 +66,6 @@ func (a *UpfApp) SetLogReportCaller(reportCaller bool) {
 	logger.Log.SetReportCaller(reportCaller)
 }
 
-/*
-	func (u *UpfApp) Run() error {
-		var cancel context.CancelFunc
-		u.ctx, cancel = context.WithCancel(context.Background())
-		defer cancel()
-
-		u.wg.Add(1)
-		// Go Routine is spawned here for listening for cancellation event on
-		// context
-		go u.listenShutdownEvent()
-
-		var err error
-		u.driver, err = forwarder.NewDriver(&u.wg, u.cfg)
-		if err != nil {
-			return err
-		}
-
-		u.pfcpServer = pfcp.NewPfcpServer(u.cfg, u.driver)
-		u.driver.HandleReport(u.pfcpServer)
-		u.pfcpServer.Start(&u.wg)
-
-		logger.MainLog.Infoln("UPF started")
-
-		// Wait for interrupt signal to gracefully shutdown
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-		<-sigCh
-
-		// Receive the interrupt signal
-		logger.MainLog.Infof("Shutdown UPF ...")
-		// Notify each goroutine and wait them stopped
-		cancel()
-		u.WaitRoutineStopped()
-		logger.MainLog.Infof("UPF exited")
-		return nil
-	}
-*/
 func (u *UpfApp) listenShutdownEvent() {
 	defer func() {
 		if p := recover(); p != nil {
@@ -236,10 +199,8 @@ func (u *UpfApp) initEES(reportDispatcher *Dispatcher) error {
 	eesHandler := ees.NewHandler(aggregator, eesLogger)
 	reportDispatcher.RegisterEESHandler(eesHandler)
 
-	// Set perioServer for dispatcher callbacks
+	// Set perioServer callbacks
 	if perioServer != nil {
-		reportDispatcher.SetPerioServer(perioServer)
-
 		// Register callback to adjust aggregator period when URR is added
 		perioServer.SetOnURRAdded(func(urrid uint32, period time.Duration) {
 			// Only adjust for URR 2 (the periodic measurement URR)

@@ -86,4 +86,22 @@ func TestNotifier_Notify(t *testing.T) {
 		assert.Contains(t, err.Error(), "non-2xx response")
 		assert.True(t, gock.IsDone())
 	})
+
+	t.Run("HandleEmptyUeIpv4AddrError", func(t *testing.T) {
+		invalidMeasures := []UsageMeasures{
+			{
+				UeIpv4Addr:     "",
+				StartTime:      time.Now().Add(-10 * time.Second),
+				EndTime:        time.Now(),
+				ULBytesDelta:   1000,
+				DLBytesDelta:   2000,
+				ULPacketsDelta: 10,
+				DLPacketsDelta: 20,
+			},
+		}
+
+		err := notifier.Notify(sub, invalidMeasures)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "missing UE IPv4 address")
+	})
 }
