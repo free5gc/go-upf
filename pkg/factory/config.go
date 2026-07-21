@@ -45,9 +45,12 @@ type IfInfo struct {
 }
 
 type DnnList struct {
-	Dnn       string `yaml:"dnn"       valid:"required"`
-	Cidr      string `yaml:"cidr"      valid:"required,cidr"`
-	NatIfName string `yaml:"natifname" valid:"optional"`
+	Dnn             string `yaml:"dnn"             valid:"required"`
+	Cidr            string `yaml:"cidr"            valid:"required,cidr"`
+	NatIfName       string `yaml:"natifname"       valid:"optional"`
+	NatIfCIDR       string `yaml:"natIfCIDR"       valid:"optional,cidr"`
+	IPForwardEnable bool   `yaml:"ipForwardEnable" valid:"required"`
+	TCPMss          uint16 `yaml:"tcpMss"          valid:"optional"`
 }
 
 type Logger struct {

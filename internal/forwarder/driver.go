@@ -79,6 +79,7 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 			return nil, errors.Wrap(err, "open Gtp5g")
 		}
 
+		iptables := NewIptablesManager()
 		link := driver.Link()
 		for _, dnn := range cfg.DnnList {
 			_, dst, err := net.ParseCIDR(dnn.Cidr)
@@ -88,11 +89,39 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 			}
 			err = link.RouteAdd(dst)
 			if err != nil {
+				cleanupIptables(iptables)
 				driver.Close()
 				return nil, err
 			}
+			if dnn.NatIfName != "" || dnn.NatIfCIDR != "" {
+				err = iptables.AddDNNRules(dnn.Cidr, dnn.NatIfName, dnn.NatIfCIDR, dnn.IPForwardEnable, dnn.TCPMss)
+				if err != nil {
+					cleanupIptables(iptables)
+					driver.Close()
+					return nil, err
+				}
+			}
 		}
-		return driver, nil
+		return &driverWithIptables{Driver: driver, iptables: iptables}, nil
 	}
 	return nil, errors.Errorf("not support forwarder:%q", cfgGtpu.Forwarder)
+}
+
+type driverWithIptables struct {
+	Driver
+	iptables *IptablesManager
+}
+
+func (d *driverWithIptables) Close() {
+	d.Driver.Close()
+	cleanupIptables(d.iptables)
+}
+
+func cleanupIptables(iptables *IptablesManager) {
+	if iptables == nil {
+		return
+	}
+	for _, err := range iptables.Cleanup() {
+		logger.MainLog.Warnf("iptables cleanup err: %+v", err)
+	}
 }
