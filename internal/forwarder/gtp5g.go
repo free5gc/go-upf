@@ -174,6 +174,12 @@ func (g *Gtp5g) Link() *Gtp5gLink {
 	return g.link
 }
 
+// GetPerioServer returns the periodic report server for querying URR periods.
+// This is used by EES to validate subscription periods against URR measurement periods.
+func (g *Gtp5g) GetPerioServer() *perio.Server {
+	return g.ps
+}
+
 func (g *Gtp5g) newFlowDesc(s string, swapSrcDst bool) (nl.AttrList, error) {
 	var attrs nl.AttrList
 	fd, err := ParseFlowDesc(s)
@@ -256,16 +262,20 @@ func convertSlice(ports [][]uint16) []byte {
 
 func (g *Gtp5g) newSdfFilter(i *ie.IE, srcIf uint8) (nl.AttrList, error) {
 	var attrs nl.AttrList
+
 	// i.Payload[0] corresponds to Octet 5 (Flags) in the spec
 	flags := i.Payload[0]
 	hasFD := (flags & 0x01) != 0 // Bit 1: Flow Description
 	offset := 2
+
 	if hasFD {
 		if len(i.Payload) < offset+2 {
 			return nil, errors.New("SDF Filter IE with FD flag needs Length of Flow Description")
 		}
 		// Read FDLength from i.Payload[2-3] (Octets 7-8 in spec)
 		fdLength := uint16(i.Payload[offset])<<8 | uint16(i.Payload[offset+1])
+
+		// Validate FDLength doesn't exceed available payload
 		// Flow Description data starts at i.Payload[4] (Octet 9)
 		flowDescStart := offset + 2
 		availableBytes := len(i.Payload) - flowDescStart
@@ -275,10 +285,13 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE, srcIf uint8) (nl.AttrList, error) {
 				fdLength, availableBytes)
 		}
 	}
+
+	// Now it's safe to parse - the payload has been pre-validated
 	v, err := i.SDFFilter()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse SDF Filter")
 	}
+
 	// Process validated SDF Filter fields
 	if v.HasFD() {
 		swapSrcDst := (srcIf == ie.SrcInterfaceAccess)
@@ -291,6 +304,7 @@ func (g *Gtp5g) newSdfFilter(i *ie.IE, srcIf uint8) (nl.AttrList, error) {
 			Value: fd,
 		})
 	}
+
 	if v.HasTTC() {
 		// TODO:
 		// v.ToSTrafficClass string
@@ -382,6 +396,7 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 			// Validate SDF Filter IE payload length early (TS 29.244 Section 8.2.5)
 			// Minimum: 1 byte (flags) + 1 byte (spare) + at least 1 byte for content
 			if len(x.Payload) < 3 {
+				logger.FwderLog.Warnf("SDF Filter IE payload too short: %d bytes (minimum 3)", len(x.Payload))
 				return nil, errors.Errorf("SDF Filter IE payload too short: %d bytes (minimum 3)", len(x.Payload))
 			}
 			sdfIEs = append(sdfIEs, x)
@@ -392,6 +407,8 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	for _, x := range sdfIEs {
 		v, err := g.newSdfFilter(x, srcIf)
 		if err != nil {
+			// Log the error and return it instead of silently ignoring
+			logger.FwderLog.Warnf("Failed to parse SDF Filter: %v", err)
 			return nil, errors.Wrap(err, "newSdfFilter failed")
 		}
 		attrs = append(attrs, nl.Attr{
@@ -401,6 +418,200 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	}
 
 	return attrs, nil
+}
+
+func (g *Gtp5g) CreatePDR(lSeid uint64, req *ie.IE) error {
+	var pdrid uint64
+	var attrs []nl.Attr
+
+	ies, err := req.CreatePDR()
+	if err != nil {
+		return err
+	}
+
+	for _, i := range ies {
+		switch i.Type {
+		case ie.PDRID:
+			v, err := i.PDRID()
+			if err != nil {
+				return errors.Wrap(err, "CreatePDR: failed to parse PDRID")
+			}
+			pdrid = uint64(v)
+		case ie.Precedence:
+			v, err := i.Precedence()
+			if err != nil {
+				return errors.Wrap(err, "CreatePDR: failed to parse Precedence")
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_PRECEDENCE,
+				Value: nl.AttrU32(v),
+			})
+		case ie.PDI:
+			v, err := g.newPdi(i)
+			if err != nil {
+				return errors.Wrap(err, "CreatePDR: failed to parse PDI")
+			}
+			if v != nil {
+				attrs = append(attrs, nl.Attr{
+					Type:  gtp5gnl.PDR_PDI,
+					Value: v,
+				})
+			}
+		case ie.OuterHeaderRemoval:
+			v, err := i.OuterHeaderRemovalDescription()
+			if err != nil {
+				return errors.Wrap(err, "CreatePDR: failed to parse OuterHeaderRemoval")
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_OUTER_HEADER_REMOVAL,
+				Value: nl.AttrU8(v),
+			})
+			// ignore GTPUExternsionHeaderDeletion
+		case ie.FARID:
+			v, err := i.FARID()
+			if err != nil {
+				return errors.Wrap(err, "CreatePDR: failed to parse FARID")
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_FAR_ID,
+				Value: nl.AttrU32(v),
+			})
+		case ie.QERID:
+			v, err := i.QERID()
+			if err != nil {
+				// QER is optional, log but continue
+				logger.FwderLog.Warnf("CreatePDR: Failed to parse QERID: %v", err)
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_QER_ID,
+				Value: nl.AttrU32(v),
+			})
+		case ie.URRID:
+			v, err := i.URRID()
+			if err != nil {
+				// URR is optional, log but continue
+				logger.FwderLog.Warnf("CreatePDR: Failed to parse URRID: %v", err)
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_URR_ID,
+				Value: nl.AttrU32(v),
+			})
+		}
+	}
+
+	// TODO:
+	// Not in 3GPP spec, just used for routing
+	// var roleAddrIpv4 net.IP
+	// roleAddrIpv4 = net.IPv4(34, 35, 36, 37)
+	// pdr.RoleAddrIpv4 = &roleAddrIpv4
+
+	// TODO:
+	// Not in 3GPP spec, just used for buffering
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.PDR_UNIX_SOCKET_PATH,
+		Value: nl.AttrString(gtp5gnl.PdrAddrForNetlink),
+	})
+
+	oid := gtp5gnl.OID{lSeid, pdrid}
+	return gtp5gnl.CreatePDROID(g.client, g.link.link, oid, attrs)
+}
+
+func (g *Gtp5g) UpdatePDR(lSeid uint64, req *ie.IE) error {
+	var pdrid uint64
+	var attrs []nl.Attr
+
+	ies, err := req.UpdatePDR()
+	if err != nil {
+		return err
+	}
+
+	for _, i := range ies {
+		switch i.Type {
+		case ie.PDRID:
+			v, err := i.PDRID()
+			if err != nil {
+				return errors.Wrap(err, "UpdatePDR: failed to parse PDRID")
+			}
+			pdrid = uint64(v)
+		case ie.Precedence:
+			v, err := i.Precedence()
+			if err != nil {
+				// Precedence is optional in Update, log but continue
+				logger.FwderLog.Warnf("UpdatePDR: Failed to parse Precedence: %v", err)
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_PRECEDENCE,
+				Value: nl.AttrU32(v),
+			})
+		case ie.PDI:
+			v, err := g.newPdi(i)
+			if err != nil {
+				return errors.Wrap(err, "UpdatePDR: failed to parse PDI")
+			}
+			if v != nil {
+				attrs = append(attrs, nl.Attr{
+					Type:  gtp5gnl.PDR_PDI,
+					Value: v,
+				})
+			}
+		case ie.OuterHeaderRemoval:
+			v, err := i.OuterHeaderRemovalDescription()
+			if err != nil {
+				logger.FwderLog.Warnf("UpdatePDR: Failed to parse OuterHeaderRemoval: %v", err)
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_OUTER_HEADER_REMOVAL,
+				Value: nl.AttrU8(v),
+			})
+			// ignore GTPUExternsionHeaderDeletion
+		case ie.FARID:
+			v, err := i.FARID()
+			if err != nil {
+				logger.FwderLog.Warnf("UpdatePDR: Failed to parse FARID: %v", err)
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_FAR_ID,
+				Value: nl.AttrU32(v),
+			})
+		case ie.QERID:
+			v, err := i.QERID()
+			if err != nil {
+				logger.FwderLog.Warnf("UpdatePDR: Failed to parse QERID: %v", err)
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_QER_ID,
+				Value: nl.AttrU32(v),
+			})
+		case ie.URRID:
+			v, err := i.URRID()
+			if err != nil {
+				logger.FwderLog.Warnf("UpdatePDR: Failed to parse URRID: %v", err)
+				break
+			}
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_URR_ID,
+				Value: nl.AttrU32(v),
+			})
+		}
+	}
+
+	oid := gtp5gnl.OID{lSeid, pdrid}
+	return gtp5gnl.UpdatePDROID(g.client, g.link.link, oid, attrs)
+}
+
+func (g *Gtp5g) RemovePDR(lSeid uint64, req *ie.IE) error {
+	v, err := req.PDRID()
+	if err != nil {
+		return errors.New("not found PDRID")
+	}
+	oid := gtp5gnl.OID{lSeid, uint64(v)}
+	return gtp5gnl.RemovePDROID(g.client, g.link.link, oid)
 }
 
 func (g *Gtp5g) newForwardingParameter(ies []*ie.IE) (nl.AttrList, error) {
@@ -1546,8 +1757,8 @@ func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 				Value: v,
 			})
 		case ie.VolumeQuota:
-			v, err := g.newVolumeQuota(i)
-			if err != nil {
+			v, err1 := g.newVolumeQuota(i)
+			if err1 != nil {
 				break
 			}
 			attrs = append(attrs, nl.Attr{
@@ -1588,7 +1799,7 @@ func (g *Gtp5g) BuildRemoveURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 func (g *Gtp5g) BuildQueryURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	v, err := req.URRID()
 	if err != nil {
-		return nil, errors.New("not found URRID")
+		return nil, err
 	}
 
 	return &URRPlan{
