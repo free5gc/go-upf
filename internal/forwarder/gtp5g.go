@@ -339,19 +339,33 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	var srcIf uint8
 	var hasSourceInterface bool
 	var sdfIEs []*ie.IE
+
+	// parseErr holds the first malformed-IE error. Parsing continues after one so
+	// that a missing mandatory IE, which can only be confirmed once every IE has
+	// been seen, is reported ahead of it.
+	var parseErr error
+	recordErr := func(err error) {
+		if parseErr == nil {
+			parseErr = err
+		}
+	}
+
 	for _, x := range ies {
 		switch x.Type {
 		case ie.SourceInterface:
+			// Presence is tracked independently of parse success: an IE that is
+			// present but malformed is not the same as an absent one.
+			hasSourceInterface = true
 			v, err := x.SourceInterface()
 			if err != nil {
-				return nil, errors.Wrap(err, "newPdi: failed to parse SourceInterface")
+				recordErr(errors.Wrap(err, "newPdi: failed to parse SourceInterface"))
+				break
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDI_SRC_INTF,
 				Value: nl.AttrU8(v),
 			})
 			srcIf = v
-			hasSourceInterface = true
 		case ie.FTEID:
 			v, err := x.FTEID()
 			if err != nil {
@@ -384,7 +398,9 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 			// Validate SDF Filter IE payload length early (TS 29.244 Section 8.2.5)
 			// Minimum: 1 byte (flags) + 1 byte (spare) + at least 1 byte for content
 			if len(x.Payload) < 3 {
-				return nil, errors.Errorf("SDF Filter IE payload too short: %d bytes (minimum 3)", len(x.Payload))
+				recordErr(errors.Errorf("SDF Filter IE payload too short: %d bytes (minimum 3)",
+					len(x.Payload)))
+				break
 			}
 			sdfIEs = append(sdfIEs, x)
 		case ie.ApplicationID:
@@ -392,9 +408,13 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	}
 
 	if !hasSourceInterface {
-		return nil, errors.New("newPdi: missing mandatory IE: SourceInterface")
+		return nil, errors.Wrap(ErrMandatoryIEMissing, "newPdi: SourceInterface")
+	}
+	if parseErr != nil {
+		return nil, parseErr
 	}
 
+	// srcIf is only trustworthy once the checks above have passed.
 	for _, x := range sdfIEs {
 		v, err := g.newSdfFilter(x, srcIf)
 		if err != nil {
@@ -777,37 +797,53 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	var attrs []nl.Attr
 	var urrids []uint32
 	var hasPDRID, hasPrecedence, hasPDI bool
+	var hasFARID, hasMARID bool
 
 	ies, err := req.CreatePDR()
 	if err != nil {
 		return nil, err
 	}
 
+	// parseErr holds the first malformed-IE error. Parsing continues after one so
+	// that a missing mandatory IE, which can only be confirmed once every IE has
+	// been seen, is reported ahead of it.
+	var parseErr error
+	recordErr := func(err error) {
+		if parseErr == nil {
+			parseErr = err
+		}
+	}
+
 	for _, i := range ies {
 		switch i.Type {
 		case ie.PDRID:
+			// Presence is tracked independently of parse success: an IE that is
+			// present but malformed is not the same as an absent one.
+			hasPDRID = true
 			v, err := i.PDRID()
 			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse PDRID")
+				recordErr(errors.Wrap(err, "CreatePDR: failed to parse PDRID"))
+				break
 			}
 			pdrid = uint64(v)
-			hasPDRID = true
 		case ie.Precedence:
+			hasPrecedence = true
 			v, err := i.Precedence()
 			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse Precedence")
+				recordErr(errors.Wrap(err, "CreatePDR: failed to parse Precedence"))
+				break
 			}
-			hasPrecedence = true
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_PRECEDENCE,
 				Value: nl.AttrU32(v),
 			})
 		case ie.PDI:
+			hasPDI = true
 			v, err := g.newPdi(i)
 			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse PDI")
+				recordErr(errors.Wrap(err, "CreatePDR: failed to parse PDI"))
+				break
 			}
-			hasPDI = true
 			if v != nil {
 				attrs = append(attrs, nl.Attr{
 					Type:  gtp5gnl.PDR_PDI,
@@ -815,9 +851,11 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 				})
 			}
 		case ie.OuterHeaderRemoval:
+			// Optional IE, but a present-but-malformed one must not be dropped
+			// silently: doing so would change encapsulation behaviour.
 			v, err := i.OuterHeaderRemovalDescription()
 			if err != nil {
-				logger.FwderLog.Warnf("CreatePDR: Failed to parse OuterHeaderRemoval: %v", err)
+				recordErr(errors.Wrap(err, "CreatePDR: failed to parse OuterHeaderRemoval"))
 				break
 			}
 			attrs = append(attrs, nl.Attr{
@@ -825,10 +863,16 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 				Value: nl.AttrU8(v),
 			})
 			// ignore GTPUExternsionHeaderDeletion
+		case ie.MARID:
+			// Not acted on: this UPF has no ATSSS support. Tracked only to evaluate
+			// the FAR ID condition below.
+			hasMARID = true
 		case ie.FARID:
+			// Conditional IE: legitimately absent, but never legitimately malformed.
+			hasFARID = true
 			v, err := i.FARID()
 			if err != nil {
-				logger.FwderLog.Warnf("CreatePDR: Failed to parse FARID: %v", err)
+				recordErr(errors.Wrap(err, "CreatePDR: failed to parse FARID"))
 				break
 			}
 			attrs = append(attrs, nl.Attr{
@@ -862,13 +906,27 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	}
 
 	if !hasPDRID {
-		return nil, errors.New("CreatePDR: missing mandatory IE: PDR ID")
+		return nil, errors.Wrap(ErrMandatoryIEMissing, "CreatePDR: PDR ID")
 	}
 	if !hasPrecedence {
-		return nil, errors.Errorf("CreatePDR: PDR(%#x) missing mandatory IE: Precedence", pdrid)
+		return nil, errors.Wrapf(ErrMandatoryIEMissing, "CreatePDR: PDR(%#x) Precedence", pdrid)
 	}
 	if !hasPDI {
-		return nil, errors.Errorf("CreatePDR: PDR(%#x) missing mandatory IE: PDI", pdrid)
+		return nil, errors.Wrapf(ErrMandatoryIEMissing, "CreatePDR: PDR(%#x) PDI", pdrid)
+	}
+
+	// TS 29.244 Table 7.5.2.2-1: FAR ID shall be present if the Activate Predefined
+	// Rules IE is not included, or is included but does not result in activating a
+	// predefined FAR, and if the MAR ID is not included. This UPF implements no
+	// predefined rules, so an Activate Predefined Rules IE can never activate a
+	// predefined FAR and therefore never waives FAR ID -- only MAR ID does.
+	if !hasFARID && !hasMARID {
+		return nil, errors.Wrapf(ErrConditionalIEMissing,
+			"CreatePDR: PDR(%#x) has no FAR ID and no MAR ID", pdrid)
+	}
+
+	if parseErr != nil {
+		return nil, parseErr
 	}
 
 	// TODO:
@@ -905,15 +963,28 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		return nil, err
 	}
 
+	// parseErr holds the first malformed-IE error. Parsing continues after one so
+	// that a missing mandatory IE, which can only be confirmed once every IE has
+	// been seen, is reported ahead of it.
+	var parseErr error
+	recordErr := func(err error) {
+		if parseErr == nil {
+			parseErr = err
+		}
+	}
+
 	for _, i := range ies {
 		switch i.Type {
 		case ie.PDRID:
+			// Presence is tracked independently of parse success: an IE that is
+			// present but malformed is not the same as an absent one.
+			hasPDRID = true
 			v, err := i.PDRID()
 			if err != nil {
-				return nil, errors.Wrap(err, "UpdatePDR: failed to parse PDRID")
+				recordErr(errors.Wrap(err, "UpdatePDR: failed to parse PDRID"))
+				break
 			}
 			pdrid = uint64(v)
-			hasPDRID = true
 		case ie.Precedence:
 			v, err := i.Precedence()
 			if err != nil {
@@ -926,9 +997,11 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 				Value: nl.AttrU32(v),
 			})
 		case ie.PDI:
+			// Conditional IE: legitimately absent, but a present-but-malformed one
+			// must fail the update rather than leave CP and UP out of sync.
 			v, err := g.newPdi(i)
 			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse PDI: %v", err)
+				recordErr(errors.Wrap(err, "UpdatePDR: failed to parse PDI"))
 				break
 			}
 			if v != nil {
@@ -983,7 +1056,10 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	}
 
 	if !hasPDRID {
-		return nil, errors.New("UpdatePDR: missing mandatory IE: PDR ID")
+		return nil, errors.Wrap(ErrMandatoryIEMissing, "UpdatePDR: PDR ID")
+	}
+	if parseErr != nil {
+		return nil, parseErr
 	}
 
 	return &PDRPlan{
@@ -1442,14 +1518,15 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 				Value: nl.AttrU32(rptTrig.Flags),
 			})
 		case ie.MeasurementPeriod:
+			// Optional IE, but a present-but-invalid value must not be dropped
+			// silently: a zero period would arm a periodic URR that never fires.
 			measurePeriod, err = i.MeasurementPeriod()
 			if err != nil {
-				logger.FwderLog.Warnf("CreateURR: Failed to parse MeasurementPeriod: %v", err)
-				break
+				return nil, errors.Wrap(err, "CreateURR: failed to parse MeasurementPeriod")
 			}
 			if measurePeriod <= 0 {
-				logger.FwderLog.Warnf("CreateURR: MeasurementPeriod must be positive, got %v", measurePeriod)
-				break
+				return nil, errors.Errorf("CreateURR: MeasurementPeriod must be positive, got %v",
+					measurePeriod)
 			}
 			// TODO: convert time.Duration -> ?
 			attrs = append(attrs, nl.Attr{
