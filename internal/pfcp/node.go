@@ -18,7 +18,29 @@ const (
 )
 
 type PDRInfo struct {
-	RelatedURRIDs map[uint32]struct{}
+	FARID              uint32
+	HasFARID           bool
+	RelatedURRIDs      map[uint32]struct{}
+	RelatedQERIDs      map[uint32]struct{}
+	SourceInterface    uint8
+	HasSourceInterface bool
+}
+
+// QERInfo is the merged PFCP desired state used by the FlowQoS resolver.
+// Rate values are stored in bits per second, not PFCP's wire-level kbps.
+type QERInfo struct {
+	QFI uint8
+
+	GateUL  uint8
+	GateDL  uint8
+	HasGate bool
+
+	GBRULBps uint64
+	GBRDLBps uint64
+	MBRULBps uint64
+	MBRDLBps uint64
+	HasGBR   bool
+	HasMBR   bool
 }
 
 type URRInfo struct {
@@ -35,7 +57,7 @@ type Sess struct {
 	RemoteID uint64
 	PDRIDs   map[uint16]*PDRInfo    // key: PDR_ID
 	FARIDs   map[uint32]struct{}    // key: FAR_ID
-	QERIDs   map[uint32]struct{}    // key: QER_ID
+	QERIDs   map[uint32]*QERInfo    // key: QER_ID
 	URRIDs   map[uint32]*URRInfo    // key: URR_ID
 	BARIDs   map[uint8]struct{}     // key: BAR_ID
 	q        map[uint16]chan []byte // key: PDR_ID
@@ -222,47 +244,30 @@ func (s *Sess) URRSeq(urrid uint32) uint32 {
 // ============================================================================
 
 // ValidateCreatePDR validates CreatePDR and builds plan without modifying state
-func (s *Sess) ValidateCreatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.PDRPlan, error) {
+func (s *Sess) ValidateCreatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 	plan, err := s.rnode.driver.BuildCreatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrRuleCreationModificationFailed
-	}
-
-	// Validate URR references exist (in session state or in-flight creates)
-	for _, urrid := range plan.URRIDs {
-		if _, ok := s.URRIDs[urrid]; !ok && !modPlan.HasCreateURR(urrid) {
-			return nil, ErrRuleCreationModificationFailed
-		}
 	}
 
 	return plan, nil
 }
 
 // ValidateUpdatePDR validates UpdatePDR and builds plan without modifying state
-func (s *Sess) ValidateUpdatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.PDRPlan, error) {
+func (s *Sess) ValidateUpdatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 	plan, err := s.rnode.driver.BuildUpdatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate PDR exists (in session state or in-flight creates)
-	if _, ok := s.PDRIDs[plan.PDRID]; !ok && !modPlan.HasCreatePDR(plan.PDRID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
 }
 
 // ValidateRemovePDR validates RemovePDR and builds plan without modifying state
-func (s *Sess) ValidateRemovePDR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.PDRPlan, error) {
+func (s *Sess) ValidateRemovePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 	plan, err := s.rnode.driver.BuildRemovePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate PDR exists (in session state or in-flight creates)
-	if _, ok := s.PDRIDs[plan.PDRID]; !ok && !modPlan.HasCreatePDR(plan.PDRID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
@@ -279,30 +284,20 @@ func (s *Sess) ValidateCreateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 }
 
 // ValidateUpdateFAR validates UpdateFAR and builds plan without modifying state
-func (s *Sess) ValidateUpdateFAR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.FARPlan, error) {
+func (s *Sess) ValidateUpdateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 	plan, err := s.rnode.driver.BuildUpdateFARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate FAR exists (in session state or in-flight creates)
-	if _, ok := s.FARIDs[plan.FARID]; !ok && !modPlan.HasCreateFAR(plan.FARID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
 }
 
 // ValidateRemoveFAR validates RemoveFAR and builds plan without modifying state
-func (s *Sess) ValidateRemoveFAR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.FARPlan, error) {
+func (s *Sess) ValidateRemoveFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 	plan, err := s.rnode.driver.BuildRemoveFARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate FAR exists (in session state or in-flight creates)
-	if _, ok := s.FARIDs[plan.FARID]; !ok && !modPlan.HasCreateFAR(plan.FARID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
@@ -319,30 +314,20 @@ func (s *Sess) ValidateCreateQER(req *ie.IE) (*forwarder.QERPlan, error) {
 }
 
 // ValidateUpdateQER validates UpdateQER and builds plan without modifying state
-func (s *Sess) ValidateUpdateQER(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.QERPlan, error) {
+func (s *Sess) ValidateUpdateQER(req *ie.IE) (*forwarder.QERPlan, error) {
 	plan, err := s.rnode.driver.BuildUpdateQERPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate QER exists (in session state or in-flight creates)
-	if _, ok := s.QERIDs[plan.QERID]; !ok && !modPlan.HasCreateQER(plan.QERID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
 }
 
 // ValidateRemoveQER validates RemoveQER and builds plan without modifying state
-func (s *Sess) ValidateRemoveQER(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.QERPlan, error) {
+func (s *Sess) ValidateRemoveQER(req *ie.IE) (*forwarder.QERPlan, error) {
 	plan, err := s.rnode.driver.BuildRemoveQERPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate QER exists (in session state or in-flight creates)
-	if _, ok := s.QERIDs[plan.QERID]; !ok && !modPlan.HasCreateQER(plan.QERID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
@@ -359,45 +344,30 @@ func (s *Sess) ValidateCreateURR(req *ie.IE) (*forwarder.URRPlan, error) {
 }
 
 // ValidateUpdateURR validates UpdateURR and builds plan without modifying state
-func (s *Sess) ValidateUpdateURR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.URRPlan, error) {
+func (s *Sess) ValidateUpdateURR(req *ie.IE) (*forwarder.URRPlan, error) {
 	plan, err := s.rnode.driver.BuildUpdateURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate URR exists (in session state or in-flight creates)
-	if _, ok := s.URRIDs[plan.URRID]; !ok && !modPlan.HasCreateURR(plan.URRID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
 }
 
 // ValidateRemoveURR validates RemoveURR and builds plan without modifying state
-func (s *Sess) ValidateRemoveURR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.URRPlan, error) {
+func (s *Sess) ValidateRemoveURR(req *ie.IE) (*forwarder.URRPlan, error) {
 	plan, err := s.rnode.driver.BuildRemoveURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate URR exists (in session state or in-flight creates)
-	if _, ok := s.URRIDs[plan.URRID]; !ok && !modPlan.HasCreateURR(plan.URRID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
 }
 
 // ValidateQueryURR validates QueryURR and builds plan without modifying state
-func (s *Sess) ValidateQueryURR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.URRPlan, error) {
+func (s *Sess) ValidateQueryURR(req *ie.IE) (*forwarder.URRPlan, error) {
 	plan, err := s.rnode.driver.BuildQueryURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate URR exists (in session state or in-flight creates)
-	if _, ok := s.URRIDs[plan.QueryURRID]; !ok && !modPlan.HasCreateURR(plan.QueryURRID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
@@ -414,30 +384,20 @@ func (s *Sess) ValidateCreateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 }
 
 // ValidateUpdateBAR validates UpdateBAR and builds plan without modifying state
-func (s *Sess) ValidateUpdateBAR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.BARPlan, error) {
+func (s *Sess) ValidateUpdateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 	plan, err := s.rnode.driver.BuildUpdateBARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate BAR exists (in session state or in-flight creates)
-	if _, ok := s.BARIDs[plan.BARID]; !ok && !modPlan.HasCreateBAR(plan.BARID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
 }
 
 // ValidateRemoveBAR validates RemoveBAR and builds plan without modifying state
-func (s *Sess) ValidateRemoveBAR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.BARPlan, error) {
+func (s *Sess) ValidateRemoveBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 	plan, err := s.rnode.driver.BuildRemoveBARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
-	}
-
-	// Validate BAR exists (in session state or in-flight creates)
-	if _, ok := s.BARIDs[plan.BARID]; !ok && !modPlan.HasCreateBAR(plan.BARID) {
-		return nil, ErrRuleNotFound
 	}
 
 	return plan, nil
@@ -447,44 +407,68 @@ func (s *Sess) ValidateRemoveBAR(req *ie.IE, modPlan *forwarder.ModificationPlan
 // Apply* methods - apply phase (update internal state after execution)
 // ============================================================================
 
+func uint32Set(ids []uint32) map[uint32]struct{} {
+	set := make(map[uint32]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set
+}
+
 // ApplyCreatePDR updates session state after CreatePDR execution
 func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
-	urrids := make(map[uint32]struct{})
-	for _, urrid := range plan.URRIDs {
-		urrids[urrid] = struct{}{}
-		if urrInfo, ok := s.URRIDs[urrid]; ok {
-			urrInfo.refPdrNum++
-		}
+	urrids := uint32Set(plan.URRIDs)
+	for urrid := range urrids {
+		s.URRIDs[urrid].refPdrNum++
 	}
 
-	s.PDRIDs[plan.PDRID] = &PDRInfo{
+	pdrInfo := &PDRInfo{
+		FARID:         plan.FARID,
+		HasFARID:      plan.FARIDPresent,
 		RelatedURRIDs: urrids,
+		RelatedQERIDs: uint32Set(plan.QERIDs),
 	}
+	if plan.SourceInterface != nil {
+		pdrInfo.SourceInterface = *plan.SourceInterface
+		pdrInfo.HasSourceInterface = true
+	}
+
+	s.PDRIDs[plan.PDRID] = pdrInfo
 }
 
 // ApplyUpdatePDR updates session state after UpdatePDR execution
 // Returns USAReports from disassociated URRs
 func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
-	pdrInfo, ok := s.PDRIDs[plan.PDRID]
-	if !ok {
-		return nil
-	}
-
-	newUrrids := make(map[uint32]struct{})
-	for _, urrid := range plan.URRIDs {
-		newUrrids[urrid] = struct{}{}
-	}
+	pdrInfo := s.PDRIDs[plan.PDRID]
 
 	var usars []report.USAReport
-	for urrid := range pdrInfo.RelatedURRIDs {
-		if _, ok := newUrrids[urrid]; !ok {
-			usar := s.diassociateURR(urrid)
-			if len(usar) > 0 {
-				usars = append(usars, usar...)
+	if plan.FARIDPresent {
+		pdrInfo.FARID = plan.FARID
+		pdrInfo.HasFARID = true
+	}
+
+	if plan.URRIDsPresent {
+		newUrrids := uint32Set(plan.URRIDs)
+		for urrid := range pdrInfo.RelatedURRIDs {
+			if _, ok := newUrrids[urrid]; !ok {
+				usars = append(usars, s.diassociateURR(urrid)...)
 			}
 		}
+		for urrid := range newUrrids {
+			if _, ok := pdrInfo.RelatedURRIDs[urrid]; !ok {
+				s.URRIDs[urrid].refPdrNum++
+			}
+		}
+		pdrInfo.RelatedURRIDs = newUrrids
 	}
-	pdrInfo.RelatedURRIDs = newUrrids
+
+	if plan.QERIDsPresent {
+		pdrInfo.RelatedQERIDs = uint32Set(plan.QERIDs)
+	}
+	if plan.SourceInterface != nil {
+		pdrInfo.SourceInterface = *plan.SourceInterface
+		pdrInfo.HasSourceInterface = true
+	}
 
 	return usars
 }
@@ -492,17 +476,11 @@ func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
 // ApplyRemovePDR updates session state after RemovePDR execution
 // Returns USAReports from disassociated URRs
 func (s *Sess) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
-	pdrInfo, ok := s.PDRIDs[plan.PDRID]
-	if !ok {
-		return nil
-	}
+	pdrInfo := s.PDRIDs[plan.PDRID]
 
 	var usars []report.USAReport
 	for urrid := range pdrInfo.RelatedURRIDs {
-		usar := s.diassociateURR(urrid)
-		if len(usar) > 0 {
-			usars = append(usars, usar...)
-		}
+		usars = append(usars, s.diassociateURR(urrid)...)
 	}
 	delete(s.PDRIDs, plan.PDRID)
 
@@ -519,9 +497,45 @@ func (s *Sess) ApplyRemoveFAR(plan *forwarder.FARPlan) {
 	delete(s.FARIDs, plan.FARID)
 }
 
+func newQERInfo(patch forwarder.QERDesiredStatePatch) *QERInfo {
+	info := &QERInfo{}
+	info.applyDesiredStatePatch(patch)
+	return info
+}
+
+func (q *QERInfo) applyDesiredStatePatch(patch forwarder.QERDesiredStatePatch) {
+	if patch.QFI != nil {
+		q.QFI = *patch.QFI
+	}
+	if patch.GateStatus != nil {
+		q.GateUL = patch.GateStatus.Uplink
+		q.GateDL = patch.GateStatus.Downlink
+		q.HasGate = true
+	}
+	if patch.GBR != nil {
+		q.GBRULBps = patch.GBR.UplinkBps
+		q.GBRDLBps = patch.GBR.DownlinkBps
+		q.HasGBR = true
+	}
+	if patch.MBR != nil {
+		q.MBRULBps = patch.MBR.UplinkBps
+		q.MBRDLBps = patch.MBR.DownlinkBps
+		q.HasMBR = true
+	}
+}
+
 // ApplyCreateQER updates session state after CreateQER execution
 func (s *Sess) ApplyCreateQER(plan *forwarder.QERPlan) {
-	s.QERIDs[plan.QERID] = struct{}{}
+	s.QERIDs[plan.QERID] = newQERInfo(plan.DesiredState)
+}
+
+// ApplyUpdateQER merges fields present in Update QER into desired state.
+func (s *Sess) ApplyUpdateQER(plan *forwarder.QERPlan) {
+	qerInfo, ok := s.QERIDs[plan.QERID]
+	if !ok {
+		return
+	}
+	qerInfo.applyDesiredStatePatch(plan.DesiredState)
 }
 
 // ApplyRemoveQER updates session state after RemoveQER execution
@@ -727,7 +741,7 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 		RemoteID: rSeid,
 		PDRIDs:   make(map[uint16]*PDRInfo),
 		FARIDs:   make(map[uint32]struct{}),
-		QERIDs:   make(map[uint32]struct{}),
+		QERIDs:   make(map[uint32]*QERInfo),
 		URRIDs:   make(map[uint32]*URRInfo),
 		BARIDs:   make(map[uint8]struct{}),
 		q:        make(map[uint16]chan []byte),

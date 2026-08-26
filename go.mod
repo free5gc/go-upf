@@ -56,3 +56,5 @@ require (
 	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/free5gc/go-gtp5gnl => github.com/roundspring2003/go-gtp5gnl v0.0.0-20260819073615-3eefbb012a56

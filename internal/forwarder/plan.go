@@ -32,6 +32,39 @@ func (op OpType) String() string {
 	}
 }
 
+// FlowQoSBinding is the user-space representation published on a PDR.
+// PolicyID is a UPF-local, globally unique 24-bit ID. TCClassID is the full
+// Linux traffic-control classid.
+type FlowQoSBinding struct {
+	PolicyID   uint32
+	TCClassID  uint32
+	Generation uint32
+}
+
+// DirectionalBitRate is a directional rate expressed in bits per second.
+// PFCP encodes QER GBR/MBR values in kilobits per second; builders convert
+// them before placing them in desired state.
+type DirectionalBitRate struct {
+	UplinkBps   uint64
+	DownlinkBps uint64
+}
+
+// QERGateStatus keeps the independently signalled uplink and downlink gates.
+type QERGateStatus struct {
+	Uplink   uint8
+	Downlink uint8
+}
+
+// QERDesiredStatePatch records only QER fields present in one PFCP request.
+// Pointer presence is required because Update QER is a partial update and a
+// missing field must not clear the previously saved desired value.
+type QERDesiredStatePatch struct {
+	QFI        *uint8
+	GateStatus *QERGateStatus
+	GBR        *DirectionalBitRate
+	MBR        *DirectionalBitRate
+}
+
 // PDRPlan contains validated PDR operation parameters
 type PDRPlan struct {
 	Op         OpType
@@ -39,8 +72,59 @@ type PDRPlan struct {
 	Attrs      []nl.Attr
 	OriginalIE *ie.IE
 	// Parsed fields for node.go to use
-	PDRID  uint16
-	URRIDs []uint32
+	PDRID uint16
+
+	FARID        uint32
+	FARIDPresent bool
+
+	URRIDs        []uint32
+	URRIDsPresent bool
+
+	QERIDs        []uint32
+	QERIDsPresent bool
+
+	// SourceInterface uses pointer presence because zero is a valid PFCP value.
+	// A nil pointer on Update PDR means that the saved value is unchanged.
+	SourceInterface *uint8
+}
+
+// SetFlowQoSBinding adds or replaces the nested PDR FlowQoS attribute. The
+// CreatePDROID and UpdatePDROID execution paths already publish every
+// attribute in PDRPlan.Attrs, so no separate netlink command is required.
+func (p *PDRPlan) SetFlowQoSBinding(binding FlowQoSBinding) error {
+	return p.setFlowQoS(gtp5gnl.FlowQoS{
+		Version:    gtp5gnl.SHARED_MARK_ABI_VERSION,
+		PolicyID:   binding.PolicyID,
+		TCClassID:  binding.TCClassID,
+		Flags:      gtp5gnl.FLOW_QOS_VALID,
+		Generation: binding.Generation,
+	})
+}
+
+// ClearFlowQoSBinding publishes an explicit clear operation for an existing
+// PDR binding.
+func (p *PDRPlan) ClearFlowQoSBinding(generation uint32) error {
+	return p.setFlowQoS(gtp5gnl.FlowQoS{
+		Version:    gtp5gnl.SHARED_MARK_ABI_VERSION,
+		Generation: generation,
+	})
+}
+
+func (p *PDRPlan) setFlowQoS(flowQoS gtp5gnl.FlowQoS) error {
+	attr, err := gtp5gnl.NewFlowQoSAttr(flowQoS)
+	if err != nil {
+		return err
+	}
+
+	for i := range p.Attrs {
+		if p.Attrs[i].Type == gtp5gnl.PDR_FLOW_QOS {
+			p.Attrs[i] = attr
+			return nil
+		}
+	}
+
+	p.Attrs = append(p.Attrs, attr)
+	return nil
 }
 
 // FARPlan contains validated FAR operation parameters
@@ -61,7 +145,8 @@ type QERPlan struct {
 	Attrs      []nl.Attr
 	OriginalIE *ie.IE
 	// Parsed fields
-	QERID uint32
+	QERID        uint32
+	DesiredState QERDesiredStatePatch
 }
 
 // URRPlan contains validated URR operation parameters
@@ -91,7 +176,8 @@ type BARPlan struct {
 }
 
 // ModificationPlan contains all validated rule operations for a session modification
-// Operations should be executed in the order defined here
+// The executor enforces dependency order across these groups:
+// Create -> Update -> Query -> Remove.
 type ModificationPlan struct {
 	SEID uint64
 
@@ -131,56 +217,6 @@ func NewModificationPlan(seid uint64) *ModificationPlan {
 type ExecutionResult struct {
 	// USAReports collected from URR operations (Update, Remove, Query)
 	USAReports []report.USAReport
-}
-
-// HasCreateFAR checks if the plan contains a CreateFAR with the given FAR ID
-func (p *ModificationPlan) HasCreateFAR(farid uint32) bool {
-	for _, f := range p.CreateFARs {
-		if f.FARID == farid {
-			return true
-		}
-	}
-	return false
-}
-
-// HasCreateQER checks if the plan contains a CreateQER with the given QER ID
-func (p *ModificationPlan) HasCreateQER(qerid uint32) bool {
-	for _, q := range p.CreateQERs {
-		if q.QERID == qerid {
-			return true
-		}
-	}
-	return false
-}
-
-// HasCreateURR checks if the plan contains a CreateURR with the given URR ID
-func (p *ModificationPlan) HasCreateURR(urrid uint32) bool {
-	for _, u := range p.CreateURRs {
-		if u.URRID == urrid {
-			return true
-		}
-	}
-	return false
-}
-
-// HasCreateBAR checks if the plan contains a CreateBAR with the given BAR ID
-func (p *ModificationPlan) HasCreateBAR(barid uint8) bool {
-	for _, b := range p.CreateBARs {
-		if b.BARID == barid {
-			return true
-		}
-	}
-	return false
-}
-
-// HasCreatePDR checks if the plan contains a CreatePDR with the given PDR ID
-func (p *ModificationPlan) HasCreatePDR(pdrid uint16) bool {
-	for _, d := range p.CreatePDRs {
-		if d.PDRID == pdrid {
-			return true
-		}
-	}
-	return false
 }
 
 // NewExecutionResult creates a new empty ExecutionResult
