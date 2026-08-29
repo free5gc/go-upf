@@ -118,15 +118,9 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		plan.CreatePDRs = append(plan.CreatePDRs, p)
 	}
 
-	if err1 := validateMutualExclusion(plan); err1 != nil {
-		sess.log.Errorf("Est mutual exclusion validation error: %v", err1)
-		cause := pfcpCauseFromError(err1)
-		s.sendSessEstFailRsp(req, addr, cause)
-		rnode.DeleteSess(sess.LocalID)
-		return
-	}
-	if err1 := sess.validateProspectiveState(plan); err1 != nil {
-		sess.log.Errorf("Est prospective-state validation error: %v", err1)
+	ruleState, err1 := sess.ValidateRuleState(plan)
+	if err1 != nil {
+		sess.log.Errorf("Est rule-state validation error: %v", err1)
 		cause := pfcpCauseFromError(err1)
 		s.sendSessEstFailRsp(req, addr, cause)
 		rnode.DeleteSess(sess.LocalID)
@@ -144,25 +138,12 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	}
 
 	// ========================================================================
-	// PHASE 3: Apply - Update session internal state
+	// PHASE 3: Commit - Publish the validated desired state
 	// ========================================================================
-	for _, p := range plan.CreateFARs {
-		sess.ApplyCreateFAR(p)
-	}
-	for _, p := range plan.CreateQERs {
-		sess.ApplyCreateQER(p)
-	}
-	for _, p := range plan.CreateURRs {
-		sess.ApplyCreateURR(p)
-	}
-	for _, p := range plan.CreateBARs {
-		sess.ApplyCreateBAR(p)
-	}
+	ruleState.Commit()
 
 	CreatedPDRList := make([]*ie.IE, 0)
 	for _, p := range plan.CreatePDRs {
-		sess.ApplyCreatePDR(p)
-
 		ueIPAddress := getUEAddressFromPDR(p.OriginalIE)
 		pdrId := getPDRIDFromPDR(p.OriginalIE)
 
@@ -427,15 +408,9 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 		plan.RemovePDRs = append(plan.RemovePDRs, p)
 	}
-	// Validate mutual exclusion across operations
-	if err1 := validateMutualExclusion(plan); err1 != nil {
-		sess.log.Errorf("Mod mutual exclusion validation error: %v", err1)
-		cause := pfcpCauseFromError(err1)
-		s.sendSessModFailRsp(req, sess, addr, cause)
-		return
-	}
-	if err1 := sess.validateProspectiveState(plan); err1 != nil {
-		sess.log.Errorf("Mod prospective-state validation error: %v", err1)
+	ruleState, err1 := sess.ValidateRuleState(plan)
+	if err1 != nil {
+		sess.log.Errorf("Mod rule-state validation error: %v", err1)
 		cause := pfcpCauseFromError(err1)
 		s.sendSessModFailRsp(req, sess, addr, cause)
 		return
@@ -458,64 +433,9 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	// ========================================================================
-	// PHASE 3: Apply - Update session internal state
+	// PHASE 3: Commit - Publish the validated desired state
 	// ========================================================================
-	var usars []report.USAReport
-
-	// Apply Create operations
-	for _, p := range plan.CreateFARs {
-		sess.ApplyCreateFAR(p)
-	}
-	for _, p := range plan.CreateQERs {
-		sess.ApplyCreateQER(p)
-	}
-	for _, p := range plan.CreateURRs {
-		sess.ApplyCreateURR(p)
-	}
-	for _, p := range plan.CreateBARs {
-		sess.ApplyCreateBAR(p)
-	}
-	for _, p := range plan.CreatePDRs {
-		sess.ApplyCreatePDR(p)
-	}
-
-	// Apply Update operations (collect USAReports from PDR URR disassociation)
-	// UpdateFAR has no state change
-	for _, p := range plan.UpdateQERs {
-		sess.ApplyUpdateQER(p)
-	}
-	for _, p := range plan.UpdateURRs {
-		sess.ApplyUpdateURR(p)
-	}
-	// UpdateBAR has no state change
-	for _, p := range plan.UpdatePDRs {
-		rs := sess.ApplyUpdatePDR(p)
-		if len(rs) > 0 {
-			usars = append(usars, rs...)
-		}
-	}
-
-	// Apply Query operations - QueryURR has no state change
-
-	// Apply Remove operations (collect USAReports from PDR disassociation)
-	for _, p := range plan.RemovePDRs {
-		rs := sess.ApplyRemovePDR(p)
-		if len(rs) > 0 {
-			usars = append(usars, rs...)
-		}
-	}
-	for _, p := range plan.RemoveBARs {
-		sess.ApplyRemoveBAR(p)
-	}
-	for _, p := range plan.RemoveURRs {
-		sess.ApplyRemoveURR(p)
-	}
-	for _, p := range plan.RemoveQERs {
-		sess.ApplyRemoveQER(p)
-	}
-	for _, p := range plan.RemoveFARs {
-		sess.ApplyRemoveFAR(p)
-	}
+	usars := ruleState.Commit()
 
 	// Collect USAReports from execution result (RemoveURR, UpdateURR, QueryURR)
 	if execResult != nil && len(execResult.USAReports) > 0 {
@@ -786,166 +706,4 @@ func pfcpCauseFromError(err error) uint8 {
 	default:
 		return ie.CauseSystemFailure
 	}
-}
-
-// validateMutualExclusion checks for conflicting operations on the same rule within a single request.
-// Conflicts detected:
-// - Remove + Update same ID (update will fail after remove)
-// - Remove + Query same URR ID (query will fail after remove)
-// - Remove + Remove same ID (duplicate remove)
-// - Create + Create same ID (duplicate create)
-// Allowed combinations:
-// - Create + Update same ID
-// - Create + Remove same ID
-func validateMutualExclusion(plan *forwarder.ModificationPlan) error {
-	// Helper to check duplicates in a slice
-	checkDuplicates := func(ids []uint32, opName string) error {
-		seen := make(map[uint32]bool)
-		for _, id := range ids {
-			if seen[id] {
-				return errors.Wrapf(ErrMutualExclusionConflict, "duplicate %s for ID %d", opName, id)
-			}
-			seen[id] = true
-		}
-		return nil
-	}
-
-	// Helper to check overlap between two ID slices
-	checkOverlap := func(ids1, ids2 []uint32, op1Name, op2Name string) error {
-		set := make(map[uint32]bool)
-		for _, id := range ids1 {
-			set[id] = true
-		}
-		for _, id := range ids2 {
-			if set[id] {
-				return errors.Wrapf(ErrMutualExclusionConflict, "%s and %s conflict for ID %d", op1Name, op2Name, id)
-			}
-		}
-		return nil
-	}
-
-	// Collect IDs from plans
-	collectPDRIDs := func(plans []*forwarder.PDRPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, uint32(p.PDRID))
-		}
-		return ids
-	}
-	collectFARIDs := func(plans []*forwarder.FARPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, p.FARID)
-		}
-		return ids
-	}
-	collectQERIDs := func(plans []*forwarder.QERPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, p.QERID)
-		}
-		return ids
-	}
-	collectURRIDs := func(plans []*forwarder.URRPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, p.URRID)
-		}
-		return ids
-	}
-	collectQueryURRIDs := func(plans []*forwarder.URRPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, p.QueryURRID)
-		}
-		return ids
-	}
-	collectBARIDs := func(plans []*forwarder.BARPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, uint32(p.BARID))
-		}
-		return ids
-	}
-
-	// === PDR checks ===
-	createPDRIDs := collectPDRIDs(plan.CreatePDRs)
-	removePDRIDs := collectPDRIDs(plan.RemovePDRs)
-	updatePDRIDs := collectPDRIDs(plan.UpdatePDRs)
-
-	if err := checkDuplicates(createPDRIDs, "CreatePDR"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removePDRIDs, "RemovePDR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removePDRIDs, updatePDRIDs, "RemovePDR", "UpdatePDR"); err != nil {
-		return err
-	}
-
-	// === FAR checks ===
-	createFARIDs := collectFARIDs(plan.CreateFARs)
-	removeFARIDs := collectFARIDs(plan.RemoveFARs)
-	updateFARIDs := collectFARIDs(plan.UpdateFARs)
-
-	if err := checkDuplicates(createFARIDs, "CreateFAR"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removeFARIDs, "RemoveFAR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeFARIDs, updateFARIDs, "RemoveFAR", "UpdateFAR"); err != nil {
-		return err
-	}
-
-	// === QER checks ===
-	createQERIDs := collectQERIDs(plan.CreateQERs)
-	removeQERIDs := collectQERIDs(plan.RemoveQERs)
-	updateQERIDs := collectQERIDs(plan.UpdateQERs)
-
-	if err := checkDuplicates(createQERIDs, "CreateQER"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removeQERIDs, "RemoveQER"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeQERIDs, updateQERIDs, "RemoveQER", "UpdateQER"); err != nil {
-		return err
-	}
-
-	// === URR checks ===
-	createURRIDs := collectURRIDs(plan.CreateURRs)
-	removeURRIDs := collectURRIDs(plan.RemoveURRs)
-	updateURRIDs := collectURRIDs(plan.UpdateURRs)
-	queryURRIDs := collectQueryURRIDs(plan.QueryURRs)
-
-	if err := checkDuplicates(createURRIDs, "CreateURR"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removeURRIDs, "RemoveURR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeURRIDs, updateURRIDs, "RemoveURR", "UpdateURR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeURRIDs, queryURRIDs, "RemoveURR", "QueryURR"); err != nil {
-		return err
-	}
-
-	// === BAR checks ===
-	createBARIDs := collectBARIDs(plan.CreateBARs)
-	removeBARIDs := collectBARIDs(plan.RemoveBARs)
-	updateBARIDs := collectBARIDs(plan.UpdateBARs)
-
-	if err := checkDuplicates(createBARIDs, "CreateBAR"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removeBARIDs, "RemoveBAR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeBARIDs, updateBARIDs, "RemoveBAR", "UpdateBAR"); err != nil {
-		return err
-	}
-
-	return nil
 }

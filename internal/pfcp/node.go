@@ -414,63 +414,75 @@ func uint32Set(ids []uint32) map[uint32]struct{} {
 	}
 	return set
 }
-
-// ApplyCreatePDR updates session state after CreatePDR execution
-func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
-	urrids := uint32Set(plan.URRIDs)
-	for urrid := range urrids {
-		s.URRIDs[urrid].refPdrNum++
-	}
-
-	pdrInfo := &PDRInfo{
+func newPDRInfo(plan *forwarder.PDRPlan) *PDRInfo {
+	info := &PDRInfo{
 		FARID:         plan.FARID,
 		HasFARID:      plan.FARIDPresent,
-		RelatedURRIDs: urrids,
+		RelatedURRIDs: uint32Set(plan.URRIDs),
 		RelatedQERIDs: uint32Set(plan.QERIDs),
 	}
 	if plan.SourceInterface != nil {
-		pdrInfo.SourceInterface = *plan.SourceInterface
-		pdrInfo.HasSourceInterface = true
+		info.SourceInterface = *plan.SourceInterface
+		info.HasSourceInterface = true
+	}
+	return info
+}
+
+func mergePDRInfo(current *PDRInfo, patch *forwarder.PDRPlan) *PDRInfo {
+	if current == nil {
+		return newPDRInfo(patch)
 	}
 
-	s.PDRIDs[plan.PDRID] = pdrInfo
+	next := *current
+	if patch.FARIDPresent {
+		next.FARID = patch.FARID
+		next.HasFARID = true
+	}
+	if patch.URRIDsPresent {
+		next.RelatedURRIDs = uint32Set(patch.URRIDs)
+	}
+	if patch.QERIDsPresent {
+		next.RelatedQERIDs = uint32Set(patch.QERIDs)
+	}
+	if patch.SourceInterface != nil {
+		next.SourceInterface = *patch.SourceInterface
+		next.HasSourceInterface = true
+	}
+	return &next
+}
+
+// ApplyCreatePDR updates session state after CreatePDR execution
+func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
+	info := newPDRInfo(plan)
+	for urrid := range info.RelatedURRIDs {
+		s.URRIDs[urrid].refPdrNum++
+	}
+
+	s.PDRIDs[plan.PDRID] = info
 }
 
 // ApplyUpdatePDR updates session state after UpdatePDR execution
 // Returns USAReports from disassociated URRs
 func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
-	pdrInfo := s.PDRIDs[plan.PDRID]
+	current := s.PDRIDs[plan.PDRID]
+	next := mergePDRInfo(current, plan)
 
-	var usars []report.USAReport
-	if plan.FARIDPresent {
-		pdrInfo.FARID = plan.FARID
-		pdrInfo.HasFARID = true
-	}
-
+	var reports []report.USAReport
 	if plan.URRIDsPresent {
-		newUrrids := uint32Set(plan.URRIDs)
-		for urrid := range pdrInfo.RelatedURRIDs {
-			if _, ok := newUrrids[urrid]; !ok {
-				usars = append(usars, s.diassociateURR(urrid)...)
+		for urrid := range current.RelatedURRIDs {
+			if _, exists := next.RelatedURRIDs[urrid]; !exists {
+				reports = append(reports, s.diassociateURR(urrid)...)
 			}
 		}
-		for urrid := range newUrrids {
-			if _, ok := pdrInfo.RelatedURRIDs[urrid]; !ok {
+		for urrid := range next.RelatedURRIDs {
+			if _, exists := current.RelatedURRIDs[urrid]; !exists {
 				s.URRIDs[urrid].refPdrNum++
 			}
 		}
-		pdrInfo.RelatedURRIDs = newUrrids
 	}
 
-	if plan.QERIDsPresent {
-		pdrInfo.RelatedQERIDs = uint32Set(plan.QERIDs)
-	}
-	if plan.SourceInterface != nil {
-		pdrInfo.SourceInterface = *plan.SourceInterface
-		pdrInfo.HasSourceInterface = true
-	}
-
-	return usars
+	s.PDRIDs[plan.PDRID] = next
+	return reports
 }
 
 // ApplyRemovePDR updates session state after RemovePDR execution
@@ -498,9 +510,16 @@ func (s *Sess) ApplyRemoveFAR(plan *forwarder.FARPlan) {
 }
 
 func newQERInfo(patch forwarder.QERDesiredStatePatch) *QERInfo {
-	info := &QERInfo{}
-	info.applyDesiredStatePatch(patch)
-	return info
+	return mergeQERInfo(nil, patch)
+}
+
+func mergeQERInfo(current *QERInfo, patch forwarder.QERDesiredStatePatch) *QERInfo {
+	next := &QERInfo{}
+	if current != nil {
+		*next = *current
+	}
+	next.applyDesiredStatePatch(patch)
+	return next
 }
 
 func (q *QERInfo) applyDesiredStatePatch(patch forwarder.QERDesiredStatePatch) {
@@ -531,11 +550,7 @@ func (s *Sess) ApplyCreateQER(plan *forwarder.QERPlan) {
 
 // ApplyUpdateQER merges fields present in Update QER into desired state.
 func (s *Sess) ApplyUpdateQER(plan *forwarder.QERPlan) {
-	qerInfo, ok := s.QERIDs[plan.QERID]
-	if !ok {
-		return
-	}
-	qerInfo.applyDesiredStatePatch(plan.DesiredState)
+	s.QERIDs[plan.QERID] = mergeQERInfo(s.QERIDs[plan.QERID], plan.DesiredState)
 }
 
 // ApplyRemoveQER updates session state after RemoveQER execution
