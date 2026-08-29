@@ -193,7 +193,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 ) {
 	s.log.Infoln("handleSessionModificationRequest")
 
-	sess, err := s.lnode.Sess(req.SEID())
+	sess, err := s.sessions.Get(req.SEID())
 	if err != nil {
 		s.log.Errorf("handleSessionModificationRequest: %v", err)
 		rsp := message.NewSessionModificationResponse(
@@ -498,7 +498,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 	s.log.Infoln("handleSessionDeletionRequest")
 
 	lSeid := req.SEID()
-	sess, err := s.lnode.Sess(lSeid)
+	sess, err := s.sessions.Get(lSeid)
 	if err != nil {
 		s.log.Errorf("handleSessionDeletionRequest: %v", err)
 		rsp := message.NewSessionDeletionResponse(
@@ -579,8 +579,8 @@ func (s *PfcpServer) handleSessionReportResponse(
 			return
 		}
 
-		s.log.Warnf("rsp SEID is 0 and cause is Session context not found; delete it on local")
-		sess, err := s.lnode.RemoteSess(req.SEID(), addr)
+		s.log.Warnf("rsp SEID is 0 and cause is Session context not found; delete local session")
+		sess, err := s.sessions.FindByRemoteSEID(req.SEID(), addr)
 		if err != nil {
 			s.log.Errorln(err)
 			return
@@ -589,7 +589,7 @@ func (s *PfcpServer) handleSessionReportResponse(
 		return
 	}
 
-	sess, err := s.lnode.Sess(rsp.SEID())
+	sess, err := s.sessions.Get(rsp.SEID())
 	if err != nil {
 		s.log.Errorln(err)
 		return

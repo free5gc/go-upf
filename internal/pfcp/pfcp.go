@@ -53,7 +53,7 @@ type PfcpServer struct {
 	conn         *net.UDPConn
 	recoveryTime time.Time
 	driver       forwarder.Driver
-	lnode        LocalNode
+	sessions     SessionStore
 	associations map[string]*PFCPAssociation // key: peer Node ID
 	txTrans      map[string]*TxTransaction   // key: RemoteAddr-Sequence
 	rxTrans      map[string]*RxTransaction   // key: RemoteAddr-Sequence
@@ -248,7 +248,7 @@ func (s *PfcpServer) NewAssociation(
 	association := NewPFCPAssociation(
 		peerNodeID,
 		peerAddr,
-		&s.lnode,
+		&s.sessions,
 		s.log.WithField(logger_util.FieldControlPlaneNodeID, peerNodeID),
 	)
 	association.log.Infoln("New PFCP association")
@@ -282,7 +282,7 @@ func (s *PfcpServer) NotifyTransTimeout(trType TransType, trID string) {
 }
 
 func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
-	sess, err := s.lnode.Sess(seid)
+	sess, err := s.sessions.Get(seid)
 	if err != nil {
 		s.log.Errorln(err)
 		return nil, false

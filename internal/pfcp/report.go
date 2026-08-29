@@ -14,7 +14,7 @@ import (
 
 func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 	s.log.Debugf("ServeReport: SEID(%#x)", sr.SEID)
-	sess, err := s.lnode.Sess(sr.SEID)
+	sess, err := s.sessions.Get(sr.SEID)
 	if err != nil {
 		s.log.Errorln(err)
 		return
@@ -60,7 +60,7 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 func (s *PfcpServer) serveDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) error {
 	s.log.Infoln("serveDLDReport")
 
-	sess, err := s.lnode.Sess(lSeid)
+	sess, err := s.sessions.Get(lSeid)
 	if err != nil {
 		return errors.Wrap(err, "serveDLDReport")
 	}
@@ -92,7 +92,7 @@ func (s *PfcpServer) serveDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 func (s *PfcpServer) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.USAReport) error {
 	s.log.Infoln("serveUSAReport")
 
-	sess, err := s.lnode.Sess(lSeid)
+	sess, err := s.sessions.Get(lSeid)
 	if err != nil {
 		return errors.Wrap(err, "serveUSAReport")
 	}

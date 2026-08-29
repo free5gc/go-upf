@@ -637,7 +637,7 @@ func (s *Sess) CleanupRemovedURRs() {
 type PFCPAssociation struct {
 	PeerNodeID   string
 	peerAddr     net.Addr
-	sessionStore *LocalNode
+	sessionStore *SessionStore
 	sessionIDs   map[uint64]struct{} // key: Local SEID
 	log          *logrus.Entry
 }
@@ -645,7 +645,7 @@ type PFCPAssociation struct {
 func NewPFCPAssociation(
 	peerNodeID string,
 	peerAddr net.Addr,
-	sessionStore *LocalNode,
+	sessionStore *SessionStore,
 	log *logrus.Entry,
 ) *PFCPAssociation {
 	return &PFCPAssociation{
@@ -668,14 +668,14 @@ func (a *PFCPAssociation) Session(localSEID uint64) (*Sess, error) {
 	if _, ok := a.sessionIDs[localSEID]; !ok {
 		return nil, errors.Errorf("PFCPAssociation.Session: session not found (localSEID:%#x)", localSEID)
 	}
-	return a.sessionStore.Sess(localSEID)
+	return a.sessionStore.Get(localSEID)
 }
 
 func (a *PFCPAssociation) NewSession(
 	remoteSEID uint64,
 	driver forwarder.Driver,
 ) *Sess {
-	sess := a.sessionStore.NewSess(remoteSEID, BUFFQ_LEN, driver)
+	sess := a.sessionStore.Create(remoteSEID, BUFFQ_LEN, driver)
 	a.sessionIDs[sess.LocalID] = struct{}{}
 	sess.association = a
 	sess.log = a.log.WithFields(
@@ -692,7 +692,7 @@ func (a *PFCPAssociation) DeleteSession(localSEID uint64) []report.USAReport {
 		return nil
 	}
 	delete(a.sessionIDs, localSEID)
-	reports, err := a.sessionStore.DeleteSess(localSEID)
+	reports, err := a.sessionStore.Delete(localSEID)
 	if err != nil {
 		a.log.Warnln(err)
 		return nil
@@ -700,65 +700,80 @@ func (a *PFCPAssociation) DeleteSession(localSEID uint64) []report.USAReport {
 	return reports
 }
 
-type LocalNode struct {
-	sess []*Sess
-	free []uint64
+// SessionStore owns the UPF-wide Local SEID namespace and canonical Session objects.
+type SessionStore struct {
+	sessions  []*Sess
+	freeSEIDs []uint64
 }
 
-func (n *LocalNode) Reset() {
-	for _, sess := range n.sess {
+func (s *SessionStore) DeleteAll() {
+	for _, sess := range s.sessions {
 		if sess != nil {
 			sess.Close()
 		}
 	}
-	n.sess = []*Sess{}
-	n.free = []uint64{}
+	s.sessions = []*Sess{}
+	s.freeSEIDs = []uint64{}
 }
 
-func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
-	if lSeid == 0 {
-		return nil, errors.New("Sess: invalid lSeid:0")
+func (s *SessionStore) Get(localSEID uint64) (*Sess, error) {
+	if localSEID == 0 {
+		return nil, errors.New("SessionStore.Get: invalid localSEID:0")
 	}
 
-	// Length as int; compare as uint64 to match lSeid type.
-	sessLen := len(n.sess)
-	if lSeid > uint64(sessLen) {
-		return nil, errors.Errorf("Sess: sess not found (lSeid:%#x)", lSeid)
+	// Length as int; compare as uint64 to match localSEID type.
+	sessionCount := len(s.sessions)
+	if localSEID > uint64(sessionCount) {
+		return nil, errors.Errorf(
+			"SessionStore.Get: session not found (localSEID:%#x)",
+			localSEID,
+		)
 	}
 
-	// Safe: 1 <= lSeid <= sessLen guarantees the conversion and index are valid.
-	idx := int(lSeid) - 1
-	sess := n.sess[idx]
+	// Safe: 1 <= localSEID <= sessionCount guarantees a valid index.
+	index := int(localSEID) - 1
+	sess := s.sessions[index]
 	if sess == nil {
-		return nil, errors.Errorf("Sess: sess not found (lSeid:%#x)", lSeid)
+		return nil, errors.Errorf(
+			"SessionStore.Get: session not found (localSEID:%#x)",
+			localSEID,
+		)
 	}
 	return sess, nil
 }
 
-func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
-	addrString := ""
-	if addr != nil {
-		addrString = addr.String()
+func (s *SessionStore) FindByRemoteSEID(
+	remoteSEID uint64,
+	peerAddr net.Addr,
+) (*Sess, error) {
+	peerAddrString := ""
+	if peerAddr != nil {
+		peerAddrString = peerAddr.String()
 	}
 
-	for _, s := range n.sess {
-		if s == nil || s.association == nil || s.association.peerAddr == nil {
+	for _, sess := range s.sessions {
+		if sess == nil || sess.association == nil || sess.association.peerAddr == nil {
 			continue
 		}
-		if s.RemoteID == rSeid && s.association.peerAddr.String() == addrString {
-			return s, nil
+		if sess.RemoteID == remoteSEID &&
+			sess.association.peerAddr.String() == peerAddrString {
+			return sess, nil
 		}
 	}
-	return nil, errors.Errorf("RemoteSess: invalid rSeid:%#x, addr:%s ", rSeid, addr)
+	return nil, errors.Errorf(
+		"SessionStore.FindByRemoteSEID: session not found (remoteSEID:%#x, addr:%s)",
+		remoteSEID,
+		peerAddr,
+	)
 }
 
-func (n *LocalNode) NewSess(
-	rSeid uint64,
-	qlen int,
+func (s *SessionStore) Create(
+	remoteSEID uint64,
+	queueLen int,
 	driver forwarder.Driver,
 ) *Sess {
-	s := &Sess{
-		RemoteID: rSeid,
+	sess := &Sess{
+		RemoteID: remoteSEID,
 		driver:   driver,
 		PDRIDs:   make(map[uint16]*PDRInfo),
 		FARIDs:   make(map[uint32]struct{}),
@@ -766,41 +781,47 @@ func (n *LocalNode) NewSess(
 		URRIDs:   make(map[uint32]*URRInfo),
 		BARIDs:   make(map[uint8]struct{}),
 		q:        make(map[uint16]chan []byte),
-		qlen:     qlen,
+		qlen:     queueLen,
 	}
-	last := len(n.free) - 1
+	last := len(s.freeSEIDs) - 1
 	if last >= 0 {
-		s.LocalID = n.free[last]
-		n.free = n.free[:last]
-		n.sess[s.LocalID-1] = s
+		sess.LocalID = s.freeSEIDs[last]
+		s.freeSEIDs = s.freeSEIDs[:last]
+		s.sessions[sess.LocalID-1] = sess
 	} else {
-		n.sess = append(n.sess, s)
-		s.LocalID = uint64(len(n.sess))
+		s.sessions = append(s.sessions, sess)
+		sess.LocalID = uint64(len(s.sessions))
 	}
-	return s
+	return sess
 }
 
-func (n *LocalNode) DeleteSess(lSeid uint64) ([]report.USAReport, error) {
-	if lSeid == 0 {
-		return nil, errors.New("DeleteSess: invalid lSeid:0")
+func (s *SessionStore) Delete(localSEID uint64) ([]report.USAReport, error) {
+	if localSEID == 0 {
+		return nil, errors.New("SessionStore.Delete: invalid localSEID:0")
 	}
 
-	// Capacity as int; compare as uint64 to match lSeid type.
-	sessCap := len(n.sess)
-	if lSeid > uint64(sessCap) {
-		return nil, errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
+	// Capacity as int; compare as uint64 to match localSEID type.
+	sessionCapacity := len(s.sessions)
+	if localSEID > uint64(sessionCapacity) {
+		return nil, errors.Errorf(
+			"SessionStore.Delete: session not found (localSEID:%#x)",
+			localSEID,
+		)
 	}
 
-	// Safe: 1 <= lSeid <= sessCap ensures valid conversion and index.
-	idx := int(lSeid) - 1
-	if n.sess[idx] == nil {
-		return nil, errors.Errorf("DeleteSess: sess not found (lSeid:%#x)", lSeid)
+	// Safe: 1 <= localSEID <= sessionCapacity guarantees a valid index.
+	index := int(localSEID) - 1
+	if s.sessions[index] == nil {
+		return nil, errors.Errorf(
+			"SessionStore.Delete: session not found (localSEID:%#x)",
+			localSEID,
+		)
 	}
 
-	n.sess[idx].log.Infoln("sess deleted")
-	usars := n.sess[idx].Close()
-	n.sess[idx] = nil
-	n.free = append(n.free, lSeid)
+	s.sessions[index].log.Infoln("session deleted")
+	reports := s.sessions[index].Close()
+	s.sessions[index] = nil
+	s.freeSEIDs = append(s.freeSEIDs, localSEID)
 
-	return usars, nil
+	return reports, nil
 }

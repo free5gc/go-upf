@@ -22,7 +22,7 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 		association := NewPFCPAssociation(
 			"10.100.200.5",
 			addr,
-			&s.lnode,
+			&s.sessions,
 			s.log.WithField(logger_util.FieldControlPlaneNodeID, "10.100.200.5"),
 		)
 		return s, association.NewSession(remoteID, forwarder.Empty{})
@@ -42,7 +42,7 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 
 		s.handleSessionReportResponse(rsp, addr, req)
 
-		got, err := s.lnode.Sess(sess.LocalID)
+		got, err := s.sessions.Get(sess.LocalID)
 		assert.NoError(t, err)
 		assert.Equal(t, sess.LocalID, got.LocalID)
 	})
@@ -61,7 +61,7 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 
 		s.handleSessionReportResponse(rsp, addr, req)
 
-		_, err := s.lnode.Sess(sess.LocalID)
+		_, err := s.sessions.Get(sess.LocalID)
 		assert.Error(t, err)
 	})
 }

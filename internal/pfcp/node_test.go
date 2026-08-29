@@ -16,7 +16,7 @@ func TestPFCPAssociation(t *testing.T) {
 		n := NewPFCPAssociation(
 			"smf1",
 			nil,
-			&LocalNode{},
+			&SessionStore{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 		for i := 0; i < 3; i++ {
@@ -29,7 +29,7 @@ func TestPFCPAssociation(t *testing.T) {
 		n := NewPFCPAssociation(
 			"smf1",
 			nil,
-			&LocalNode{},
+			&SessionStore{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 
@@ -59,7 +59,7 @@ func TestPFCPAssociation(t *testing.T) {
 		n := NewPFCPAssociation(
 			"smf1",
 			nil,
-			&LocalNode{},
+			&SessionStore{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 		report := n.DeleteSession(0)
@@ -69,7 +69,7 @@ func TestPFCPAssociation(t *testing.T) {
 		n := NewPFCPAssociation(
 			"smf1",
 			nil,
-			&LocalNode{},
+			&SessionStore{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 
@@ -103,17 +103,17 @@ func TestPFCPAssociation(t *testing.T) {
 }
 
 func TestPFCPAssociationMultipleSMFs(t *testing.T) {
-	var lnode LocalNode
+	var sessions SessionStore
 	n1 := NewPFCPAssociation(
 		"smf1",
 		nil,
-		&lnode,
+		&sessions,
 		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 	)
 	n2 := NewPFCPAssociation(
 		"smf2",
 		nil,
-		&lnode,
+		&sessions,
 		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf2"),
 	)
 	t.Run("new smf1 r-SEID=10", func(t *testing.T) {
@@ -214,32 +214,32 @@ func TestPFCPAssociationMultipleSMFs(t *testing.T) {
 	})
 }
 
-func TestLocalNode(t *testing.T) {
+func TestSessionStore(t *testing.T) {
 	t.Run("new session", func(t *testing.T) {
-		lnode := LocalNode{}
-		sess := lnode.NewSess(10, BUFFQ_LEN, forwarder.Empty{})
+		sessions := SessionStore{}
+		sess := sessions.Create(10, BUFFQ_LEN, forwarder.Empty{})
 		assert.Equal(t, uint64(1), sess.LocalID)
 		assert.Equal(t, uint64(10), sess.RemoteID)
 	})
 
-	t.Run("recycle LocalID", func(t *testing.T) {
-		lnode := LocalNode{
-			sess: []*Sess{},
-			free: []uint64{},
+	t.Run("recycle local SEID", func(t *testing.T) {
+		sessions := SessionStore{
+			sessions:  []*Sess{},
+			freeSEIDs: []uint64{},
 		}
-		sess := lnode.NewSess(10, BUFFQ_LEN, forwarder.Empty{})
+		sess := sessions.Create(10, BUFFQ_LEN, forwarder.Empty{})
 		recycleLocalID := 1
 		assert.Equal(t, uint64(recycleLocalID), sess.LocalID)
 		assert.Equal(t, uint64(10), sess.RemoteID)
 	})
 
-	t.Run("remote sess skips deleted local slots", func(t *testing.T) {
+	t.Run("remote SEID lookup skips deleted local slots", func(t *testing.T) {
 		addr := &net.UDPAddr{IP: net.IPv4(10, 100, 200, 5), Port: 8805}
-		lnode := &LocalNode{}
+		sessions := &SessionStore{}
 		association := NewPFCPAssociation(
 			"smf1",
 			addr,
-			lnode,
+			sessions,
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 
@@ -247,11 +247,11 @@ func TestLocalNode(t *testing.T) {
 		activeSess := association.NewSession(0x1efce, forwarder.Empty{})
 		association.DeleteSession(deletedSess.LocalID)
 
-		sess, err := lnode.RemoteSess(activeSess.RemoteID, addr)
+		sess, err := sessions.FindByRemoteSEID(activeSess.RemoteID, addr)
 		assert.NoError(t, err)
 		assert.Equal(t, activeSess.LocalID, sess.LocalID)
 
-		_, err = lnode.RemoteSess(deletedSess.RemoteID, addr)
+		_, err = sessions.FindByRemoteSEID(deletedSess.RemoteID, addr)
 		assert.Error(t, err)
 	})
 }
