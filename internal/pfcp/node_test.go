@@ -11,22 +11,22 @@ import (
 	logger_util "github.com/free5gc/util/logger"
 )
 
-func TestRemoteNode(t *testing.T) {
+func TestPFCPAssociation(t *testing.T) {
 	t.Run("sess is not found before create", func(t *testing.T) {
-		n := NewRemoteNode(
+		n := NewPFCPAssociation(
 			"smf1",
 			nil,
 			&LocalNode{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 		for i := 0; i < 3; i++ {
-			_, err := n.Sess(uint64(i))
+			_, err := n.Session(uint64(i))
 			assert.NotNil(t, err)
 		}
 	})
 
 	t.Run("new multiple session", func(t *testing.T) {
-		n := NewRemoteNode(
+		n := NewPFCPAssociation(
 			"smf1",
 			nil,
 			&LocalNode{},
@@ -41,14 +41,14 @@ func TestRemoteNode(t *testing.T) {
 		}
 
 		for _, tc := range testcases {
-			sess := n.NewSess(tc.remoteID, forwarder.Empty{})
+			sess := n.NewSession(tc.remoteID, forwarder.Empty{})
 			assert.Equal(t, tc.localID, sess.LocalID)
 			assert.Equal(t, tc.remoteID, sess.RemoteID)
 		}
 
-		// assure the session stored in the node
+		// assure the session is registered with the association
 		for _, tc := range testcases {
-			sess, err := n.Sess(tc.localID)
+			sess, err := n.Session(tc.localID)
 			assert.Nil(t, err)
 			assert.Equal(t, tc.localID, sess.LocalID)
 			assert.Equal(t, tc.remoteID, sess.RemoteID)
@@ -56,17 +56,17 @@ func TestRemoteNode(t *testing.T) {
 	})
 
 	t.Run("delete 0 no effect before create", func(t *testing.T) {
-		n := NewRemoteNode(
+		n := NewPFCPAssociation(
 			"smf1",
 			nil,
 			&LocalNode{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
-		report := n.DeleteSess(0)
+		report := n.DeleteSession(0)
 		assert.Nil(t, report)
 	})
 	t.Run("delete should success after create", func(t *testing.T) {
-		n := NewRemoteNode(
+		n := NewPFCPAssociation(
 			"smf1",
 			nil,
 			&LocalNode{},
@@ -81,43 +81,43 @@ func TestRemoteNode(t *testing.T) {
 		}
 
 		for _, tc := range testcases {
-			n.NewSess(tc.remoteID, forwarder.Empty{})
+			n.NewSession(tc.remoteID, forwarder.Empty{})
 		}
 
 		for _, tc := range testcases {
-			n.DeleteSess(tc.localID)
+			n.DeleteSession(tc.localID)
 		}
 
 		// assure the session is deleted
 		for _, tc := range testcases {
-			_, err := n.Sess(tc.localID)
+			_, err := n.Session(tc.localID)
 			assert.NotNil(t, err)
 		}
 
 		// delete again should have no effect
 		for _, tc := range testcases {
-			report := n.DeleteSess(tc.localID)
+			report := n.DeleteSession(tc.localID)
 			assert.Nil(t, report)
 		}
 	})
 }
 
-func TestRemoteNode_multipleSMF(t *testing.T) {
+func TestPFCPAssociationMultipleSMFs(t *testing.T) {
 	var lnode LocalNode
-	n1 := NewRemoteNode(
+	n1 := NewPFCPAssociation(
 		"smf1",
 		nil,
 		&lnode,
 		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 	)
-	n2 := NewRemoteNode(
+	n2 := NewPFCPAssociation(
 		"smf2",
 		nil,
 		&lnode,
 		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf2"),
 	)
 	t.Run("new smf1 r-SEID=10", func(t *testing.T) {
-		sess := n1.NewSess(10, forwarder.Empty{})
+		sess := n1.NewSession(10, forwarder.Empty{})
 		if sess.LocalID != 1 {
 			t.Errorf("want 1; but got %v\n", sess.LocalID)
 		}
@@ -126,7 +126,7 @@ func TestRemoteNode_multipleSMF(t *testing.T) {
 		}
 	})
 	t.Run("new smf2 r-SEID=10", func(t *testing.T) {
-		sess := n2.NewSess(10, forwarder.Empty{})
+		sess := n2.NewSession(10, forwarder.Empty{})
 		if sess.LocalID != 2 {
 			t.Errorf("want 2; but got %v\n", sess.LocalID)
 		}
@@ -135,7 +135,7 @@ func TestRemoteNode_multipleSMF(t *testing.T) {
 		}
 	})
 	t.Run("get smf1 l-SEID=1", func(t *testing.T) {
-		sess, err := n1.Sess(1)
+		sess, err := n1.Session(1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -147,7 +147,7 @@ func TestRemoteNode_multipleSMF(t *testing.T) {
 		}
 	})
 	t.Run("get smf2 l-SEID=2", func(t *testing.T) {
-		sess, err := n2.Sess(2)
+		sess, err := n2.Session(2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,19 +159,19 @@ func TestRemoteNode_multipleSMF(t *testing.T) {
 		}
 	})
 	t.Run("get smf1 l-SEID=2", func(t *testing.T) {
-		_, err := n1.Sess(2)
+		_, err := n1.Session(2)
 		if err == nil {
 			t.Errorf("want error; but not error")
 		}
 	})
 	t.Run("get smf2 l-SEID=1", func(t *testing.T) {
-		_, err := n2.Sess(1)
+		_, err := n2.Session(1)
 		if err == nil {
 			t.Errorf("want error; but not error")
 		}
 	})
 	t.Run("new smf1:20", func(t *testing.T) {
-		sess := n1.NewSess(20, forwarder.Empty{})
+		sess := n1.NewSession(20, forwarder.Empty{})
 		if sess.LocalID != 3 {
 			t.Errorf("want 3; but got %v\n", sess.LocalID)
 		}
@@ -180,28 +180,28 @@ func TestRemoteNode_multipleSMF(t *testing.T) {
 		}
 	})
 	t.Run("get smf2 l-SEID=3", func(t *testing.T) {
-		_, err := n2.Sess(3)
+		_, err := n2.Session(3)
 		if err == nil {
 			t.Errorf("want error; but not error")
 		}
 	})
-	t.Run("reset smf1", func(t *testing.T) {
-		n1.Reset()
+	t.Run("delete all smf1 association sessions", func(t *testing.T) {
+		n1.DeleteAllSessions()
 	})
 	t.Run("get smf1 l-SEID=1", func(t *testing.T) {
-		_, err := n1.Sess(1)
+		_, err := n1.Session(1)
 		if err == nil {
 			t.Errorf("want error; but not error")
 		}
 	})
 	t.Run("get smf1 l-SEID=3", func(t *testing.T) {
-		_, err := n1.Sess(3)
+		_, err := n1.Session(3)
 		if err == nil {
 			t.Errorf("want error; but not error")
 		}
 	})
 	t.Run("get smf2 l-SEID=2", func(t *testing.T) {
-		sess, err := n2.Sess(2)
+		sess, err := n2.Session(2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -236,16 +236,16 @@ func TestLocalNode(t *testing.T) {
 	t.Run("remote sess skips deleted local slots", func(t *testing.T) {
 		addr := &net.UDPAddr{IP: net.IPv4(10, 100, 200, 5), Port: 8805}
 		lnode := &LocalNode{}
-		rnode := NewRemoteNode(
+		association := NewPFCPAssociation(
 			"smf1",
 			addr,
 			lnode,
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 
-		deletedSess := rnode.NewSess(0x1efcd, forwarder.Empty{})
-		activeSess := rnode.NewSess(0x1efce, forwarder.Empty{})
-		rnode.DeleteSess(deletedSess.LocalID)
+		deletedSess := association.NewSession(0x1efcd, forwarder.Empty{})
+		activeSess := association.NewSession(0x1efce, forwarder.Empty{})
+		association.DeleteSession(deletedSess.LocalID)
 
 		sess, err := lnode.RemoteSess(activeSess.RemoteID, addr)
 		assert.NoError(t, err)

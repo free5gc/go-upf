@@ -52,18 +52,18 @@ type URRInfo struct {
 }
 
 type Sess struct {
-	rnode    *RemoteNode
-	driver   forwarder.Driver // local UPF datapath dependency
-	LocalID  uint64
-	RemoteID uint64
-	PDRIDs   map[uint16]*PDRInfo    // key: PDR_ID
-	FARIDs   map[uint32]struct{}    // key: FAR_ID
-	QERIDs   map[uint32]*QERInfo    // key: QER_ID
-	URRIDs   map[uint32]*URRInfo    // key: URR_ID
-	BARIDs   map[uint8]struct{}     // key: BAR_ID
-	q        map[uint16]chan []byte // key: PDR_ID
-	qlen     int
-	log      *logrus.Entry
+	association *PFCPAssociation // remote PFCP association that owns this session
+	driver      forwarder.Driver // local UPF datapath dependency
+	LocalID     uint64
+	RemoteID    uint64
+	PDRIDs      map[uint16]*PDRInfo    // key: PDR_ID
+	FARIDs      map[uint32]struct{}    // key: FAR_ID
+	QERIDs      map[uint32]*QERInfo    // key: QER_ID
+	URRIDs      map[uint32]*URRInfo    // key: URR_ID
+	BARIDs      map[uint8]struct{}     // key: BAR_ID
+	q           map[uint16]chan []byte // key: PDR_ID
+	qlen        int
+	log         *logrus.Entry
 }
 
 var (
@@ -632,69 +632,72 @@ func (s *Sess) CleanupRemovedURRs() {
 	}
 }
 
-type RemoteNode struct {
-	ID    string
-	addr  net.Addr
-	local *LocalNode
-	sess  map[uint64]struct{} // key: Local SEID
-	log   *logrus.Entry
+// PFCPAssociation stores remote PFCP peer state and the Local SEIDs
+// established through that association. Rule desired state remains owned by Sess.
+type PFCPAssociation struct {
+	PeerNodeID   string
+	peerAddr     net.Addr
+	sessionStore *LocalNode
+	sessionIDs   map[uint64]struct{} // key: Local SEID
+	log          *logrus.Entry
 }
 
-func NewRemoteNode(
-	id string,
-	addr net.Addr,
-	local *LocalNode,
+func NewPFCPAssociation(
+	peerNodeID string,
+	peerAddr net.Addr,
+	sessionStore *LocalNode,
 	log *logrus.Entry,
-) *RemoteNode {
-	n := new(RemoteNode)
-	n.ID = id
-	n.addr = addr
-	n.local = local
-	n.sess = make(map[uint64]struct{})
-	n.log = log
-	return n
-}
-
-func (n *RemoteNode) Reset() {
-	for id := range n.sess {
-		n.DeleteSess(id)
+) *PFCPAssociation {
+	return &PFCPAssociation{
+		PeerNodeID:   peerNodeID,
+		peerAddr:     peerAddr,
+		sessionStore: sessionStore,
+		sessionIDs:   make(map[uint64]struct{}),
+		log:          log,
 	}
-	n.sess = make(map[uint64]struct{})
 }
 
-func (n *RemoteNode) Sess(lSeid uint64) (*Sess, error) {
-	_, ok := n.sess[lSeid]
-	if !ok {
-		return nil, errors.Errorf("Sess: sess not found (lSeid:%#x)", lSeid)
+func (a *PFCPAssociation) DeleteAllSessions() {
+	for localSEID := range a.sessionIDs {
+		a.DeleteSession(localSEID)
 	}
-	return n.local.Sess(lSeid)
+	a.sessionIDs = make(map[uint64]struct{})
 }
 
-func (n *RemoteNode) NewSess(rSeid uint64, driver forwarder.Driver) *Sess {
-	s := n.local.NewSess(rSeid, BUFFQ_LEN, driver)
-	n.sess[s.LocalID] = struct{}{}
-	s.rnode = n
-	s.log = n.log.WithFields(
+func (a *PFCPAssociation) Session(localSEID uint64) (*Sess, error) {
+	if _, ok := a.sessionIDs[localSEID]; !ok {
+		return nil, errors.Errorf("PFCPAssociation.Session: session not found (localSEID:%#x)", localSEID)
+	}
+	return a.sessionStore.Sess(localSEID)
+}
+
+func (a *PFCPAssociation) NewSession(
+	remoteSEID uint64,
+	driver forwarder.Driver,
+) *Sess {
+	sess := a.sessionStore.NewSess(remoteSEID, BUFFQ_LEN, driver)
+	a.sessionIDs[sess.LocalID] = struct{}{}
+	sess.association = a
+	sess.log = a.log.WithFields(
 		logrus.Fields{
-			logger_util.FieldUserPlaneSEID:    fmt.Sprintf("%#x", s.LocalID),
-			logger_util.FieldControlPlaneSEID: fmt.Sprintf("%#x", rSeid),
+			logger_util.FieldUserPlaneSEID:    fmt.Sprintf("%#x", sess.LocalID),
+			logger_util.FieldControlPlaneSEID: fmt.Sprintf("%#x", remoteSEID),
 		})
-	s.log.Infoln("New session")
-	return s
+	sess.log.Infoln("New session")
+	return sess
 }
 
-func (n *RemoteNode) DeleteSess(lSeid uint64) []report.USAReport {
-	_, ok := n.sess[lSeid]
-	if !ok {
+func (a *PFCPAssociation) DeleteSession(localSEID uint64) []report.USAReport {
+	if _, ok := a.sessionIDs[localSEID]; !ok {
 		return nil
 	}
-	delete(n.sess, lSeid)
-	usars, err := n.local.DeleteSess(lSeid)
+	delete(a.sessionIDs, localSEID)
+	reports, err := a.sessionStore.DeleteSess(localSEID)
 	if err != nil {
-		n.log.Warnln(err)
+		a.log.Warnln(err)
 		return nil
 	}
-	return usars
+	return reports
 }
 
 type LocalNode struct {
@@ -739,10 +742,10 @@ func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
 	}
 
 	for _, s := range n.sess {
-		if s == nil || s.rnode == nil || s.rnode.addr == nil {
+		if s == nil || s.association == nil || s.association.peerAddr == nil {
 			continue
 		}
-		if s.RemoteID == rSeid && s.rnode.addr.String() == addrString {
+		if s.RemoteID == rSeid && s.association.peerAddr.String() == addrString {
 			return s, nil
 		}
 	}

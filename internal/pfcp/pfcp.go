@@ -54,9 +54,9 @@ type PfcpServer struct {
 	recoveryTime time.Time
 	driver       forwarder.Driver
 	lnode        LocalNode
-	rnodes       map[string]*RemoteNode
-	txTrans      map[string]*TxTransaction // key: RemoteAddr-Sequence
-	rxTrans      map[string]*RxTransaction // key: RemoteAddr-Sequence
+	associations map[string]*PFCPAssociation // key: peer Node ID
+	txTrans      map[string]*TxTransaction   // key: RemoteAddr-Sequence
+	rxTrans      map[string]*RxTransaction   // key: RemoteAddr-Sequence
 	txSeq        uint32
 	log          *logrus.Entry
 }
@@ -72,7 +72,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		trToCh:       make(chan TransactionTimeout, TRANS_TIMEOUT_CHANNEL_LEN),
 		recoveryTime: time.Now(),
 		driver:       driver,
-		rnodes:       make(map[string]*RemoteNode),
+		associations: make(map[string]*PFCPAssociation),
 		txTrans:      make(map[string]*TxTransaction),
 		rxTrans:      make(map[string]*RxTransaction),
 		log:          logger.PfcpLog.WithField(logger_util.FieldListenAddr, listen),
@@ -241,23 +241,36 @@ func (s *PfcpServer) Stop() {
 	}
 }
 
-func (s *PfcpServer) NewNode(id string, addr net.Addr) *RemoteNode {
-	n := NewRemoteNode(
-		id,
-		addr,
+func (s *PfcpServer) NewAssociation(
+	peerNodeID string,
+	peerAddr net.Addr,
+) *PFCPAssociation {
+	association := NewPFCPAssociation(
+		peerNodeID,
+		peerAddr,
 		&s.lnode,
-		s.log.WithField(logger_util.FieldControlPlaneNodeID, id),
+		s.log.WithField(logger_util.FieldControlPlaneNodeID, peerNodeID),
 	)
-	n.log.Infoln("New node")
-	return n
+	association.log.Infoln("New PFCP association")
+	return association
 }
 
-func (s *PfcpServer) UpdateNodeID(n *RemoteNode, newId string) {
-	s.log.Infof("Update nodeId %q to %q", n.ID, newId)
-	delete(s.rnodes, n.ID)
-	n.ID = newId
-	n.log = s.log.WithField(logger_util.FieldControlPlaneNodeID, newId)
-	s.rnodes[newId] = n
+func (s *PfcpServer) UpdatePeerNodeID(
+	association *PFCPAssociation,
+	newPeerNodeID string,
+) {
+	s.log.Infof(
+		"Update peer Node ID %q to %q",
+		association.PeerNodeID,
+		newPeerNodeID,
+	)
+	delete(s.associations, association.PeerNodeID)
+	association.PeerNodeID = newPeerNodeID
+	association.log = s.log.WithField(
+		logger_util.FieldControlPlaneNodeID,
+		newPeerNodeID,
+	)
+	s.associations[newPeerNodeID] = association
 }
 
 func (s *PfcpServer) NotifySessReport(sr report.SessReport) {

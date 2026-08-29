@@ -20,14 +20,14 @@ func (s *PfcpServer) handleAssociationSetupRequest(
 	}
 
 	// 2. Validate NodeID IE can be parsed correctly
-	rnodeid, err := req.NodeID.NodeID()
+	peerNodeID, err := req.NodeID.NodeID()
 	if err != nil {
 		s.log.Errorf("Association Setup failed: mandatory IE incorrect: NodeID parse error: %v", err)
 		return
 	}
 
 	// 3. Validate NodeID is not empty
-	if rnodeid == "" {
+	if peerNodeID == "" {
 		s.log.Errorf("Association Setup failed: mandatory IE incorrect: NodeID is empty")
 		return
 	}
@@ -49,13 +49,13 @@ func (s *PfcpServer) handleAssociationSetupRequest(
 	// if a PFCP association was already established for the Node ID
 	// received in the request, regardless of the Recovery Timestamp
 	// received in the request.
-	if node, ok := s.rnodes[rnodeid]; ok {
-		s.log.Infof("delete node: %#+v\n", node)
-		node.Reset()
-		delete(s.rnodes, rnodeid)
+	if association, ok := s.associations[peerNodeID]; ok {
+		s.log.Infof("delete association: %#+v\n", association)
+		association.DeleteAllSessions()
+		delete(s.associations, peerNodeID)
 	}
-	node := s.NewNode(rnodeid, addr)
-	s.rnodes[rnodeid] = node
+	association := s.NewAssociation(peerNodeID, addr)
+	s.associations[peerNodeID] = association
 
 	rsp := message.NewAssociationSetupResponse(
 		req.Header.SequenceNumber,

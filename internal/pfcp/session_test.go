@@ -19,13 +19,13 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 		s := &PfcpServer{
 			log: logger.PfcpLog.WithField(logger_util.FieldListenAddr, "upf.free5gc.org:8805"),
 		}
-		rnode := NewRemoteNode(
+		association := NewPFCPAssociation(
 			"10.100.200.5",
 			addr,
 			&s.lnode,
 			s.log.WithField(logger_util.FieldControlPlaneNodeID, "10.100.200.5"),
 		)
-		return s, rnode.NewSess(remoteID, forwarder.Empty{})
+		return s, association.NewSession(remoteID, forwarder.Empty{})
 	}
 
 	t.Run("keeps local session when cause is not session context not found", func(t *testing.T) {

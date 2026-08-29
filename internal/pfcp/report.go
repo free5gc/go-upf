@@ -20,7 +20,7 @@ func (s *PfcpServer) ServeReport(sr *report.SessReport) {
 		return
 	}
 
-	addr := fmt.Sprintf("%s:%d", sess.rnode.ID, factory.UpfPfcpDefaultPort)
+	addr := fmt.Sprintf("%s:%d", sess.association.PeerNodeID, factory.UpfPfcpDefaultPort)
 	laddr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
 		return

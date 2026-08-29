@@ -22,17 +22,17 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
 		return
 	}
-	rnodeid, err := req.NodeID.NodeID()
+	peerNodeID, err := req.NodeID.NodeID()
 	if err != nil {
 		s.log.Errorln(err)
 		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
 		return
 	}
-	s.log.Debugf("remote nodeid: %v\n", rnodeid)
+	s.log.Debugf("peer Node ID: %v\n", peerNodeID)
 
-	rnode, ok := s.rnodes[rnodeid]
+	association, ok := s.associations[peerNodeID]
 	if !ok {
-		s.log.Errorf("not found NodeID %v\n", rnodeid)
+		s.log.Errorf("not found NodeID %v\n", peerNodeID)
 		s.sendSessEstFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
 		return
 	}
@@ -51,7 +51,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	s.log.Debugf("fseid.SEID: %#x\n", fseid.SEID)
 
 	// allocate a session
-	sess := rnode.NewSess(fseid.SEID, s.driver)
+	sess := association.NewSession(fseid.SEID, s.driver)
 
 	// ========================================================================
 	// PHASE 1: Validation - Build all plans and validate without execution
@@ -64,7 +64,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreateFAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
+			association.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateFARs = append(plan.CreateFARs, p)
@@ -76,7 +76,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreateQER error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
+			association.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateQERs = append(plan.CreateQERs, p)
@@ -88,7 +88,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreateURR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
+			association.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateURRs = append(plan.CreateURRs, p)
@@ -100,7 +100,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreateBAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
+			association.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateBARs = append(plan.CreateBARs, p)
@@ -112,7 +112,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreatePDR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
+			association.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreatePDRs = append(plan.CreatePDRs, p)
@@ -123,7 +123,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		sess.log.Errorf("Est rule-state validation error: %v", err1)
 		cause := pfcpCauseFromError(err1)
 		s.sendSessEstFailRsp(req, addr, cause)
-		rnode.DeleteSess(sess.LocalID)
+		association.DeleteSession(sess.LocalID)
 		return
 	}
 
@@ -133,7 +133,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	if _, err1 := sess.driver.ExecuteEstablishmentPlan(plan); err1 != nil {
 		sess.log.Errorf("Est execution error: %v", err1)
 		s.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
-		rnode.DeleteSess(sess.LocalID)
+		association.DeleteSession(sess.LocalID)
 		return
 	}
 
@@ -219,13 +219,13 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		// with one PFCP association per SMF and UPF (see clause 5.22.3),
 		// takes over the control of the PFCP session.
 		// When present, it shall contain the unique identifier of the new SMF.
-		rnodeid, err1 := req.NodeID.NodeID()
+		peerNodeID, err1 := req.NodeID.NodeID()
 		if err1 != nil {
 			s.log.Errorln(err1)
 			return
 		}
-		s.log.Debugf("new remote nodeid: %v\n", rnodeid)
-		s.UpdateNodeID(sess.rnode, rnodeid)
+		s.log.Debugf("new peer Node ID: %v\n", peerNodeID)
+		s.UpdatePeerNodeID(sess.association, peerNodeID)
 	}
 
 	// ========================================================================
@@ -519,7 +519,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		return
 	}
 
-	usars := sess.rnode.DeleteSess(lSeid)
+	usars := sess.association.DeleteSession(lSeid)
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -585,7 +585,7 @@ func (s *PfcpServer) handleSessionReportResponse(
 			s.log.Errorln(err)
 			return
 		}
-		sess.rnode.DeleteSess(sess.LocalID)
+		sess.association.DeleteSession(sess.LocalID)
 		return
 	}
 

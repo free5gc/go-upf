@@ -17,12 +17,15 @@ type PfcpServerMock struct {
 	PfcpServer
 }
 
-func (p *PfcpServerMock) GetRNodes() map[string]*RemoteNode {
-	return p.rnodes
+func (p *PfcpServerMock) GetAssociations() map[string]*PFCPAssociation {
+	return p.associations
 }
 
-func (p *PfcpServerMock) AddRNode(rnodeid string, node *RemoteNode) {
-	p.rnodes[rnodeid] = node
+func (p *PfcpServerMock) AddAssociation(
+	peerNodeID string,
+	association *PFCPAssociation,
+) {
+	p.associations[peerNodeID] = association
 }
 
 func TestStart(t *testing.T) {
@@ -55,41 +58,42 @@ func TestStop(t *testing.T) {
 	}
 }
 
-func TestNewNode(t *testing.T) {
+func TestNewAssociation(t *testing.T) {
 	s := &PfcpServer{
 		log: logrus.WithField(logger_util.FieldControlPlaneNodeID, "127.0.0.1"),
 	}
 
-	id := "smf1"
-	addr, err := net.ResolveUDPAddr("udp", "127.0.0.1:8805")
+	peerNodeID := "smf1"
+	peerAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:8805")
 	if err != nil {
 		t.Errorf("failed to resolve UDP address: %v", err)
 		return
 	}
 
-	newNode := s.NewNode(id, addr)
+	association := s.NewAssociation(peerNodeID, peerAddr)
 
-	assert.NotNil(t, newNode)
-	assert.Equal(t, id, newNode.ID)
+	assert.NotNil(t, association)
+	assert.Equal(t, peerNodeID, association.PeerNodeID)
 }
 
-func TestUpdateNodeID(t *testing.T) {
+func TestUpdatePeerNodeID(t *testing.T) {
 	s := &PfcpServerMock{
 		PfcpServer: PfcpServer{
-			log:    logrus.WithField(logger_util.FieldControlPlaneNodeID, "127.0.0.1"),
-			rnodes: make(map[string]*RemoteNode),
+			log:          logrus.WithField(logger_util.FieldControlPlaneNodeID, "127.0.0.1"),
+			associations: make(map[string]*PFCPAssociation),
 		},
 	}
 
-	origNodeId := "127.0.0.1"
-	node := s.NewNode(origNodeId, nil)
-	s.AddRNode(origNodeId, node)
+	originalPeerNodeID := "127.0.0.1"
+	association := s.NewAssociation(originalPeerNodeID, nil)
+	s.AddAssociation(originalPeerNodeID, association)
 
-	newNodeId := "192.168.56.101"
-	s.UpdateNodeID(node, newNodeId)
+	newPeerNodeID := "192.168.56.101"
+	s.UpdatePeerNodeID(association, newPeerNodeID)
 
-	assert.Nil(t, s.GetRNodes()[origNodeId])
-	assert.NotNil(t, s.GetRNodes()[newNodeId])
+	assert.Nil(t, s.GetAssociations()[originalPeerNodeID])
+	assert.NotNil(t, s.GetAssociations()[newPeerNodeID])
+	assert.Equal(t, newPeerNodeID, association.PeerNodeID)
 }
 
 func TestNotifySessReport(t *testing.T) {
