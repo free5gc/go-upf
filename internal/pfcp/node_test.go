@@ -17,7 +17,6 @@ func TestRemoteNode(t *testing.T) {
 			"smf1",
 			nil,
 			&LocalNode{},
-			forwarder.Empty{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 		for i := 0; i < 3; i++ {
@@ -31,7 +30,6 @@ func TestRemoteNode(t *testing.T) {
 			"smf1",
 			nil,
 			&LocalNode{},
-			forwarder.Empty{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 
@@ -43,7 +41,7 @@ func TestRemoteNode(t *testing.T) {
 		}
 
 		for _, tc := range testcases {
-			sess := n.NewSess(tc.remoteID)
+			sess := n.NewSess(tc.remoteID, forwarder.Empty{})
 			assert.Equal(t, tc.localID, sess.LocalID)
 			assert.Equal(t, tc.remoteID, sess.RemoteID)
 		}
@@ -62,7 +60,6 @@ func TestRemoteNode(t *testing.T) {
 			"smf1",
 			nil,
 			&LocalNode{},
-			forwarder.Empty{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 		report := n.DeleteSess(0)
@@ -73,7 +70,6 @@ func TestRemoteNode(t *testing.T) {
 			"smf1",
 			nil,
 			&LocalNode{},
-			forwarder.Empty{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 
@@ -85,7 +81,7 @@ func TestRemoteNode(t *testing.T) {
 		}
 
 		for _, tc := range testcases {
-			n.NewSess(tc.remoteID)
+			n.NewSess(tc.remoteID, forwarder.Empty{})
 		}
 
 		for _, tc := range testcases {
@@ -112,18 +108,16 @@ func TestRemoteNode_multipleSMF(t *testing.T) {
 		"smf1",
 		nil,
 		&lnode,
-		forwarder.Empty{},
 		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 	)
 	n2 := NewRemoteNode(
 		"smf2",
 		nil,
 		&lnode,
-		forwarder.Empty{},
 		logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf2"),
 	)
 	t.Run("new smf1 r-SEID=10", func(t *testing.T) {
-		sess := n1.NewSess(10)
+		sess := n1.NewSess(10, forwarder.Empty{})
 		if sess.LocalID != 1 {
 			t.Errorf("want 1; but got %v\n", sess.LocalID)
 		}
@@ -132,7 +126,7 @@ func TestRemoteNode_multipleSMF(t *testing.T) {
 		}
 	})
 	t.Run("new smf2 r-SEID=10", func(t *testing.T) {
-		sess := n2.NewSess(10)
+		sess := n2.NewSess(10, forwarder.Empty{})
 		if sess.LocalID != 2 {
 			t.Errorf("want 2; but got %v\n", sess.LocalID)
 		}
@@ -177,7 +171,7 @@ func TestRemoteNode_multipleSMF(t *testing.T) {
 		}
 	})
 	t.Run("new smf1:20", func(t *testing.T) {
-		sess := n1.NewSess(20)
+		sess := n1.NewSess(20, forwarder.Empty{})
 		if sess.LocalID != 3 {
 			t.Errorf("want 3; but got %v\n", sess.LocalID)
 		}
@@ -223,7 +217,7 @@ func TestRemoteNode_multipleSMF(t *testing.T) {
 func TestLocalNode(t *testing.T) {
 	t.Run("new session", func(t *testing.T) {
 		lnode := LocalNode{}
-		sess := lnode.NewSess(10, BUFFQ_LEN)
+		sess := lnode.NewSess(10, BUFFQ_LEN, forwarder.Empty{})
 		assert.Equal(t, uint64(1), sess.LocalID)
 		assert.Equal(t, uint64(10), sess.RemoteID)
 	})
@@ -233,7 +227,7 @@ func TestLocalNode(t *testing.T) {
 			sess: []*Sess{},
 			free: []uint64{},
 		}
-		sess := lnode.NewSess(10, BUFFQ_LEN)
+		sess := lnode.NewSess(10, BUFFQ_LEN, forwarder.Empty{})
 		recycleLocalID := 1
 		assert.Equal(t, uint64(recycleLocalID), sess.LocalID)
 		assert.Equal(t, uint64(10), sess.RemoteID)
@@ -246,12 +240,11 @@ func TestLocalNode(t *testing.T) {
 			"smf1",
 			addr,
 			lnode,
-			forwarder.Empty{},
 			logger.PfcpLog.WithField(logger_util.FieldControlPlaneNodeID, "smf1"),
 		)
 
-		deletedSess := rnode.NewSess(0x1efcd)
-		activeSess := rnode.NewSess(0x1efce)
+		deletedSess := rnode.NewSess(0x1efcd, forwarder.Empty{})
+		activeSess := rnode.NewSess(0x1efce, forwarder.Empty{})
 		rnode.DeleteSess(deletedSess.LocalID)
 
 		sess, err := lnode.RemoteSess(activeSess.RemoteID, addr)

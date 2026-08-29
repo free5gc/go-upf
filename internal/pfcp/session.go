@@ -51,7 +51,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	s.log.Debugf("fseid.SEID: %#x\n", fseid.SEID)
 
 	// allocate a session
-	sess := rnode.NewSess(fseid.SEID)
+	sess := rnode.NewSess(fseid.SEID, s.driver)
 
 	// ========================================================================
 	// PHASE 1: Validation - Build all plans and validate without execution
@@ -130,7 +130,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	// ========================================================================
 	// PHASE 2: Execution - Execute all Create operations (fail-fast)
 	// ========================================================================
-	if _, err1 := sess.rnode.driver.ExecuteEstablishmentPlan(plan); err1 != nil {
+	if _, err1 := sess.driver.ExecuteEstablishmentPlan(plan); err1 != nil {
 		sess.log.Errorf("Est execution error: %v", err1)
 		s.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
 		rnode.DeleteSess(sess.LocalID)
@@ -422,7 +422,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	// failed and the rules created by this plan were rolled back. Remove/Update
 	// operations are best-effort and never surface an error.
 	// ========================================================================
-	execResult, err1 := sess.rnode.driver.ExecuteModificationPlan(plan)
+	execResult, err1 := sess.driver.ExecuteModificationPlan(plan)
 	if err1 != nil {
 		// A Create operation failed and was rolled back, so the session state
 		// must not be updated: reject the request instead of reporting success

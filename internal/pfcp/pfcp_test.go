@@ -9,7 +9,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 	logger_util "github.com/free5gc/util/logger"
 )
@@ -62,14 +61,13 @@ func TestNewNode(t *testing.T) {
 	}
 
 	id := "smf1"
-	driver := forwarder.Empty{}
 	addr, err := net.ResolveUDPAddr("udp", "127.0.0.1:8805")
 	if err != nil {
 		t.Errorf("failed to resolve UDP address: %v", err)
 		return
 	}
 
-	newNode := s.NewNode(id, addr, driver)
+	newNode := s.NewNode(id, addr)
 
 	assert.NotNil(t, newNode)
 	assert.Equal(t, id, newNode.ID)
@@ -84,7 +82,7 @@ func TestUpdateNodeID(t *testing.T) {
 	}
 
 	origNodeId := "127.0.0.1"
-	node := s.NewNode(origNodeId, nil, nil)
+	node := s.NewNode(origNodeId, nil)
 	s.AddRNode(origNodeId, node)
 
 	newNodeId := "192.168.56.101"

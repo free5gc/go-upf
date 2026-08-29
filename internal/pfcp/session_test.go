@@ -23,10 +23,9 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 			"10.100.200.5",
 			addr,
 			&s.lnode,
-			forwarder.Empty{},
 			s.log.WithField(logger_util.FieldControlPlaneNodeID, "10.100.200.5"),
 		)
-		return s, rnode.NewSess(remoteID)
+		return s, rnode.NewSess(remoteID, forwarder.Empty{})
 	}
 
 	t.Run("keeps local session when cause is not session context not found", func(t *testing.T) {

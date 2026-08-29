@@ -241,12 +241,11 @@ func (s *PfcpServer) Stop() {
 	}
 }
 
-func (s *PfcpServer) NewNode(id string, addr net.Addr, driver forwarder.Driver) *RemoteNode {
+func (s *PfcpServer) NewNode(id string, addr net.Addr) *RemoteNode {
 	n := NewRemoteNode(
 		id,
 		addr,
 		&s.lnode,
-		driver,
 		s.log.WithField(logger_util.FieldControlPlaneNodeID, id),
 	)
 	n.log.Infoln("New node")

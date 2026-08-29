@@ -53,6 +53,7 @@ type URRInfo struct {
 
 type Sess struct {
 	rnode    *RemoteNode
+	driver   forwarder.Driver // local UPF datapath dependency
 	LocalID  uint64
 	RemoteID uint64
 	PDRIDs   map[uint16]*PDRInfo    // key: PDR_ID
@@ -79,7 +80,7 @@ func (s *Sess) Close() []report.USAReport {
 	// Build Remove plans for all rules
 	for id := range s.FARIDs {
 		req := ie.NewRemoveFAR(ie.NewFARID(id))
-		p, err := s.rnode.driver.BuildRemoveFARPlan(s.LocalID, req)
+		p, err := s.driver.BuildRemoveFARPlan(s.LocalID, req)
 		if err != nil {
 			s.log.Errorf("Close BuildRemoveFARPlan[%#x] err: %v", id, err)
 			continue
@@ -88,7 +89,7 @@ func (s *Sess) Close() []report.USAReport {
 	}
 	for id := range s.QERIDs {
 		req := ie.NewRemoveQER(ie.NewQERID(id))
-		p, err := s.rnode.driver.BuildRemoveQERPlan(s.LocalID, req)
+		p, err := s.driver.BuildRemoveQERPlan(s.LocalID, req)
 		if err != nil {
 			s.log.Errorf("Close BuildRemoveQERPlan[%#x] err: %v", id, err)
 			continue
@@ -97,7 +98,7 @@ func (s *Sess) Close() []report.USAReport {
 	}
 	for id := range s.URRIDs {
 		req := ie.NewRemoveURR(ie.NewURRID(id))
-		p, err := s.rnode.driver.BuildRemoveURRPlan(s.LocalID, req)
+		p, err := s.driver.BuildRemoveURRPlan(s.LocalID, req)
 		if err != nil {
 			s.log.Errorf("Close BuildRemoveURRPlan[%#x] err: %v", id, err)
 			continue
@@ -106,7 +107,7 @@ func (s *Sess) Close() []report.USAReport {
 	}
 	for id := range s.BARIDs {
 		req := ie.NewRemoveBAR(ie.NewBARID(id))
-		p, err := s.rnode.driver.BuildRemoveBARPlan(s.LocalID, req)
+		p, err := s.driver.BuildRemoveBARPlan(s.LocalID, req)
 		if err != nil {
 			s.log.Errorf("Close BuildRemoveBARPlan[%#x] err: %v", id, err)
 			continue
@@ -115,7 +116,7 @@ func (s *Sess) Close() []report.USAReport {
 	}
 	for id := range s.PDRIDs {
 		req := ie.NewRemovePDR(ie.NewPDRID(id))
-		p, err := s.rnode.driver.BuildRemovePDRPlan(s.LocalID, req)
+		p, err := s.driver.BuildRemovePDRPlan(s.LocalID, req)
 		if err != nil {
 			s.log.Errorf("Close BuildRemovePDRPlan[%#x] err: %v", id, err)
 			continue
@@ -124,7 +125,7 @@ func (s *Sess) Close() []report.USAReport {
 	}
 
 	// Execute all Remove operations (best-effort)
-	execResult, err := s.rnode.driver.ExecuteModificationPlan(plan)
+	execResult, err := s.driver.ExecuteModificationPlan(plan)
 	if err != nil {
 		s.log.Errorf("Execute Deletion Plan err: %v", err)
 	}
@@ -175,7 +176,7 @@ func (s *Sess) diassociateURR(urrid uint32) []report.USAReport {
 		urrInfo.refPdrNum--
 		if urrInfo.refPdrNum == 0 {
 			// indicates usage report being reported for a URR due to dissociated from the last PDR
-			usars, err := s.rnode.driver.QueryURR(s.LocalID, urrid)
+			usars, err := s.driver.QueryURR(s.LocalID, urrid)
 			if err != nil {
 				return nil
 			}
@@ -245,7 +246,7 @@ func (s *Sess) URRSeq(urrid uint32) uint32 {
 
 // ValidateCreatePDR validates CreatePDR and builds plan without modifying state
 func (s *Sess) ValidateCreatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
-	plan, err := s.rnode.driver.BuildCreatePDRPlan(s.LocalID, req)
+	plan, err := s.driver.BuildCreatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrRuleCreationModificationFailed
 	}
@@ -255,7 +256,7 @@ func (s *Sess) ValidateCreatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 
 // ValidateUpdatePDR validates UpdatePDR and builds plan without modifying state
 func (s *Sess) ValidateUpdatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
-	plan, err := s.rnode.driver.BuildUpdatePDRPlan(s.LocalID, req)
+	plan, err := s.driver.BuildUpdatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -265,7 +266,7 @@ func (s *Sess) ValidateUpdatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 
 // ValidateRemovePDR validates RemovePDR and builds plan without modifying state
 func (s *Sess) ValidateRemovePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
-	plan, err := s.rnode.driver.BuildRemovePDRPlan(s.LocalID, req)
+	plan, err := s.driver.BuildRemovePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -275,7 +276,7 @@ func (s *Sess) ValidateRemovePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 
 // ValidateCreateFAR validates CreateFAR and builds plan without modifying state
 func (s *Sess) ValidateCreateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
-	plan, err := s.rnode.driver.BuildCreateFARPlan(s.LocalID, req)
+	plan, err := s.driver.BuildCreateFARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -285,7 +286,7 @@ func (s *Sess) ValidateCreateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 
 // ValidateUpdateFAR validates UpdateFAR and builds plan without modifying state
 func (s *Sess) ValidateUpdateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
-	plan, err := s.rnode.driver.BuildUpdateFARPlan(s.LocalID, req)
+	plan, err := s.driver.BuildUpdateFARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -295,7 +296,7 @@ func (s *Sess) ValidateUpdateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 
 // ValidateRemoveFAR validates RemoveFAR and builds plan without modifying state
 func (s *Sess) ValidateRemoveFAR(req *ie.IE) (*forwarder.FARPlan, error) {
-	plan, err := s.rnode.driver.BuildRemoveFARPlan(s.LocalID, req)
+	plan, err := s.driver.BuildRemoveFARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -305,7 +306,7 @@ func (s *Sess) ValidateRemoveFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 
 // ValidateCreateQER validates CreateQER and builds plan without modifying state
 func (s *Sess) ValidateCreateQER(req *ie.IE) (*forwarder.QERPlan, error) {
-	plan, err := s.rnode.driver.BuildCreateQERPlan(s.LocalID, req)
+	plan, err := s.driver.BuildCreateQERPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -315,7 +316,7 @@ func (s *Sess) ValidateCreateQER(req *ie.IE) (*forwarder.QERPlan, error) {
 
 // ValidateUpdateQER validates UpdateQER and builds plan without modifying state
 func (s *Sess) ValidateUpdateQER(req *ie.IE) (*forwarder.QERPlan, error) {
-	plan, err := s.rnode.driver.BuildUpdateQERPlan(s.LocalID, req)
+	plan, err := s.driver.BuildUpdateQERPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -325,7 +326,7 @@ func (s *Sess) ValidateUpdateQER(req *ie.IE) (*forwarder.QERPlan, error) {
 
 // ValidateRemoveQER validates RemoveQER and builds plan without modifying state
 func (s *Sess) ValidateRemoveQER(req *ie.IE) (*forwarder.QERPlan, error) {
-	plan, err := s.rnode.driver.BuildRemoveQERPlan(s.LocalID, req)
+	plan, err := s.driver.BuildRemoveQERPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -335,7 +336,7 @@ func (s *Sess) ValidateRemoveQER(req *ie.IE) (*forwarder.QERPlan, error) {
 
 // ValidateCreateURR validates CreateURR and builds plan without modifying state
 func (s *Sess) ValidateCreateURR(req *ie.IE) (*forwarder.URRPlan, error) {
-	plan, err := s.rnode.driver.BuildCreateURRPlan(s.LocalID, req)
+	plan, err := s.driver.BuildCreateURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -345,7 +346,7 @@ func (s *Sess) ValidateCreateURR(req *ie.IE) (*forwarder.URRPlan, error) {
 
 // ValidateUpdateURR validates UpdateURR and builds plan without modifying state
 func (s *Sess) ValidateUpdateURR(req *ie.IE) (*forwarder.URRPlan, error) {
-	plan, err := s.rnode.driver.BuildUpdateURRPlan(s.LocalID, req)
+	plan, err := s.driver.BuildUpdateURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -355,7 +356,7 @@ func (s *Sess) ValidateUpdateURR(req *ie.IE) (*forwarder.URRPlan, error) {
 
 // ValidateRemoveURR validates RemoveURR and builds plan without modifying state
 func (s *Sess) ValidateRemoveURR(req *ie.IE) (*forwarder.URRPlan, error) {
-	plan, err := s.rnode.driver.BuildRemoveURRPlan(s.LocalID, req)
+	plan, err := s.driver.BuildRemoveURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -365,7 +366,7 @@ func (s *Sess) ValidateRemoveURR(req *ie.IE) (*forwarder.URRPlan, error) {
 
 // ValidateQueryURR validates QueryURR and builds plan without modifying state
 func (s *Sess) ValidateQueryURR(req *ie.IE) (*forwarder.URRPlan, error) {
-	plan, err := s.rnode.driver.BuildQueryURRPlan(s.LocalID, req)
+	plan, err := s.driver.BuildQueryURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -375,7 +376,7 @@ func (s *Sess) ValidateQueryURR(req *ie.IE) (*forwarder.URRPlan, error) {
 
 // ValidateCreateBAR validates CreateBAR and builds plan without modifying state
 func (s *Sess) ValidateCreateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
-	plan, err := s.rnode.driver.BuildCreateBARPlan(s.LocalID, req)
+	plan, err := s.driver.BuildCreateBARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -385,7 +386,7 @@ func (s *Sess) ValidateCreateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 
 // ValidateUpdateBAR validates UpdateBAR and builds plan without modifying state
 func (s *Sess) ValidateUpdateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
-	plan, err := s.rnode.driver.BuildUpdateBARPlan(s.LocalID, req)
+	plan, err := s.driver.BuildUpdateBARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -395,7 +396,7 @@ func (s *Sess) ValidateUpdateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 
 // ValidateRemoveBAR validates RemoveBAR and builds plan without modifying state
 func (s *Sess) ValidateRemoveBAR(req *ie.IE) (*forwarder.BARPlan, error) {
-	plan, err := s.rnode.driver.BuildRemoveBARPlan(s.LocalID, req)
+	plan, err := s.driver.BuildRemoveBARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
@@ -632,19 +633,17 @@ func (s *Sess) CleanupRemovedURRs() {
 }
 
 type RemoteNode struct {
-	ID     string
-	addr   net.Addr
-	local  *LocalNode
-	sess   map[uint64]struct{} // key: Local SEID
-	driver forwarder.Driver
-	log    *logrus.Entry
+	ID    string
+	addr  net.Addr
+	local *LocalNode
+	sess  map[uint64]struct{} // key: Local SEID
+	log   *logrus.Entry
 }
 
 func NewRemoteNode(
 	id string,
 	addr net.Addr,
 	local *LocalNode,
-	driver forwarder.Driver,
 	log *logrus.Entry,
 ) *RemoteNode {
 	n := new(RemoteNode)
@@ -652,7 +651,6 @@ func NewRemoteNode(
 	n.addr = addr
 	n.local = local
 	n.sess = make(map[uint64]struct{})
-	n.driver = driver
 	n.log = log
 	return n
 }
@@ -672,8 +670,8 @@ func (n *RemoteNode) Sess(lSeid uint64) (*Sess, error) {
 	return n.local.Sess(lSeid)
 }
 
-func (n *RemoteNode) NewSess(rSeid uint64) *Sess {
-	s := n.local.NewSess(rSeid, BUFFQ_LEN)
+func (n *RemoteNode) NewSess(rSeid uint64, driver forwarder.Driver) *Sess {
+	s := n.local.NewSess(rSeid, BUFFQ_LEN, driver)
 	n.sess[s.LocalID] = struct{}{}
 	s.rnode = n
 	s.log = n.log.WithFields(
@@ -751,9 +749,14 @@ func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
 	return nil, errors.Errorf("RemoteSess: invalid rSeid:%#x, addr:%s ", rSeid, addr)
 }
 
-func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
+func (n *LocalNode) NewSess(
+	rSeid uint64,
+	qlen int,
+	driver forwarder.Driver,
+) *Sess {
 	s := &Sess{
 		RemoteID: rSeid,
+		driver:   driver,
 		PDRIDs:   make(map[uint16]*PDRInfo),
 		FARIDs:   make(map[uint32]struct{}),
 		QERIDs:   make(map[uint32]*QERInfo),

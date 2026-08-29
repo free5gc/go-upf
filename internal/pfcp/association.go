@@ -54,7 +54,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(
 		node.Reset()
 		delete(s.rnodes, rnodeid)
 	}
-	node := s.NewNode(rnodeid, addr, s.driver)
+	node := s.NewNode(rnodeid, addr)
 	s.rnodes[rnodeid] = node
 
 	rsp := message.NewAssociationSetupResponse(

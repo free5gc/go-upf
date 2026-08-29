@@ -84,7 +84,7 @@ func TestPDRDesiredStateCreateAndPartialUpdate(t *testing.T) {
 			20: {},
 			21: {},
 		},
-		rnode: &RemoteNode{driver: forwarder.Empty{}},
+		driver: forwarder.Empty{},
 	}
 	sess.ApplyCreatePDR(createPlan)
 
