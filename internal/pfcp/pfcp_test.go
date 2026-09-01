@@ -8,12 +8,32 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 	logger_util "github.com/free5gc/util/logger"
 )
+
+type messageTransportMock struct {
+	req     message.Message
+	reqAddr net.Addr
+	rsp     message.Message
+	rspAddr net.Addr
+}
+
+func (m *messageTransportMock) sendReqTo(msg message.Message, addr net.Addr) error {
+	m.req = msg
+	m.reqAddr = addr
+	return nil
+}
+
+func (m *messageTransportMock) sendRspTo(msg message.Message, addr net.Addr) error {
+	m.rsp = msg
+	m.rspAddr = addr
+	return nil
+}
 
 func newTestPfcpServer() *PfcpServer {
 	return NewPfcpServer(
@@ -27,16 +47,43 @@ func newTestPfcpServer() *PfcpServer {
 	)
 }
 
-func TestNewPfcpServerInitializesLocalNode(t *testing.T) {
+func TestNewPfcpServerInitializesMessageHandler(t *testing.T) {
 	s := newTestPfcpServer()
 
-	assert.NotNil(t, s.localNode)
-	assert.Equal(t, "127.0.0.1", s.localNode.NodeID)
-	assert.False(t, s.localNode.RecoveryTime.IsZero())
-	assert.NotNil(t, s.localNode.associations)
-	assert.NotNil(t, s.localNode.sessions)
-	assert.Equal(t, forwarder.Empty{}, s.localNode.datapath)
-	assert.Same(t, s.log, s.localNode.log)
+	assert.NotNil(t, s.handler)
+	assert.Same(t, s, s.handler.transport)
+	assert.NotNil(t, s.handler.node)
+	assert.Equal(t, "127.0.0.1", s.handler.node.NodeID)
+	assert.False(t, s.handler.node.RecoveryTime.IsZero())
+	assert.NotNil(t, s.handler.node.associations)
+	assert.NotNil(t, s.handler.node.sessions)
+	assert.Equal(t, forwarder.Empty{}, s.handler.node.datapath)
+	assert.Same(t, s.log, s.handler.log)
+	assert.Same(t, s.log, s.handler.node.log)
+}
+
+func TestMessageHandlerDispatchesHeartbeatRequest(t *testing.T) {
+	recoveryTime := time.Unix(1_700_000_000, 0)
+	log := logrus.WithField("test", t.Name())
+	node := NewLocalNode("127.0.0.1", recoveryTime, forwarder.Empty{}, log)
+	transport := &messageTransportMock{}
+	handler := newMessageHandler(node, transport, log)
+	addr := &net.UDPAddr{IP: net.IPv4(10, 100, 200, 5), Port: 8805}
+	req := message.NewHeartbeatRequest(42, nil, nil)
+
+	err := handler.HandleRequest(req, addr)
+
+	assert.NoError(t, err)
+	assert.Equal(t, addr, transport.rspAddr)
+	rsp, ok := transport.rsp.(*message.HeartbeatResponse)
+	assert.True(t, ok)
+	if !ok {
+		return
+	}
+	assert.Equal(t, uint32(42), rsp.SequenceNumber)
+	gotRecoveryTime, err := rsp.RecoveryTimeStamp.RecoveryTimeStamp()
+	assert.NoError(t, err)
+	assert.Equal(t, recoveryTime, gotRecoveryTime)
 }
 
 func TestStart(t *testing.T) {

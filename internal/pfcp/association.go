@@ -7,41 +7,41 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 )
 
-func (s *PfcpServer) handleAssociationSetupRequest(
+func (h *MessageHandler) handleAssociationSetupRequest(
 	req *message.AssociationSetupRequest,
 	addr net.Addr,
 ) {
-	s.log.Infoln("handleAssociationSetupRequest")
+	h.log.Infoln("handleAssociationSetupRequest")
 
 	// 1. Validate NodeID IE (Mandatory)
 	if req.NodeID == nil {
-		s.log.Errorf("Association Setup failed: mandatory IE missing: NodeID")
+		h.log.Errorf("Association Setup failed: mandatory IE missing: NodeID")
 		return
 	}
 
 	// 2. Validate NodeID IE can be parsed correctly
 	peerNodeID, err := req.NodeID.NodeID()
 	if err != nil {
-		s.log.Errorf("Association Setup failed: mandatory IE incorrect: NodeID parse error: %v", err)
+		h.log.Errorf("Association Setup failed: mandatory IE incorrect: NodeID parse error: %v", err)
 		return
 	}
 
 	// 3. Validate NodeID is not empty
 	if peerNodeID == "" {
-		s.log.Errorf("Association Setup failed: mandatory IE incorrect: NodeID is empty")
+		h.log.Errorf("Association Setup failed: mandatory IE incorrect: NodeID is empty")
 		return
 	}
 
 	// 4. Validate RecoveryTimeStamp IE (Mandatory)
 	if req.RecoveryTimeStamp == nil {
-		s.log.Errorf("Association Setup failed: mandatory IE missing: RecoveryTimeStamp")
+		h.log.Errorf("Association Setup failed: mandatory IE missing: RecoveryTimeStamp")
 		return
 	}
 
 	// 5. Validate RecoveryTimeStamp can be parsed
 	_, err = req.RecoveryTimeStamp.RecoveryTimeStamp()
 	if err != nil {
-		s.log.Errorf("Association Setup failed: mandatory IE incorrect: RecoveryTimeStamp parse error: %v", err)
+		h.log.Errorf("Association Setup failed: mandatory IE incorrect: RecoveryTimeStamp parse error: %v", err)
 		return
 	}
 
@@ -49,36 +49,36 @@ func (s *PfcpServer) handleAssociationSetupRequest(
 	// if a PFCP association was already established for the Node ID
 	// received in the request, regardless of the Recovery Timestamp
 	// received in the request.
-	s.localNode.EstablishAssociation(peerNodeID, addr)
+	h.node.EstablishAssociation(peerNodeID, addr)
 
 	rsp := message.NewAssociationSetupResponse(
 		req.Header.SequenceNumber,
-		newIeNodeID(s.localNode.NodeID),
+		newIeNodeID(h.node.NodeID),
 		ie.NewCause(ie.CauseRequestAccepted),
-		ie.NewRecoveryTimeStamp(s.localNode.RecoveryTime),
+		ie.NewRecoveryTimeStamp(h.node.RecoveryTime),
 		// TODO:
 		// ie.NewUPFunctionFeatures(),
 	)
 
-	err = s.sendRspTo(rsp, addr)
+	err = h.transport.sendRspTo(rsp, addr)
 	if err != nil {
-		s.log.Errorln(err)
+		h.log.Errorln(err)
 		return
 	}
 }
 
-func (s *PfcpServer) handleAssociationUpdateRequest(
+func (h *MessageHandler) handleAssociationUpdateRequest(
 	req *message.AssociationUpdateRequest,
 	addr net.Addr,
 ) {
-	s.log.Infoln("handleAssociationUpdateRequest not supported")
+	h.log.Infoln("handleAssociationUpdateRequest not supported")
 }
 
-func (s *PfcpServer) handleAssociationReleaseRequest(
+func (h *MessageHandler) handleAssociationReleaseRequest(
 	req *message.AssociationReleaseRequest,
 	addr net.Addr,
 ) {
-	s.log.Infoln("handleAssociationReleaseRequest not supported")
+	h.log.Infoln("handleAssociationReleaseRequest not supported")
 }
 
 func newIeNodeID(nodeID string) *ie.IE {

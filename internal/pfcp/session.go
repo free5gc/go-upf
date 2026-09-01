@@ -11,47 +11,47 @@ import (
 	"github.com/free5gc/go-upf/internal/report"
 )
 
-func (s *PfcpServer) handleSessionEstablishmentRequest(
+func (h *MessageHandler) handleSessionEstablishmentRequest(
 	req *message.SessionEstablishmentRequest,
 	addr net.Addr,
 ) {
-	s.log.Infoln("handleSessionEstablishmentRequest")
+	h.log.Infoln("handleSessionEstablishmentRequest")
 
 	if req.NodeID == nil {
-		s.log.Errorln("not found NodeID")
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
+		h.log.Errorln("not found NodeID")
+		h.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
 		return
 	}
 	peerNodeID, err := req.NodeID.NodeID()
 	if err != nil {
-		s.log.Errorln(err)
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
+		h.log.Errorln(err)
+		h.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
 		return
 	}
-	s.log.Debugf("peer Node ID: %v\n", peerNodeID)
+	h.log.Debugf("peer Node ID: %v\n", peerNodeID)
 
-	association, ok := s.localNode.Association(peerNodeID)
+	association, ok := h.node.Association(peerNodeID)
 	if !ok {
-		s.log.Errorf("not found NodeID %v\n", peerNodeID)
-		s.sendSessEstFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
+		h.log.Errorf("not found NodeID %v\n", peerNodeID)
+		h.sendSessEstFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
 		return
 	}
 
 	if req.CPFSEID == nil {
-		s.log.Errorln("not found CP F-SEID")
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
+		h.log.Errorln("not found CP F-SEID")
+		h.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
 		return
 	}
 	fseid, err := req.CPFSEID.FSEID()
 	if err != nil {
-		s.log.Errorln(err)
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
+		h.log.Errorln(err)
+		h.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
 		return
 	}
-	s.log.Debugf("fseid.SEID: %#x\n", fseid.SEID)
+	h.log.Debugf("fseid.SEID: %#x\n", fseid.SEID)
 
 	// allocate a session
-	sess := s.localNode.CreateSession(association, fseid.SEID)
+	sess := h.node.CreateSession(association, fseid.SEID)
 
 	// ========================================================================
 	// PHASE 1: Validation - Build all plans and validate without execution
@@ -63,8 +63,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		if err1 != nil {
 			sess.log.Errorf("Est ValidateCreateFAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			s.localNode.DeleteSession(sess.LocalID)
+			h.sendSessEstFailRsp(req, addr, cause)
+			h.node.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateFARs = append(plan.CreateFARs, p)
@@ -75,8 +75,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		if err1 != nil {
 			sess.log.Errorf("Est ValidateCreateQER error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			s.localNode.DeleteSession(sess.LocalID)
+			h.sendSessEstFailRsp(req, addr, cause)
+			h.node.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateQERs = append(plan.CreateQERs, p)
@@ -87,8 +87,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		if err1 != nil {
 			sess.log.Errorf("Est ValidateCreateURR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			s.localNode.DeleteSession(sess.LocalID)
+			h.sendSessEstFailRsp(req, addr, cause)
+			h.node.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateURRs = append(plan.CreateURRs, p)
@@ -99,8 +99,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		if err1 != nil {
 			sess.log.Errorf("Est ValidateCreateBAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			s.localNode.DeleteSession(sess.LocalID)
+			h.sendSessEstFailRsp(req, addr, cause)
+			h.node.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateBARs = append(plan.CreateBARs, p)
@@ -111,8 +111,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		if err1 != nil {
 			sess.log.Errorf("Est ValidateCreatePDR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			s.localNode.DeleteSession(sess.LocalID)
+			h.sendSessEstFailRsp(req, addr, cause)
+			h.node.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreatePDRs = append(plan.CreatePDRs, p)
@@ -122,8 +122,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	if err1 != nil {
 		sess.log.Errorf("Est rule-state validation error: %v", err1)
 		cause := pfcpCauseFromError(err1)
-		s.sendSessEstFailRsp(req, addr, cause)
-		s.localNode.DeleteSession(sess.LocalID)
+		h.sendSessEstFailRsp(req, addr, cause)
+		h.node.DeleteSession(sess.LocalID)
 		return
 	}
 
@@ -132,8 +132,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	// ========================================================================
 	if _, err1 := sess.driver.ExecuteEstablishmentPlan(plan); err1 != nil {
 		sess.log.Errorf("Est execution error: %v", err1)
-		s.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
-		s.localNode.DeleteSession(sess.LocalID)
+		h.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
+		h.node.DeleteSession(sess.LocalID)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	}
 
 	var v4 net.IP
-	addrv4, err := net.ResolveIPAddr("ip4", s.localNode.NodeID)
+	addrv4, err := net.ResolveIPAddr("ip4", h.node.NodeID)
 	if err == nil {
 		v4 = addrv4.IP.To4()
 	}
@@ -167,7 +167,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	ies := make([]*ie.IE, 0)
 	ies = append(ies, CreatedPDRList...)
 	ies = append(ies,
-		newIeNodeID(s.localNode.NodeID),
+		newIeNodeID(h.node.NodeID),
 		ie.NewCause(ie.CauseRequestAccepted),
 		ie.NewFSEID(sess.LocalID, v4, v6))
 
@@ -180,22 +180,22 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		ies...,
 	)
 
-	err = s.sendRspTo(rsp, addr)
+	err = h.transport.sendRspTo(rsp, addr)
 	if err != nil {
-		s.log.Errorln(err)
+		h.log.Errorln(err)
 		return
 	}
 }
 
-func (s *PfcpServer) handleSessionModificationRequest(
+func (h *MessageHandler) handleSessionModificationRequest(
 	req *message.SessionModificationRequest,
 	addr net.Addr,
 ) {
-	s.log.Infoln("handleSessionModificationRequest")
+	h.log.Infoln("handleSessionModificationRequest")
 
-	sess, err := s.localNode.Session(req.SEID())
+	sess, err := h.node.Session(req.SEID())
 	if err != nil {
-		s.log.Errorf("handleSessionModificationRequest: %v", err)
+		h.log.Errorf("handleSessionModificationRequest: %v", err)
 		rsp := message.NewSessionModificationResponse(
 			0, // mp
 			0, // fo
@@ -205,9 +205,9 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			ie.NewCause(ie.CauseSessionContextNotFound),
 		)
 
-		err1 := s.sendRspTo(rsp, addr)
+		err1 := h.transport.sendRspTo(rsp, addr)
 		if err1 != nil {
-			s.log.Errorln(err1)
+			h.log.Errorln(err1)
 			return
 		}
 		return
@@ -221,11 +221,11 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		// When present, it shall contain the unique identifier of the new SMF.
 		peerNodeID, err1 := req.NodeID.NodeID()
 		if err1 != nil {
-			s.log.Errorln(err1)
+			h.log.Errorln(err1)
 			return
 		}
-		s.log.Debugf("new peer Node ID: %v\n", peerNodeID)
-		s.localNode.UpdateAssociationPeerNodeID(sess.association, peerNodeID)
+		h.log.Debugf("new peer Node ID: %v\n", peerNodeID)
+		h.node.UpdateAssociationPeerNodeID(sess.association, peerNodeID)
 	}
 
 	// ========================================================================
@@ -238,7 +238,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateCreateFAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.CreateFARs = append(plan.CreateFARs, p)
@@ -249,7 +249,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateCreateQER error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.CreateQERs = append(plan.CreateQERs, p)
@@ -260,7 +260,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateCreateURR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.CreateURRs = append(plan.CreateURRs, p)
@@ -271,7 +271,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateCreateBAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.CreateBARs = append(plan.CreateBARs, p)
@@ -282,7 +282,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateCreatePDR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.CreatePDRs = append(plan.CreatePDRs, p)
@@ -293,7 +293,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateUpdateFAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.UpdateFARs = append(plan.UpdateFARs, p)
@@ -304,7 +304,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateUpdateQER error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.UpdateQERs = append(plan.UpdateQERs, p)
@@ -315,7 +315,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateUpdateURR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.UpdateURRs = append(plan.UpdateURRs, p)
@@ -326,7 +326,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateUpdateBAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.UpdateBARs = append(plan.UpdateBARs, p)
@@ -337,7 +337,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateUpdatePDR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.UpdatePDRs = append(plan.UpdatePDRs, p)
@@ -348,7 +348,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateQueryURR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.QueryURRs = append(plan.QueryURRs, p)
@@ -359,7 +359,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateRemoveFAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.RemoveFARs = append(plan.RemoveFARs, p)
@@ -370,7 +370,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateRemoveQER error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.RemoveQERs = append(plan.RemoveQERs, p)
@@ -381,7 +381,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateRemoveURR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.RemoveURRs = append(plan.RemoveURRs, p)
@@ -392,7 +392,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateRemoveBAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.RemoveBARs = append(plan.RemoveBARs, p)
@@ -403,7 +403,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateRemovePDR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
+			h.sendSessModFailRsp(req, sess, addr, cause)
 			return
 		}
 		plan.RemovePDRs = append(plan.RemovePDRs, p)
@@ -412,7 +412,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	if err1 != nil {
 		sess.log.Errorf("Mod rule-state validation error: %v", err1)
 		cause := pfcpCauseFromError(err1)
-		s.sendSessModFailRsp(req, sess, addr, cause)
+		h.sendSessModFailRsp(req, sess, addr, cause)
 		return
 	}
 
@@ -428,7 +428,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		// must not be updated: reject the request instead of reporting success
 		// for rules that were not installed.
 		sess.log.Errorf("Mod execution error: %v", err1)
-		s.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
+		h.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
 		return
 	}
 
@@ -484,23 +484,23 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	// Cleanup removed URRs
 	sess.CleanupRemovedURRs()
 
-	if err := s.sendRspTo(rsp, addr); err != nil {
-		s.log.Errorln(err)
+	if err := h.transport.sendRspTo(rsp, addr); err != nil {
+		h.log.Errorln(err)
 		return
 	}
 }
 
-func (s *PfcpServer) handleSessionDeletionRequest(
+func (h *MessageHandler) handleSessionDeletionRequest(
 	req *message.SessionDeletionRequest,
 	addr net.Addr,
 ) {
 	// TODO: error response
-	s.log.Infoln("handleSessionDeletionRequest")
+	h.log.Infoln("handleSessionDeletionRequest")
 
 	lSeid := req.SEID()
-	sess, err := s.localNode.Session(lSeid)
+	sess, err := h.node.Session(lSeid)
 	if err != nil {
-		s.log.Errorf("handleSessionDeletionRequest: %v", err)
+		h.log.Errorf("handleSessionDeletionRequest: %v", err)
 		rsp := message.NewSessionDeletionResponse(
 			0, // mp
 			0, // fo
@@ -511,15 +511,15 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 			ie.NewReportType(0, 0, 1, 0),
 		)
 
-		err = s.sendRspTo(rsp, addr)
+		err = h.transport.sendRspTo(rsp, addr)
 		if err != nil {
-			s.log.Errorln(err)
+			h.log.Errorln(err)
 			return
 		}
 		return
 	}
 
-	usars := s.localNode.DeleteSession(lSeid)
+	usars := h.node.DeleteSession(lSeid)
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -549,60 +549,60 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		}
 	}
 
-	err = s.sendRspTo(rsp, addr)
+	err = h.transport.sendRspTo(rsp, addr)
 	if err != nil {
-		s.log.Errorln(err)
+		h.log.Errorln(err)
 		return
 	}
 }
 
-func (s *PfcpServer) handleSessionReportResponse(
+func (h *MessageHandler) handleSessionReportResponse(
 	rsp *message.SessionReportResponse,
 	addr net.Addr,
 	req message.Message,
 ) {
-	s.log.Infoln("handleSessionReportResponse")
+	h.log.Infoln("handleSessionReportResponse")
 
-	s.log.Debugf("seid: %#x\n", rsp.SEID())
+	h.log.Debugf("seid: %#x\n", rsp.SEID())
 	if rsp.Header.SEID == 0 {
 		if rsp.Cause == nil {
-			s.log.Errorf("rsp SEID is 0 without Cause IE")
+			h.log.Errorf("rsp SEID is 0 without Cause IE")
 			return
 		}
 		cause, err := rsp.Cause.Cause()
 		if err != nil {
-			s.log.Errorf("rsp SEID is 0 with invalid Cause IE: %v", err)
+			h.log.Errorf("rsp SEID is 0 with invalid Cause IE: %v", err)
 			return
 		}
 		if cause != ie.CauseSessionContextNotFound {
-			s.log.Errorf("rsp SEID is 0 with unexpected cause[%d]", cause)
+			h.log.Errorf("rsp SEID is 0 with unexpected cause[%d]", cause)
 			return
 		}
 
-		s.log.Warnf("rsp SEID is 0 and cause is Session context not found; delete local session")
-		sess, err := s.localNode.FindSessionByRemoteSEID(req.SEID(), addr)
+		h.log.Warnf("rsp SEID is 0 and cause is Session context not found; delete local session")
+		sess, err := h.node.FindSessionByRemoteSEID(req.SEID(), addr)
 		if err != nil {
-			s.log.Errorln(err)
+			h.log.Errorln(err)
 			return
 		}
-		s.localNode.DeleteSession(sess.LocalID)
+		h.node.DeleteSession(sess.LocalID)
 		return
 	}
 
-	sess, err := s.localNode.Session(rsp.SEID())
+	sess, err := h.node.Session(rsp.SEID())
 	if err != nil {
-		s.log.Errorln(err)
+		h.log.Errorln(err)
 		return
 	}
 
-	s.log.Debugf("sess: %#+v\n", sess)
+	h.log.Debugf("sess: %#+v\n", sess)
 }
 
-func (s *PfcpServer) handleSessionReportRequestTimeout(
+func (h *MessageHandler) handleSessionReportRequestTimeout(
 	req *message.SessionReportRequest,
 	addr net.Addr,
 ) {
-	s.log.Warnf("handleSessionReportRequestTimeout: SEID[%#x]", req.SEID())
+	h.log.Warnf("handleSessionReportRequestTimeout: SEID[%#x]", req.SEID())
 	// TODO?
 }
 
@@ -652,7 +652,7 @@ func getPDRIDFromPDR(pdr *ie.IE) uint16 {
 	return 0
 }
 
-func (s *PfcpServer) sendSessEstFailRsp(
+func (h *MessageHandler) sendSessEstFailRsp(
 	req *message.SessionEstablishmentRequest,
 	addr net.Addr,
 	cause uint8,
@@ -665,12 +665,12 @@ func (s *PfcpServer) sendSessEstFailRsp(
 		0, // pri
 		ie.NewCause(cause),
 	)
-	if err := s.sendRspTo(rsp, addr); err != nil {
-		s.log.Errorln(err)
+	if err := h.transport.sendRspTo(rsp, addr); err != nil {
+		h.log.Errorln(err)
 	}
 }
 
-func (s *PfcpServer) sendSessModFailRsp(
+func (h *MessageHandler) sendSessModFailRsp(
 	req *message.SessionModificationRequest,
 	sess *Sess,
 	addr net.Addr,
@@ -684,9 +684,9 @@ func (s *PfcpServer) sendSessModFailRsp(
 		0, // pri
 		ie.NewCause(cause),
 	)
-	err := s.sendRspTo(rsp, addr)
+	err := h.transport.sendRspTo(rsp, addr)
 	if err != nil {
-		s.log.Errorln(err)
+		h.log.Errorln(err)
 	}
 }
 
