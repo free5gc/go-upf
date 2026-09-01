@@ -44,38 +44,32 @@ type TransactionTimeout struct {
 }
 
 type PfcpServer struct {
-	cfg          *factory.Config
-	listen       string
-	nodeID       string
-	rcvCh        chan ReceivePacket
-	srCh         chan report.SessReport
-	trToCh       chan TransactionTimeout
-	conn         *net.UDPConn
-	recoveryTime time.Time
-	driver       forwarder.Driver
-	sessions     SessionStore
-	associations map[string]*PFCPAssociation // key: peer Node ID
-	txTrans      map[string]*TxTransaction   // key: RemoteAddr-Sequence
-	rxTrans      map[string]*RxTransaction   // key: RemoteAddr-Sequence
-	txSeq        uint32
-	log          *logrus.Entry
+	cfg       *factory.Config
+	listen    string
+	localNode *LocalNode
+	rcvCh     chan ReceivePacket
+	srCh      chan report.SessReport
+	trToCh    chan TransactionTimeout
+	conn      *net.UDPConn
+	txTrans   map[string]*TxTransaction // key: RemoteAddr-Sequence
+	rxTrans   map[string]*RxTransaction // key: RemoteAddr-Sequence
+	txSeq     uint32
+	log       *logrus.Entry
 }
 
 func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 	listen := fmt.Sprintf("%s:%d", cfg.Pfcp.Addr, factory.UpfPfcpDefaultPort)
+	log := logger.PfcpLog.WithField(logger_util.FieldListenAddr, listen)
 	return &PfcpServer{
-		cfg:          cfg,
-		listen:       listen,
-		nodeID:       cfg.Pfcp.NodeID,
-		rcvCh:        make(chan ReceivePacket, RECEIVE_CHANNEL_LEN),
-		srCh:         make(chan report.SessReport, REPORT_CHANNEL_LEN),
-		trToCh:       make(chan TransactionTimeout, TRANS_TIMEOUT_CHANNEL_LEN),
-		recoveryTime: time.Now(),
-		driver:       driver,
-		associations: make(map[string]*PFCPAssociation),
-		txTrans:      make(map[string]*TxTransaction),
-		rxTrans:      make(map[string]*RxTransaction),
-		log:          logger.PfcpLog.WithField(logger_util.FieldListenAddr, listen),
+		cfg:       cfg,
+		listen:    listen,
+		localNode: NewLocalNode(cfg.Pfcp.NodeID, time.Now(), driver, log),
+		rcvCh:     make(chan ReceivePacket, RECEIVE_CHANNEL_LEN),
+		srCh:      make(chan report.SessReport, REPORT_CHANNEL_LEN),
+		trToCh:    make(chan TransactionTimeout, TRANS_TIMEOUT_CHANNEL_LEN),
+		txTrans:   make(map[string]*TxTransaction),
+		rxTrans:   make(map[string]*RxTransaction),
+		log:       log,
 	}
 }
 
@@ -248,7 +242,7 @@ func (s *PfcpServer) NewAssociation(
 	association := NewPFCPAssociation(
 		peerNodeID,
 		peerAddr,
-		&s.sessions,
+		s.localNode.sessions,
 		s.log.WithField(logger_util.FieldControlPlaneNodeID, peerNodeID),
 	)
 	association.log.Infoln("New PFCP association")
@@ -264,13 +258,13 @@ func (s *PfcpServer) UpdatePeerNodeID(
 		association.PeerNodeID,
 		newPeerNodeID,
 	)
-	delete(s.associations, association.PeerNodeID)
+	delete(s.localNode.associations, association.PeerNodeID)
 	association.PeerNodeID = newPeerNodeID
 	association.log = s.log.WithField(
 		logger_util.FieldControlPlaneNodeID,
 		newPeerNodeID,
 	)
-	s.associations[newPeerNodeID] = association
+	s.localNode.associations[newPeerNodeID] = association
 }
 
 func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
@@ -282,7 +276,7 @@ func (s *PfcpServer) NotifyTransTimeout(trType TransType, trID string) {
 }
 
 func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
-	sess, err := s.sessions.Get(seid)
+	sess, err := s.localNode.sessions.Get(seid)
 	if err != nil {
 		s.log.Errorln(err)
 		return nil, false

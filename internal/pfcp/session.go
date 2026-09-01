@@ -30,7 +30,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	}
 	s.log.Debugf("peer Node ID: %v\n", peerNodeID)
 
-	association, ok := s.associations[peerNodeID]
+	association, ok := s.localNode.associations[peerNodeID]
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", peerNodeID)
 		s.sendSessEstFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
@@ -51,7 +51,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	s.log.Debugf("fseid.SEID: %#x\n", fseid.SEID)
 
 	// allocate a session
-	sess := association.NewSession(fseid.SEID, s.driver)
+	sess := association.NewSession(fseid.SEID, s.localNode.datapath)
 
 	// ========================================================================
 	// PHASE 1: Validation - Build all plans and validate without execution
@@ -157,7 +157,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	}
 
 	var v4 net.IP
-	addrv4, err := net.ResolveIPAddr("ip4", s.nodeID)
+	addrv4, err := net.ResolveIPAddr("ip4", s.localNode.NodeID)
 	if err == nil {
 		v4 = addrv4.IP.To4()
 	}
@@ -167,7 +167,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	ies := make([]*ie.IE, 0)
 	ies = append(ies, CreatedPDRList...)
 	ies = append(ies,
-		newIeNodeID(s.nodeID),
+		newIeNodeID(s.localNode.NodeID),
 		ie.NewCause(ie.CauseRequestAccepted),
 		ie.NewFSEID(sess.LocalID, v4, v6))
 
@@ -193,7 +193,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 ) {
 	s.log.Infoln("handleSessionModificationRequest")
 
-	sess, err := s.sessions.Get(req.SEID())
+	sess, err := s.localNode.sessions.Get(req.SEID())
 	if err != nil {
 		s.log.Errorf("handleSessionModificationRequest: %v", err)
 		rsp := message.NewSessionModificationResponse(
@@ -498,7 +498,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 	s.log.Infoln("handleSessionDeletionRequest")
 
 	lSeid := req.SEID()
-	sess, err := s.sessions.Get(lSeid)
+	sess, err := s.localNode.sessions.Get(lSeid)
 	if err != nil {
 		s.log.Errorf("handleSessionDeletionRequest: %v", err)
 		rsp := message.NewSessionDeletionResponse(
@@ -580,7 +580,7 @@ func (s *PfcpServer) handleSessionReportResponse(
 		}
 
 		s.log.Warnf("rsp SEID is 0 and cause is Session context not found; delete local session")
-		sess, err := s.sessions.FindByRemoteSEID(req.SEID(), addr)
+		sess, err := s.localNode.sessions.FindByRemoteSEID(req.SEID(), addr)
 		if err != nil {
 			s.log.Errorln(err)
 			return
@@ -589,7 +589,7 @@ func (s *PfcpServer) handleSessionReportResponse(
 		return
 	}
 
-	sess, err := s.sessions.Get(rsp.SEID())
+	sess, err := s.localNode.sessions.Get(rsp.SEID())
 	if err != nil {
 		s.log.Errorln(err)
 		return

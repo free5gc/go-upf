@@ -12,7 +12,7 @@ func (s *PfcpServer) handleHeartbeatRequest(req *message.HeartbeatRequest, addr 
 
 	rsp := message.NewHeartbeatResponse(
 		req.Header.SequenceNumber,
-		ie.NewRecoveryTimeStamp(s.recoveryTime),
+		ie.NewRecoveryTimeStamp(s.localNode.RecoveryTime),
 	)
 
 	err := s.sendRspTo(rsp, addr)

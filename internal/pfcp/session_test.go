@@ -3,6 +3,7 @@ package pfcp
 import (
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/wmnsk/go-pfcp/ie"
@@ -16,16 +17,18 @@ import (
 func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.IPv4(10, 100, 200, 5), Port: 8805}
 	newServerWithSession := func(remoteID uint64) (*PfcpServer, *Sess) {
+		log := logger.PfcpLog.WithField(logger_util.FieldListenAddr, "upf.free5gc.org:8805")
 		s := &PfcpServer{
-			log: logger.PfcpLog.WithField(logger_util.FieldListenAddr, "upf.free5gc.org:8805"),
+			localNode: NewLocalNode("", time.Time{}, forwarder.Empty{}, log),
+			log:       log,
 		}
 		association := NewPFCPAssociation(
 			"10.100.200.5",
 			addr,
-			&s.sessions,
+			s.localNode.sessions,
 			s.log.WithField(logger_util.FieldControlPlaneNodeID, "10.100.200.5"),
 		)
-		return s, association.NewSession(remoteID, forwarder.Empty{})
+		return s, association.NewSession(remoteID, s.localNode.datapath)
 	}
 
 	t.Run("keeps local session when cause is not session context not found", func(t *testing.T) {
@@ -42,7 +45,7 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 
 		s.handleSessionReportResponse(rsp, addr, req)
 
-		got, err := s.sessions.Get(sess.LocalID)
+		got, err := s.localNode.sessions.Get(sess.LocalID)
 		assert.NoError(t, err)
 		assert.Equal(t, sess.LocalID, got.LocalID)
 	})
@@ -61,7 +64,7 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 
 		s.handleSessionReportResponse(rsp, addr, req)
 
-		_, err := s.sessions.Get(sess.LocalID)
+		_, err := s.localNode.sessions.Get(sess.LocalID)
 		assert.Error(t, err)
 	})
 }
