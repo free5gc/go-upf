@@ -1,7 +1,6 @@
 package pfcp
 
 import (
-	"fmt"
 	"net"
 
 	"github.com/pkg/errors"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
-	logger_util "github.com/free5gc/util/logger"
 )
 
 const (
@@ -635,85 +633,29 @@ func (s *Sess) CleanupRemovedURRs() {
 // PFCPAssociation stores remote PFCP peer state and the Local SEIDs
 // established through that association. Rule desired state remains owned by Sess.
 type PFCPAssociation struct {
-	PeerNodeID   string
-	peerAddr     net.Addr
-	sessionStore *SessionStore
-	sessionIDs   map[uint64]struct{} // key: Local SEID
-	log          *logrus.Entry
+	PeerNodeID string
+	peerAddr   net.Addr
+	sessionIDs map[uint64]struct{} // key: Local SEID
+	log        *logrus.Entry
 }
 
-func NewPFCPAssociation(
+func newPFCPAssociation(
 	peerNodeID string,
 	peerAddr net.Addr,
-	sessionStore *SessionStore,
 	log *logrus.Entry,
 ) *PFCPAssociation {
 	return &PFCPAssociation{
-		PeerNodeID:   peerNodeID,
-		peerAddr:     peerAddr,
-		sessionStore: sessionStore,
-		sessionIDs:   make(map[uint64]struct{}),
-		log:          log,
+		PeerNodeID: peerNodeID,
+		peerAddr:   peerAddr,
+		sessionIDs: make(map[uint64]struct{}),
+		log:        log,
 	}
-}
-
-func (a *PFCPAssociation) DeleteAllSessions() {
-	for localSEID := range a.sessionIDs {
-		a.DeleteSession(localSEID)
-	}
-	a.sessionIDs = make(map[uint64]struct{})
-}
-
-func (a *PFCPAssociation) Session(localSEID uint64) (*Sess, error) {
-	if _, ok := a.sessionIDs[localSEID]; !ok {
-		return nil, errors.Errorf("PFCPAssociation.Session: session not found (localSEID:%#x)", localSEID)
-	}
-	return a.sessionStore.Get(localSEID)
-}
-
-func (a *PFCPAssociation) NewSession(
-	remoteSEID uint64,
-	driver forwarder.Driver,
-) *Sess {
-	sess := a.sessionStore.Create(remoteSEID, BUFFQ_LEN, driver)
-	a.sessionIDs[sess.LocalID] = struct{}{}
-	sess.association = a
-	sess.log = a.log.WithFields(
-		logrus.Fields{
-			logger_util.FieldUserPlaneSEID:    fmt.Sprintf("%#x", sess.LocalID),
-			logger_util.FieldControlPlaneSEID: fmt.Sprintf("%#x", remoteSEID),
-		})
-	sess.log.Infoln("New session")
-	return sess
-}
-
-func (a *PFCPAssociation) DeleteSession(localSEID uint64) []report.USAReport {
-	if _, ok := a.sessionIDs[localSEID]; !ok {
-		return nil
-	}
-	delete(a.sessionIDs, localSEID)
-	reports, err := a.sessionStore.Delete(localSEID)
-	if err != nil {
-		a.log.Warnln(err)
-		return nil
-	}
-	return reports
 }
 
 // SessionStore owns the UPF-wide Local SEID namespace and canonical Session objects.
 type SessionStore struct {
 	sessions  []*Sess
 	freeSEIDs []uint64
-}
-
-func (s *SessionStore) DeleteAll() {
-	for _, sess := range s.sessions {
-		if sess != nil {
-			sess.Close()
-		}
-	}
-	s.sessions = []*Sess{}
-	s.freeSEIDs = []uint64{}
 }
 
 func (s *SessionStore) Get(localSEID uint64) (*Sess, error) {

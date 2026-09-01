@@ -244,7 +244,7 @@ func (s *PfcpServer) NotifyTransTimeout(trType TransType, trID string) {
 }
 
 func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
-	sess, err := s.localNode.sessions.Get(seid)
+	sess, err := s.localNode.Session(seid)
 	if err != nil {
 		s.log.Errorln(err)
 		return nil, false

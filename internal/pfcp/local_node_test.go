@@ -54,14 +54,13 @@ func TestLocalNodeAssociationLifecycle(t *testing.T) {
 	assert.True(t, ok)
 	assert.Same(t, association, got)
 	assert.Equal(t, peerAddr, association.peerAddr)
-	assert.Same(t, node.sessions, association.sessionStore)
 
-	session := association.NewSession(0x10, node.datapath)
+	session := node.CreateSession(association, 0x10)
 	replacement := node.EstablishAssociation(peerNodeID, peerAddr)
 
 	assert.NotSame(t, association, replacement)
 	assert.Empty(t, association.sessionIDs)
-	_, err := node.sessions.Get(session.LocalID)
+	_, err := node.Session(session.LocalID)
 	assert.Error(t, err)
 
 	got, ok = node.Association(peerNodeID)

@@ -22,13 +22,8 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 			localNode: NewLocalNode("", time.Time{}, forwarder.Empty{}, log),
 			log:       log,
 		}
-		association := NewPFCPAssociation(
-			"10.100.200.5",
-			addr,
-			s.localNode.sessions,
-			s.log.WithField(logger_util.FieldControlPlaneNodeID, "10.100.200.5"),
-		)
-		return s, association.NewSession(remoteID, s.localNode.datapath)
+		association := s.localNode.EstablishAssociation("10.100.200.5", addr)
+		return s, s.localNode.CreateSession(association, remoteID)
 	}
 
 	t.Run("keeps local session when cause is not session context not found", func(t *testing.T) {
@@ -45,7 +40,7 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 
 		s.handleSessionReportResponse(rsp, addr, req)
 
-		got, err := s.localNode.sessions.Get(sess.LocalID)
+		got, err := s.localNode.Session(sess.LocalID)
 		assert.NoError(t, err)
 		assert.Equal(t, sess.LocalID, got.LocalID)
 	})
@@ -64,7 +59,7 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 
 		s.handleSessionReportResponse(rsp, addr, req)
 
-		_, err := s.localNode.sessions.Get(sess.LocalID)
+		_, err := s.localNode.Session(sess.LocalID)
 		assert.Error(t, err)
 	})
 }

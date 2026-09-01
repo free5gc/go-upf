@@ -51,7 +51,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	s.log.Debugf("fseid.SEID: %#x\n", fseid.SEID)
 
 	// allocate a session
-	sess := association.NewSession(fseid.SEID, s.localNode.datapath)
+	sess := s.localNode.CreateSession(association, fseid.SEID)
 
 	// ========================================================================
 	// PHASE 1: Validation - Build all plans and validate without execution
@@ -64,7 +64,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreateFAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			association.DeleteSession(sess.LocalID)
+			s.localNode.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateFARs = append(plan.CreateFARs, p)
@@ -76,7 +76,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreateQER error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			association.DeleteSession(sess.LocalID)
+			s.localNode.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateQERs = append(plan.CreateQERs, p)
@@ -88,7 +88,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreateURR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			association.DeleteSession(sess.LocalID)
+			s.localNode.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateURRs = append(plan.CreateURRs, p)
@@ -100,7 +100,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreateBAR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			association.DeleteSession(sess.LocalID)
+			s.localNode.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreateBARs = append(plan.CreateBARs, p)
@@ -112,7 +112,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			sess.log.Errorf("Est ValidateCreatePDR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
 			s.sendSessEstFailRsp(req, addr, cause)
-			association.DeleteSession(sess.LocalID)
+			s.localNode.DeleteSession(sess.LocalID)
 			return
 		}
 		plan.CreatePDRs = append(plan.CreatePDRs, p)
@@ -123,7 +123,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		sess.log.Errorf("Est rule-state validation error: %v", err1)
 		cause := pfcpCauseFromError(err1)
 		s.sendSessEstFailRsp(req, addr, cause)
-		association.DeleteSession(sess.LocalID)
+		s.localNode.DeleteSession(sess.LocalID)
 		return
 	}
 
@@ -133,7 +133,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	if _, err1 := sess.driver.ExecuteEstablishmentPlan(plan); err1 != nil {
 		sess.log.Errorf("Est execution error: %v", err1)
 		s.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
-		association.DeleteSession(sess.LocalID)
+		s.localNode.DeleteSession(sess.LocalID)
 		return
 	}
 
@@ -193,7 +193,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 ) {
 	s.log.Infoln("handleSessionModificationRequest")
 
-	sess, err := s.localNode.sessions.Get(req.SEID())
+	sess, err := s.localNode.Session(req.SEID())
 	if err != nil {
 		s.log.Errorf("handleSessionModificationRequest: %v", err)
 		rsp := message.NewSessionModificationResponse(
@@ -498,7 +498,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 	s.log.Infoln("handleSessionDeletionRequest")
 
 	lSeid := req.SEID()
-	sess, err := s.localNode.sessions.Get(lSeid)
+	sess, err := s.localNode.Session(lSeid)
 	if err != nil {
 		s.log.Errorf("handleSessionDeletionRequest: %v", err)
 		rsp := message.NewSessionDeletionResponse(
@@ -519,7 +519,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		return
 	}
 
-	usars := sess.association.DeleteSession(lSeid)
+	usars := s.localNode.DeleteSession(lSeid)
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -580,16 +580,16 @@ func (s *PfcpServer) handleSessionReportResponse(
 		}
 
 		s.log.Warnf("rsp SEID is 0 and cause is Session context not found; delete local session")
-		sess, err := s.localNode.sessions.FindByRemoteSEID(req.SEID(), addr)
+		sess, err := s.localNode.FindSessionByRemoteSEID(req.SEID(), addr)
 		if err != nil {
 			s.log.Errorln(err)
 			return
 		}
-		sess.association.DeleteSession(sess.LocalID)
+		s.localNode.DeleteSession(sess.LocalID)
 		return
 	}
 
-	sess, err := s.localNode.sessions.Get(rsp.SEID())
+	sess, err := s.localNode.Session(rsp.SEID())
 	if err != nil {
 		s.log.Errorln(err)
 		return

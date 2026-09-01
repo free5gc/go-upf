@@ -1,12 +1,15 @@
 package pfcp
 
 import (
+	"fmt"
 	"net"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/report"
 	logger_util "github.com/free5gc/util/logger"
 )
 
@@ -53,10 +56,9 @@ func (n *LocalNode) EstablishAssociation(
 ) *PFCPAssociation {
 	n.DeleteAssociation(peerNodeID)
 
-	association := NewPFCPAssociation(
+	association := newPFCPAssociation(
 		peerNodeID,
 		peerAddr,
-		n.sessions,
 		n.log.WithField(logger_util.FieldControlPlaneNodeID, peerNodeID),
 	)
 	n.associations[peerNodeID] = association
@@ -72,7 +74,7 @@ func (n *LocalNode) DeleteAssociation(peerNodeID string) {
 	}
 
 	n.log.Infof("delete association: %#+v\n", association)
-	association.DeleteAllSessions()
+	n.deleteAssociationSessions(association)
 	delete(n.associations, peerNodeID)
 }
 
@@ -93,4 +95,77 @@ func (n *LocalNode) UpdateAssociationPeerNodeID(
 		newPeerNodeID,
 	)
 	n.associations[newPeerNodeID] = association
+}
+
+// Session returns a session from the UPF-wide Local SEID namespace.
+func (n *LocalNode) Session(localSEID uint64) (*Sess, error) {
+	return n.sessions.Get(localSEID)
+}
+
+// SessionForAssociation returns a session only when it belongs to the association.
+func (n *LocalNode) SessionForAssociation(
+	association *PFCPAssociation,
+	localSEID uint64,
+) (*Sess, error) {
+	if association == nil {
+		return nil, errors.New("LocalNode.SessionForAssociation: nil association")
+	}
+	if _, ok := association.sessionIDs[localSEID]; !ok {
+		return nil, errors.Errorf(
+			"LocalNode.SessionForAssociation: session not found (localSEID:%#x)",
+			localSEID,
+		)
+	}
+	return n.Session(localSEID)
+}
+
+// FindSessionByRemoteSEID finds a session using the peer address and CP-side SEID.
+func (n *LocalNode) FindSessionByRemoteSEID(
+	remoteSEID uint64,
+	peerAddr net.Addr,
+) (*Sess, error) {
+	return n.sessions.FindByRemoteSEID(remoteSEID, peerAddr)
+}
+
+// CreateSession allocates a Local SEID and associates the session with its PFCP peer.
+func (n *LocalNode) CreateSession(
+	association *PFCPAssociation,
+	remoteSEID uint64,
+) *Sess {
+	sess := n.sessions.Create(remoteSEID, BUFFQ_LEN, n.datapath)
+	association.sessionIDs[sess.LocalID] = struct{}{}
+	sess.association = association
+	sess.log = association.log.WithFields(
+		logrus.Fields{
+			logger_util.FieldUserPlaneSEID:    fmt.Sprintf("%#x", sess.LocalID),
+			logger_util.FieldControlPlaneSEID: fmt.Sprintf("%#x", remoteSEID),
+		})
+	sess.log.Infoln("New session")
+	return sess
+}
+
+// DeleteSession removes a session from both its association and the Local SEID store.
+// Deleting an unknown Local SEID is an idempotent no-op.
+func (n *LocalNode) DeleteSession(localSEID uint64) []report.USAReport {
+	sess, err := n.sessions.Get(localSEID)
+	if err != nil {
+		return nil
+	}
+
+	reports, err := n.sessions.Delete(localSEID)
+	if err != nil {
+		n.log.Warnln(err)
+		return nil
+	}
+	if sess.association != nil {
+		delete(sess.association.sessionIDs, localSEID)
+	}
+	return reports
+}
+
+func (n *LocalNode) deleteAssociationSessions(association *PFCPAssociation) {
+	for localSEID := range association.sessionIDs {
+		n.DeleteSession(localSEID)
+	}
+	association.sessionIDs = make(map[uint64]struct{})
 }
