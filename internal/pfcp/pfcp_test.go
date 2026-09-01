@@ -15,21 +15,6 @@ import (
 	logger_util "github.com/free5gc/util/logger"
 )
 
-type PfcpServerMock struct {
-	PfcpServer
-}
-
-func (p *PfcpServerMock) GetAssociations() map[string]*PFCPAssociation {
-	return p.localNode.associations
-}
-
-func (p *PfcpServerMock) AddAssociation(
-	peerNodeID string,
-	association *PFCPAssociation,
-) {
-	p.localNode.associations[peerNodeID] = association
-}
-
 func newTestPfcpServer() *PfcpServer {
 	return NewPfcpServer(
 		&factory.Config{
@@ -82,40 +67,6 @@ func TestStop(t *testing.T) {
 	if !isConnClosed(s.conn) {
 		t.Errorf("expected connection to be closed")
 	}
-}
-
-func TestNewAssociation(t *testing.T) {
-	s := newTestPfcpServer()
-
-	peerNodeID := "smf1"
-	peerAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:8805")
-	if err != nil {
-		t.Errorf("failed to resolve UDP address: %v", err)
-		return
-	}
-
-	association := s.NewAssociation(peerNodeID, peerAddr)
-
-	assert.NotNil(t, association)
-	assert.Equal(t, peerNodeID, association.PeerNodeID)
-	assert.Same(t, s.localNode.sessions, association.sessionStore)
-}
-
-func TestUpdatePeerNodeID(t *testing.T) {
-	s := &PfcpServerMock{
-		PfcpServer: *newTestPfcpServer(),
-	}
-
-	originalPeerNodeID := "127.0.0.1"
-	association := s.NewAssociation(originalPeerNodeID, nil)
-	s.AddAssociation(originalPeerNodeID, association)
-
-	newPeerNodeID := "192.168.56.101"
-	s.UpdatePeerNodeID(association, newPeerNodeID)
-
-	assert.Nil(t, s.GetAssociations()[originalPeerNodeID])
-	assert.NotNil(t, s.GetAssociations()[newPeerNodeID])
-	assert.Equal(t, newPeerNodeID, association.PeerNodeID)
 }
 
 func TestNotifySessReport(t *testing.T) {

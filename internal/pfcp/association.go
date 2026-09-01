@@ -49,13 +49,7 @@ func (s *PfcpServer) handleAssociationSetupRequest(
 	// if a PFCP association was already established for the Node ID
 	// received in the request, regardless of the Recovery Timestamp
 	// received in the request.
-	if association, ok := s.localNode.associations[peerNodeID]; ok {
-		s.log.Infof("delete association: %#+v\n", association)
-		association.DeleteAllSessions()
-		delete(s.localNode.associations, peerNodeID)
-	}
-	association := s.NewAssociation(peerNodeID, addr)
-	s.localNode.associations[peerNodeID] = association
+	s.localNode.EstablishAssociation(peerNodeID, addr)
 
 	rsp := message.NewAssociationSetupResponse(
 		req.Header.SequenceNumber,

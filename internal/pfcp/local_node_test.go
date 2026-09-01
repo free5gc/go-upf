@@ -1,6 +1,7 @@
 package pfcp
 
 import (
+	"net"
 	"testing"
 	"time"
 
@@ -37,4 +38,56 @@ func TestNewLocalNodeOwnsIndependentState(t *testing.T) {
 
 	assert.Empty(t, second.associations)
 	assert.Empty(t, second.sessions.sessions)
+}
+
+func TestLocalNodeAssociationLifecycle(t *testing.T) {
+	log := logger.PfcpLog.WithField("test", t.Name())
+	node := NewLocalNode("upf.example.com", time.Time{}, forwarder.Empty{}, log)
+	peerNodeID := "smf.example.com"
+	peerAddr := &net.UDPAddr{IP: net.IPv4(10, 100, 200, 5), Port: 8805}
+
+	_, ok := node.Association(peerNodeID)
+	assert.False(t, ok)
+
+	association := node.EstablishAssociation(peerNodeID, peerAddr)
+	got, ok := node.Association(peerNodeID)
+	assert.True(t, ok)
+	assert.Same(t, association, got)
+	assert.Equal(t, peerAddr, association.peerAddr)
+	assert.Same(t, node.sessions, association.sessionStore)
+
+	session := association.NewSession(0x10, node.datapath)
+	replacement := node.EstablishAssociation(peerNodeID, peerAddr)
+
+	assert.NotSame(t, association, replacement)
+	assert.Empty(t, association.sessionIDs)
+	_, err := node.sessions.Get(session.LocalID)
+	assert.Error(t, err)
+
+	got, ok = node.Association(peerNodeID)
+	assert.True(t, ok)
+	assert.Same(t, replacement, got)
+
+	node.DeleteAssociation(peerNodeID)
+	_, ok = node.Association(peerNodeID)
+	assert.False(t, ok)
+
+	// Deleting an association that is already absent is intentionally idempotent.
+	node.DeleteAssociation(peerNodeID)
+}
+
+func TestLocalNodeUpdateAssociationPeerNodeID(t *testing.T) {
+	log := logger.PfcpLog.WithField("test", t.Name())
+	node := NewLocalNode("upf.example.com", time.Time{}, forwarder.Empty{}, log)
+	association := node.EstablishAssociation("smf-old.example.com", nil)
+
+	node.UpdateAssociationPeerNodeID(association, "smf-new.example.com")
+
+	_, ok := node.Association("smf-old.example.com")
+	assert.False(t, ok)
+
+	got, ok := node.Association("smf-new.example.com")
+	assert.True(t, ok)
+	assert.Same(t, association, got)
+	assert.Equal(t, "smf-new.example.com", association.PeerNodeID)
 }

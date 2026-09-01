@@ -30,7 +30,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	}
 	s.log.Debugf("peer Node ID: %v\n", peerNodeID)
 
-	association, ok := s.localNode.associations[peerNodeID]
+	association, ok := s.localNode.Association(peerNodeID)
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", peerNodeID)
 		s.sendSessEstFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
@@ -225,7 +225,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			return
 		}
 		s.log.Debugf("new peer Node ID: %v\n", peerNodeID)
-		s.UpdatePeerNodeID(sess.association, peerNodeID)
+		s.localNode.UpdateAssociationPeerNodeID(sess.association, peerNodeID)
 	}
 
 	// ========================================================================

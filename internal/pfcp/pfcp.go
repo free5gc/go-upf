@@ -235,38 +235,6 @@ func (s *PfcpServer) Stop() {
 	}
 }
 
-func (s *PfcpServer) NewAssociation(
-	peerNodeID string,
-	peerAddr net.Addr,
-) *PFCPAssociation {
-	association := NewPFCPAssociation(
-		peerNodeID,
-		peerAddr,
-		s.localNode.sessions,
-		s.log.WithField(logger_util.FieldControlPlaneNodeID, peerNodeID),
-	)
-	association.log.Infoln("New PFCP association")
-	return association
-}
-
-func (s *PfcpServer) UpdatePeerNodeID(
-	association *PFCPAssociation,
-	newPeerNodeID string,
-) {
-	s.log.Infof(
-		"Update peer Node ID %q to %q",
-		association.PeerNodeID,
-		newPeerNodeID,
-	)
-	delete(s.localNode.associations, association.PeerNodeID)
-	association.PeerNodeID = newPeerNodeID
-	association.log = s.log.WithField(
-		logger_util.FieldControlPlaneNodeID,
-		newPeerNodeID,
-	)
-	s.localNode.associations[newPeerNodeID] = association
-}
-
 func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
 	s.srCh <- sr
 }
