@@ -4,65 +4,11 @@ import (
 	"net"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 )
-
-const (
-	BUFFQ_LEN = 512
-)
-
-type PDRInfo struct {
-	FARID              uint32
-	HasFARID           bool
-	RelatedURRIDs      map[uint32]struct{}
-	RelatedQERIDs      map[uint32]struct{}
-	SourceInterface    uint8
-	HasSourceInterface bool
-}
-
-// QERInfo is the merged PFCP desired state used by the FlowQoS resolver.
-// Rate values are stored in bits per second, not PFCP's wire-level kbps.
-type QERInfo struct {
-	QFI uint8
-
-	GateUL  uint8
-	GateDL  uint8
-	HasGate bool
-
-	GBRULBps uint64
-	GBRDLBps uint64
-	MBRULBps uint64
-	MBRDLBps uint64
-	HasGBR   bool
-	HasMBR   bool
-}
-
-type URRInfo struct {
-	removed bool
-	SEQN    uint32
-	report.MeasureMethod
-	report.MeasureInformation
-	refPdrNum uint16
-}
-
-type Sess struct {
-	association *PFCPAssociation // remote PFCP association that owns this session
-	driver      forwarder.Driver // local UPF datapath dependency
-	LocalID     uint64
-	RemoteID    uint64
-	PDRIDs      map[uint16]*PDRInfo    // key: PDR_ID
-	FARIDs      map[uint32]struct{}    // key: FAR_ID
-	QERIDs      map[uint32]*QERInfo    // key: QER_ID
-	URRIDs      map[uint32]*URRInfo    // key: URR_ID
-	BARIDs      map[uint8]struct{}     // key: BAR_ID
-	q           map[uint16]chan []byte // key: PDR_ID
-	qlen        int
-	log         *logrus.Entry
-}
 
 var (
 	ErrMissingMandatoryIE             = errors.New("mandatory IE missing or incorrect")
@@ -187,55 +133,6 @@ func (s *Sess) diassociateURR(urrid uint32) []report.USAReport {
 		s.log.Errorf("diassociateURR: wrong refPdrNum(%d)", urrInfo.refPdrNum)
 	}
 	return nil
-}
-
-func (s *Sess) Push(pdrid uint16, p []byte) {
-	pkt := make([]byte, len(p))
-	copy(pkt, p)
-	q, ok := s.q[pdrid]
-	if !ok {
-		s.q[pdrid] = make(chan []byte, s.qlen)
-		q = s.q[pdrid]
-	}
-
-	select {
-	case q <- pkt:
-		s.log.Debugf("Push bufPkt to q[%d](len:%d)", pdrid, len(q))
-	default:
-		s.log.Debugf("q[%d](len:%d) is full, drop it", pdrid, len(q))
-	}
-}
-
-func (s *Sess) Len(pdrid uint16) int {
-	q, ok := s.q[pdrid]
-	if !ok {
-		return 0
-	}
-	return len(q)
-}
-
-func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
-	q, ok := s.q[pdrid]
-	if !ok {
-		return nil, ok
-	}
-	select {
-	case pkt := <-q:
-		s.log.Debugf("Pop bufPkt from q[%d](len:%d)", pdrid, len(q))
-		return pkt, true
-	default:
-		return nil, false
-	}
-}
-
-func (s *Sess) URRSeq(urrid uint32) uint32 {
-	info, ok := s.URRIDs[urrid]
-	if !ok {
-		return 0
-	}
-	seq := info.SEQN
-	info.SEQN++
-	return seq
 }
 
 // ============================================================================
@@ -627,28 +524,6 @@ func (s *Sess) CleanupRemovedURRs() {
 		if info.removed {
 			delete(s.URRIDs, id)
 		}
-	}
-}
-
-// PFCPAssociation stores remote PFCP peer state and the Local SEIDs
-// established through that association. Rule desired state remains owned by Sess.
-type PFCPAssociation struct {
-	PeerNodeID string
-	peerAddr   net.Addr
-	sessionIDs map[uint64]struct{} // key: Local SEID
-	log        *logrus.Entry
-}
-
-func newPFCPAssociation(
-	peerNodeID string,
-	peerAddr net.Addr,
-	log *logrus.Entry,
-) *PFCPAssociation {
-	return &PFCPAssociation{
-		PeerNodeID: peerNodeID,
-		peerAddr:   peerAddr,
-		sessionIDs: make(map[uint64]struct{}),
-		log:        log,
 	}
 }
 
