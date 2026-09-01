@@ -16,16 +16,16 @@ import (
 
 func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.IPv4(10, 100, 200, 5), Port: 8805}
-	newHandlerWithSession := func(remoteID uint64) (*MessageHandler, *Sess) {
+	newDispatcherWithSession := func(remoteID uint64) (*Dispatcher, *Sess) {
 		log := logger.PfcpLog.WithField(logger_util.FieldListenAddr, "upf.free5gc.org:8805")
 		node := NewLocalNode("", time.Time{}, forwarder.Empty{}, log)
-		handler := newMessageHandler(node, nil, log)
+		dispatcher := newDispatcher(node, nil, log)
 		association := node.EstablishAssociation("10.100.200.5", addr)
-		return handler, node.CreateSession(association, remoteID)
+		return dispatcher, node.CreateSession(association, remoteID)
 	}
 
 	t.Run("keeps local session when cause is not session context not found", func(t *testing.T) {
-		h, sess := newHandlerWithSession(0x1efce)
+		dispatcher, sess := newDispatcherWithSession(0x1efce)
 		req := message.NewSessionReportRequest(0, 0, sess.RemoteID, 1, 0)
 		rsp := message.NewSessionReportResponse(
 			0,
@@ -36,15 +36,15 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 			ie.NewCause(ie.CauseRequestAccepted),
 		)
 
-		h.handleSessionReportResponse(rsp, addr, req)
+		dispatcher.handleSessionReportResponse(rsp, addr, req)
 
-		got, err := h.node.Session(sess.LocalID)
+		got, err := dispatcher.node.Session(sess.LocalID)
 		assert.NoError(t, err)
 		assert.Equal(t, sess.LocalID, got.LocalID)
 	})
 
 	t.Run("deletes local session when cause is session context not found", func(t *testing.T) {
-		h, sess := newHandlerWithSession(0x1efce)
+		dispatcher, sess := newDispatcherWithSession(0x1efce)
 		req := message.NewSessionReportRequest(0, 0, sess.RemoteID, 1, 0)
 		rsp := message.NewSessionReportResponse(
 			0,
@@ -55,9 +55,9 @@ func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 			ie.NewCause(ie.CauseSessionContextNotFound),
 		)
 
-		h.handleSessionReportResponse(rsp, addr, req)
+		dispatcher.handleSessionReportResponse(rsp, addr, req)
 
-		_, err := h.node.Session(sess.LocalID)
+		_, err := dispatcher.node.Session(sess.LocalID)
 		assert.Error(t, err)
 	})
 }

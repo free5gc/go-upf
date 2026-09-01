@@ -7,17 +7,17 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 )
 
-func (h *MessageHandler) handleHeartbeatRequest(req *message.HeartbeatRequest, addr net.Addr) {
-	h.log.Infoln("handleHeartbeatRequest")
+func (d *Dispatcher) handleHeartbeatRequest(req *message.HeartbeatRequest, addr net.Addr) {
+	d.log.Infoln("handleHeartbeatRequest")
 
 	rsp := message.NewHeartbeatResponse(
 		req.Header.SequenceNumber,
-		ie.NewRecoveryTimeStamp(h.node.RecoveryTime),
+		ie.NewRecoveryTimeStamp(d.node.RecoveryTime),
 	)
 
-	err := h.transport.sendRspTo(rsp, addr)
+	err := d.transport.sendRspTo(rsp, addr)
 	if err != nil {
-		h.log.Errorln(err)
+		d.log.Errorln(err)
 		return
 	}
 }

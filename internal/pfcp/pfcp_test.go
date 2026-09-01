@@ -47,31 +47,31 @@ func newTestPfcpServer() *PfcpServer {
 	)
 }
 
-func TestNewPfcpServerInitializesMessageHandler(t *testing.T) {
+func TestNewPfcpServerInitializesDispatcher(t *testing.T) {
 	s := newTestPfcpServer()
 
-	assert.NotNil(t, s.handler)
-	assert.Same(t, s, s.handler.transport)
-	assert.NotNil(t, s.handler.node)
-	assert.Equal(t, "127.0.0.1", s.handler.node.NodeID)
-	assert.False(t, s.handler.node.RecoveryTime.IsZero())
-	assert.NotNil(t, s.handler.node.associations)
-	assert.NotNil(t, s.handler.node.sessions)
-	assert.Equal(t, forwarder.Empty{}, s.handler.node.datapath)
-	assert.Same(t, s.log, s.handler.log)
-	assert.Same(t, s.log, s.handler.node.log)
+	assert.NotNil(t, s.dispatcher)
+	assert.Same(t, s, s.dispatcher.transport)
+	assert.NotNil(t, s.dispatcher.node)
+	assert.Equal(t, "127.0.0.1", s.dispatcher.node.NodeID)
+	assert.False(t, s.dispatcher.node.RecoveryTime.IsZero())
+	assert.NotNil(t, s.dispatcher.node.associations)
+	assert.NotNil(t, s.dispatcher.node.sessions)
+	assert.Equal(t, forwarder.Empty{}, s.dispatcher.node.datapath)
+	assert.Same(t, s.log, s.dispatcher.log)
+	assert.Same(t, s.log, s.dispatcher.node.log)
 }
 
-func TestMessageHandlerDispatchesHeartbeatRequest(t *testing.T) {
+func TestDispatcherDispatchesHeartbeatRequest(t *testing.T) {
 	recoveryTime := time.Unix(1_700_000_000, 0)
 	log := logrus.WithField("test", t.Name())
 	node := NewLocalNode("127.0.0.1", recoveryTime, forwarder.Empty{}, log)
 	transport := &messageTransportMock{}
-	handler := newMessageHandler(node, transport, log)
+	dispatcher := newDispatcher(node, transport, log)
 	addr := &net.UDPAddr{IP: net.IPv4(10, 100, 200, 5), Port: 8805}
 	req := message.NewHeartbeatRequest(42, nil, nil)
 
-	err := handler.HandleRequest(req, addr)
+	err := dispatcher.HandleRequest(req, addr)
 
 	assert.NoError(t, err)
 	assert.Equal(t, addr, transport.rspAddr)

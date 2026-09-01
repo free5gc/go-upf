@@ -101,7 +101,7 @@ func (tx *TxTransaction) handleTimeout() {
 	} else {
 		tx.log.Debugf("max retransmission reached - delete txtr")
 		delete(tx.server.txTrans, tx.id)
-		err := tx.server.handler.HandleRequestTimeout(tx.req, tx.raddr)
+		err := tx.server.dispatcher.HandleRequestTimeout(tx.req, tx.raddr)
 		if err != nil {
 			tx.log.Errorf("HandleRequestTimeout: %v", err)
 		}

@@ -13,68 +13,68 @@ type messageTransport interface {
 	sendRspTo(message.Message, net.Addr) error
 }
 
-// MessageHandler processes decoded PFCP messages against the local UPF state.
-type MessageHandler struct {
+// Dispatcher routes decoded PFCP messages to local UPF service operations.
+type Dispatcher struct {
 	node      *LocalNode
 	transport messageTransport
 	log       *logrus.Entry
 }
 
-func newMessageHandler(
+func newDispatcher(
 	node *LocalNode,
 	transport messageTransport,
 	log *logrus.Entry,
-) *MessageHandler {
-	return &MessageHandler{
+) *Dispatcher {
+	return &Dispatcher{
 		node:      node,
 		transport: transport,
 		log:       log,
 	}
 }
 
-func (h *MessageHandler) HandleRequest(msg message.Message, addr net.Addr) error {
+func (d *Dispatcher) HandleRequest(msg message.Message, addr net.Addr) error {
 	switch req := msg.(type) {
 	case *message.HeartbeatRequest:
-		h.handleHeartbeatRequest(req, addr)
+		d.handleHeartbeatRequest(req, addr)
 	case *message.AssociationSetupRequest:
-		h.handleAssociationSetupRequest(req, addr)
+		d.handleAssociationSetupRequest(req, addr)
 	case *message.AssociationUpdateRequest:
-		h.handleAssociationUpdateRequest(req, addr)
+		d.handleAssociationUpdateRequest(req, addr)
 	case *message.AssociationReleaseRequest:
-		h.handleAssociationReleaseRequest(req, addr)
+		d.handleAssociationReleaseRequest(req, addr)
 	case *message.SessionEstablishmentRequest:
-		h.handleSessionEstablishmentRequest(req, addr)
+		d.handleSessionEstablishmentRequest(req, addr)
 	case *message.SessionModificationRequest:
-		h.handleSessionModificationRequest(req, addr)
+		d.handleSessionModificationRequest(req, addr)
 	case *message.SessionDeletionRequest:
-		h.handleSessionDeletionRequest(req, addr)
+		d.handleSessionDeletionRequest(req, addr)
 	default:
-		return errors.Errorf("MessageHandler.HandleRequest: unknown message type: %d", msg.MessageType())
+		return errors.Errorf("Dispatcher.HandleRequest: unknown message type: %d", msg.MessageType())
 	}
 	return nil
 }
 
-func (h *MessageHandler) HandleResponse(
+func (d *Dispatcher) HandleResponse(
 	msg message.Message,
 	addr net.Addr,
 	req message.Message,
 ) error {
 	switch rsp := msg.(type) {
 	case *message.SessionReportResponse:
-		h.handleSessionReportResponse(rsp, addr, req)
+		d.handleSessionReportResponse(rsp, addr, req)
 	default:
-		return errors.Errorf("MessageHandler.HandleResponse: unknown message type: %d", msg.MessageType())
+		return errors.Errorf("Dispatcher.HandleResponse: unknown message type: %d", msg.MessageType())
 	}
 	return nil
 }
 
-func (h *MessageHandler) HandleRequestTimeout(msg message.Message, addr net.Addr) error {
+func (d *Dispatcher) HandleRequestTimeout(msg message.Message, addr net.Addr) error {
 	switch req := msg.(type) {
 	case *message.SessionReportRequest:
-		h.handleSessionReportRequestTimeout(req, addr)
+		d.handleSessionReportRequestTimeout(req, addr)
 	default:
 		return errors.Errorf(
-			"MessageHandler.HandleRequestTimeout: unknown message type: %d",
+			"Dispatcher.HandleRequestTimeout: unknown message type: %d",
 			msg.MessageType(),
 		)
 	}

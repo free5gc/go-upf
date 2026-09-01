@@ -12,20 +12,20 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
-func (h *MessageHandler) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
-	sess, err := h.node.Session(seid)
+func (d *Dispatcher) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
+	sess, err := d.node.Session(seid)
 	if err != nil {
-		h.log.Errorln(err)
+		d.log.Errorln(err)
 		return nil, false
 	}
 	return sess.Pop(pdrid)
 }
 
-func (h *MessageHandler) ServeReport(sr *report.SessReport) {
-	h.log.Debugf("ServeReport: SEID(%#x)", sr.SEID)
-	sess, err := h.node.Session(sr.SEID)
+func (d *Dispatcher) ServeReport(sr *report.SessReport) {
+	d.log.Debugf("ServeReport: SEID(%#x)", sr.SEID)
+	sess, err := d.node.Session(sr.SEID)
 	if err != nil {
-		h.log.Errorln(err)
+		d.log.Errorln(err)
 		return
 	}
 
@@ -39,37 +39,37 @@ func (h *MessageHandler) ServeReport(sr *report.SessReport) {
 	for _, rpt := range sr.Reports {
 		switch r := rpt.(type) {
 		case report.DLDReport:
-			h.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
+			d.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
 			if r.Action&report.APPLY_ACT_BUFF != 0 && len(r.BufPkt) > 0 {
 				sess.Push(r.PDRID, r.BufPkt)
 			}
 			if r.Action&report.APPLY_ACT_NOCP == 0 {
 				return
 			}
-			err := h.serveDLDReport(laddr, sr.SEID, r.PDRID)
+			err := d.serveDLDReport(laddr, sr.SEID, r.PDRID)
 			if err != nil {
-				h.log.Errorln(err)
+				d.log.Errorln(err)
 			}
 		case report.USAReport:
-			h.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
+			d.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
 			usars = append(usars, r)
 		default:
-			h.log.Warnf("Unsupported Report: SEID(%#x), type(%d)", sr.SEID, rpt.Type())
+			d.log.Warnf("Unsupported Report: SEID(%#x), type(%d)", sr.SEID, rpt.Type())
 		}
 	}
 
 	if len(usars) > 0 {
-		err := h.serveUSAReport(laddr, sr.SEID, usars)
+		err := d.serveUSAReport(laddr, sr.SEID, usars)
 		if err != nil {
-			h.log.Errorln(err)
+			d.log.Errorln(err)
 		}
 	}
 }
 
-func (h *MessageHandler) serveDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) error {
-	h.log.Infoln("serveDLDReport")
+func (d *Dispatcher) serveDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) error {
+	d.log.Infoln("serveDLDReport")
 
-	sess, err := h.node.Session(lSeid)
+	sess, err := d.node.Session(lSeid)
 	if err != nil {
 		return errors.Wrap(err, "serveDLDReport")
 	}
@@ -94,14 +94,14 @@ func (h *MessageHandler) serveDLDReport(addr net.Addr, lSeid uint64, pdrid uint1
 		),
 	)
 
-	err = h.transport.sendReqTo(req, addr)
+	err = d.transport.sendReqTo(req, addr)
 	return errors.Wrap(err, "serveDLDReport")
 }
 
-func (h *MessageHandler) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.USAReport) error {
-	h.log.Infoln("serveUSAReport")
+func (d *Dispatcher) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.USAReport) error {
+	d.log.Infoln("serveUSAReport")
 
-	sess, err := h.node.Session(lSeid)
+	sess, err := d.node.Session(lSeid)
 	if err != nil {
 		return errors.Wrap(err, "serveUSAReport")
 	}
@@ -128,6 +128,6 @@ func (h *MessageHandler) serveUSAReport(addr net.Addr, lSeid uint64, usars []rep
 			))
 	}
 
-	err = h.transport.sendReqTo(req, addr)
+	err = d.transport.sendReqTo(req, addr)
 	return errors.Wrap(err, "serveUSAReport")
 }

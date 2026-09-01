@@ -44,17 +44,17 @@ type TransactionTimeout struct {
 }
 
 type PfcpServer struct {
-	cfg     *factory.Config
-	listen  string
-	handler *MessageHandler
-	rcvCh   chan ReceivePacket
-	srCh    chan report.SessReport
-	trToCh  chan TransactionTimeout
-	conn    *net.UDPConn
-	txTrans map[string]*TxTransaction // key: RemoteAddr-Sequence
-	rxTrans map[string]*RxTransaction // key: RemoteAddr-Sequence
-	txSeq   uint32
-	log     *logrus.Entry
+	cfg        *factory.Config
+	listen     string
+	dispatcher *Dispatcher
+	rcvCh      chan ReceivePacket
+	srCh       chan report.SessReport
+	trToCh     chan TransactionTimeout
+	conn       *net.UDPConn
+	txTrans    map[string]*TxTransaction // key: RemoteAddr-Sequence
+	rxTrans    map[string]*RxTransaction // key: RemoteAddr-Sequence
+	txSeq      uint32
+	log        *logrus.Entry
 }
 
 func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
@@ -71,7 +71,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		rxTrans: make(map[string]*RxTransaction),
 		log:     log,
 	}
-	server.handler = newMessageHandler(localNode, server, log)
+	server.dispatcher = newDispatcher(localNode, server, log)
 	return server
 }
 
@@ -111,7 +111,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		select {
 		case sr := <-s.srCh:
 			s.log.Tracef("receive SessReport from srCh")
-			s.handler.ServeReport(&sr)
+			s.dispatcher.ServeReport(&sr)
 		case rcvPkt := <-s.rcvCh:
 			s.log.Tracef("receive buf(len=%d) from rcvCh", len(rcvPkt.Buf))
 			if len(rcvPkt.Buf) == 0 {
@@ -149,7 +149,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 					s.log.Debugf("rcvCh: rxtr[%s] req no need to dispatch", trID)
 					continue
 				}
-				err = s.handler.HandleRequest(msg, rcvPkt.RemoteAddr)
+				err = s.dispatcher.HandleRequest(msg, rcvPkt.RemoteAddr)
 				if err != nil {
 					s.log.Errorln(err)
 					s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
@@ -162,7 +162,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 					continue
 				}
 				req := tx.recv(msg)
-				err = s.handler.HandleResponse(msg, rcvPkt.RemoteAddr, req)
+				err = s.dispatcher.HandleResponse(msg, rcvPkt.RemoteAddr, req)
 				if err != nil {
 					s.log.Errorln(err)
 					s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
@@ -246,7 +246,7 @@ func (s *PfcpServer) NotifyTransTimeout(trType TransType, trID string) {
 }
 
 func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
-	return s.handler.PopBufPkt(seid, pdrid)
+	return s.dispatcher.PopBufPkt(seid, pdrid)
 }
 
 func (s *PfcpServer) sendReqTo(msg message.Message, addr net.Addr) error {
