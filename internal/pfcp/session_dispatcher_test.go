@@ -16,7 +16,7 @@ import (
 
 func TestHandleSessionReportResponseSEIDZeroCause(t *testing.T) {
 	addr := &net.UDPAddr{IP: net.IPv4(10, 100, 200, 5), Port: 8805}
-	newDispatcherWithSession := func(remoteID uint64) (*Dispatcher, *Sess) {
+	newDispatcherWithSession := func(remoteID uint64) (*Dispatcher, *Session) {
 		log := logger.PfcpLog.WithField(logger_util.FieldListenAddr, "upf.free5gc.org:8805")
 		node := NewLocalNode("", time.Time{}, forwarder.Empty{}, log)
 		dispatcher := newDispatcher(node, nil, log)

@@ -34,7 +34,7 @@ func TestNewLocalNodeOwnsIndependentState(t *testing.T) {
 	second := NewLocalNode("upf-2.example.com", time.Time{}, forwarder.Empty{}, log)
 
 	first.associations["smf.example.com"] = &PFCPAssociation{}
-	first.sessions.sessions = append(first.sessions.sessions, &Sess{})
+	first.sessions.sessions = append(first.sessions.sessions, &Session{})
 
 	assert.Empty(t, second.associations)
 	assert.Empty(t, second.sessions.sessions)

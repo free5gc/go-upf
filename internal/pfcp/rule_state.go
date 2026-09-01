@@ -11,9 +11,9 @@ import (
 
 // RuleState is the validated, effective session rule state produced by a PFCP
 // request. It stores only changed PDR/QER values and removal tombstones;
-// unchanged rules are read directly from Sess.
+// unchanged rules are read directly from Session.
 type RuleState struct {
-	sess *Sess
+	sess *Session
 	plan *forwarder.ModificationPlan
 
 	createdFARs map[uint32]struct{}
@@ -31,7 +31,7 @@ type RuleState struct {
 }
 
 func newRuleState(
-	sess *Sess,
+	sess *Session,
 	plan *forwarder.ModificationPlan,
 ) *RuleState {
 	return &RuleState{
@@ -54,9 +54,9 @@ func newRuleState(
 }
 
 // ValidateRuleState builds and validates the effective state for the complete
-// request without modifying Sess. The returned state can be used by resolvers
+// request without modifying Session. The returned state can be used by resolvers
 // and committed only after successful kernel execution.
-func (s *Sess) ValidateRuleState(
+func (s *Session) ValidateRuleState(
 	plan *forwarder.ModificationPlan,
 ) (*RuleState, error) {
 	if plan == nil {
@@ -146,7 +146,7 @@ func (state *RuleState) AffectedPDRIDs() []uint16 {
 	return ids
 }
 
-// Commit applies the already validated plan to Sess after kernel execution.
+// Commit applies the already validated plan to Session after kernel execution.
 // It preserves the existing URR reporting/refcount side effects.
 func (state *RuleState) Commit() []report.USAReport {
 	plan := state.plan

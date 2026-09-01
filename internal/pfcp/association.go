@@ -7,7 +7,7 @@ import (
 )
 
 // PFCPAssociation stores remote PFCP peer state and the Local SEIDs
-// established through that association. Rule desired state remains owned by Sess.
+// established through that association. Rule desired state remains owned by Session.
 type PFCPAssociation struct {
 	PeerNodeID string
 	peerAddr   net.Addr

@@ -470,7 +470,7 @@ func (d *Dispatcher) handleSessionModificationRequest(
 	for _, r := range usars {
 		urrInfo, ok := sess.URRIDs[r.URRID]
 		if !ok {
-			sess.log.Warnf("Sess Mod: URRInfo[%#x] not found", r.URRID)
+			sess.log.Warnf("Session Mod: URRInfo[%#x] not found", r.URRID)
 			continue
 		}
 		r.URSEQN = sess.URRSeq(r.URRID)
@@ -532,7 +532,7 @@ func (d *Dispatcher) handleSessionDeletionRequest(
 	for _, r := range usars {
 		urrInfo, ok := sess.URRIDs[r.URRID]
 		if !ok {
-			sess.log.Warnf("Sess Del: URRInfo[%#x] not found", r.URRID)
+			sess.log.Warnf("Session Del: URRInfo[%#x] not found", r.URRID)
 			continue
 		}
 		r.URSEQN = sess.URRSeq(r.URRID)
@@ -672,7 +672,7 @@ func (d *Dispatcher) sendSessEstFailRsp(
 
 func (d *Dispatcher) sendSessModFailRsp(
 	req *message.SessionModificationRequest,
-	sess *Sess,
+	sess *Session,
 	addr net.Addr,
 	cause uint8,
 ) {

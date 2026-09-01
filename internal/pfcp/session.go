@@ -45,7 +45,7 @@ type URRInfo struct {
 	refPdrNum uint16
 }
 
-type Sess struct {
+type Session struct {
 	association *PFCPAssociation // remote PFCP association that owns this session
 	driver      forwarder.Driver // local UPF datapath dependency
 	LocalID     uint64
@@ -60,7 +60,7 @@ type Sess struct {
 	log         *logrus.Entry
 }
 
-func (s *Sess) Push(pdrid uint16, p []byte) {
+func (s *Session) Push(pdrid uint16, p []byte) {
 	pkt := make([]byte, len(p))
 	copy(pkt, p)
 	q, ok := s.q[pdrid]
@@ -77,7 +77,7 @@ func (s *Sess) Push(pdrid uint16, p []byte) {
 	}
 }
 
-func (s *Sess) Len(pdrid uint16) int {
+func (s *Session) Len(pdrid uint16) int {
 	q, ok := s.q[pdrid]
 	if !ok {
 		return 0
@@ -85,7 +85,7 @@ func (s *Sess) Len(pdrid uint16) int {
 	return len(q)
 }
 
-func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
+func (s *Session) Pop(pdrid uint16) ([]byte, bool) {
 	q, ok := s.q[pdrid]
 	if !ok {
 		return nil, ok
@@ -99,7 +99,7 @@ func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
 	}
 }
 
-func (s *Sess) URRSeq(urrid uint32) uint32 {
+func (s *Session) URRSeq(urrid uint32) uint32 {
 	info, ok := s.URRIDs[urrid]
 	if !ok {
 		return 0

@@ -21,7 +21,7 @@ func TestQERDesiredStateCreateAndPartialUpdate(t *testing.T) {
 		t.Fatalf("BuildCreateQERPlan: %v", err)
 	}
 
-	sess := &Sess{QERIDs: make(map[uint32]*QERInfo)}
+	sess := &Session{QERIDs: make(map[uint32]*QERInfo)}
 	sess.ApplyCreateQER(createPlan)
 
 	got := sess.QERIDs[7]
@@ -78,7 +78,7 @@ func TestPDRDesiredStateCreateAndPartialUpdate(t *testing.T) {
 		t.Fatalf("BuildCreatePDRPlan: %v", err)
 	}
 
-	sess := &Sess{
+	sess := &Session{
 		PDRIDs: make(map[uint16]*PDRInfo),
 		URRIDs: map[uint32]*URRInfo{
 			20: {},

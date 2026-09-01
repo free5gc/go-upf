@@ -7,8 +7,8 @@ import (
 	"github.com/free5gc/go-upf/internal/forwarder"
 )
 
-func newRuleStateTestSession() *Sess {
-	return &Sess{
+func newRuleStateTestSession() *Session {
+	return &Session{
 		PDRIDs: map[uint16]*PDRInfo{
 			11: {
 				FARID:         1,
@@ -148,7 +148,7 @@ func TestRuleStateAllowsReferencedRulesToLeaveWithPDR(t *testing.T) {
 }
 
 func TestRuleStateAcceptsReferencesToInFlightCreates(t *testing.T) {
-	sess := &Sess{
+	sess := &Session{
 		PDRIDs: make(map[uint16]*PDRInfo),
 		FARIDs: make(map[uint32]struct{}),
 		QERIDs: make(map[uint32]*QERInfo),

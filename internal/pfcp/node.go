@@ -1,8 +1,6 @@
 package pfcp
 
 import (
-	"net"
-
 	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 
@@ -18,7 +16,7 @@ var (
 	ErrMutualExclusionConflict        = errors.New("conflicting operations on same rule")
 )
 
-func (s *Sess) Close() []report.USAReport {
+func (s *Session) Close() []report.USAReport {
 	plan := forwarder.NewModificationPlan(s.LocalID)
 
 	// Build Remove plans for all rules
@@ -110,7 +108,7 @@ func (s *Sess) Close() []report.USAReport {
 	return usars
 }
 
-func (s *Sess) diassociateURR(urrid uint32) []report.USAReport {
+func (s *Session) diassociateURR(urrid uint32) []report.USAReport {
 	urrInfo, ok := s.URRIDs[urrid]
 	if !ok {
 		return nil
@@ -140,7 +138,7 @@ func (s *Sess) diassociateURR(urrid uint32) []report.USAReport {
 // ============================================================================
 
 // ValidateCreatePDR validates CreatePDR and builds plan without modifying state
-func (s *Sess) ValidateCreatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
+func (s *Session) ValidateCreatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 	plan, err := s.driver.BuildCreatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrRuleCreationModificationFailed
@@ -150,7 +148,7 @@ func (s *Sess) ValidateCreatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 }
 
 // ValidateUpdatePDR validates UpdatePDR and builds plan without modifying state
-func (s *Sess) ValidateUpdatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
+func (s *Session) ValidateUpdatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 	plan, err := s.driver.BuildUpdatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -160,7 +158,7 @@ func (s *Sess) ValidateUpdatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 }
 
 // ValidateRemovePDR validates RemovePDR and builds plan without modifying state
-func (s *Sess) ValidateRemovePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
+func (s *Session) ValidateRemovePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 	plan, err := s.driver.BuildRemovePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -170,7 +168,7 @@ func (s *Sess) ValidateRemovePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
 }
 
 // ValidateCreateFAR validates CreateFAR and builds plan without modifying state
-func (s *Sess) ValidateCreateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
+func (s *Session) ValidateCreateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 	plan, err := s.driver.BuildCreateFARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -180,7 +178,7 @@ func (s *Sess) ValidateCreateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 }
 
 // ValidateUpdateFAR validates UpdateFAR and builds plan without modifying state
-func (s *Sess) ValidateUpdateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
+func (s *Session) ValidateUpdateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 	plan, err := s.driver.BuildUpdateFARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -190,7 +188,7 @@ func (s *Sess) ValidateUpdateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 }
 
 // ValidateRemoveFAR validates RemoveFAR and builds plan without modifying state
-func (s *Sess) ValidateRemoveFAR(req *ie.IE) (*forwarder.FARPlan, error) {
+func (s *Session) ValidateRemoveFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 	plan, err := s.driver.BuildRemoveFARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -200,7 +198,7 @@ func (s *Sess) ValidateRemoveFAR(req *ie.IE) (*forwarder.FARPlan, error) {
 }
 
 // ValidateCreateQER validates CreateQER and builds plan without modifying state
-func (s *Sess) ValidateCreateQER(req *ie.IE) (*forwarder.QERPlan, error) {
+func (s *Session) ValidateCreateQER(req *ie.IE) (*forwarder.QERPlan, error) {
 	plan, err := s.driver.BuildCreateQERPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -210,7 +208,7 @@ func (s *Sess) ValidateCreateQER(req *ie.IE) (*forwarder.QERPlan, error) {
 }
 
 // ValidateUpdateQER validates UpdateQER and builds plan without modifying state
-func (s *Sess) ValidateUpdateQER(req *ie.IE) (*forwarder.QERPlan, error) {
+func (s *Session) ValidateUpdateQER(req *ie.IE) (*forwarder.QERPlan, error) {
 	plan, err := s.driver.BuildUpdateQERPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -220,7 +218,7 @@ func (s *Sess) ValidateUpdateQER(req *ie.IE) (*forwarder.QERPlan, error) {
 }
 
 // ValidateRemoveQER validates RemoveQER and builds plan without modifying state
-func (s *Sess) ValidateRemoveQER(req *ie.IE) (*forwarder.QERPlan, error) {
+func (s *Session) ValidateRemoveQER(req *ie.IE) (*forwarder.QERPlan, error) {
 	plan, err := s.driver.BuildRemoveQERPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -230,7 +228,7 @@ func (s *Sess) ValidateRemoveQER(req *ie.IE) (*forwarder.QERPlan, error) {
 }
 
 // ValidateCreateURR validates CreateURR and builds plan without modifying state
-func (s *Sess) ValidateCreateURR(req *ie.IE) (*forwarder.URRPlan, error) {
+func (s *Session) ValidateCreateURR(req *ie.IE) (*forwarder.URRPlan, error) {
 	plan, err := s.driver.BuildCreateURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -240,7 +238,7 @@ func (s *Sess) ValidateCreateURR(req *ie.IE) (*forwarder.URRPlan, error) {
 }
 
 // ValidateUpdateURR validates UpdateURR and builds plan without modifying state
-func (s *Sess) ValidateUpdateURR(req *ie.IE) (*forwarder.URRPlan, error) {
+func (s *Session) ValidateUpdateURR(req *ie.IE) (*forwarder.URRPlan, error) {
 	plan, err := s.driver.BuildUpdateURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -250,7 +248,7 @@ func (s *Sess) ValidateUpdateURR(req *ie.IE) (*forwarder.URRPlan, error) {
 }
 
 // ValidateRemoveURR validates RemoveURR and builds plan without modifying state
-func (s *Sess) ValidateRemoveURR(req *ie.IE) (*forwarder.URRPlan, error) {
+func (s *Session) ValidateRemoveURR(req *ie.IE) (*forwarder.URRPlan, error) {
 	plan, err := s.driver.BuildRemoveURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -260,7 +258,7 @@ func (s *Sess) ValidateRemoveURR(req *ie.IE) (*forwarder.URRPlan, error) {
 }
 
 // ValidateQueryURR validates QueryURR and builds plan without modifying state
-func (s *Sess) ValidateQueryURR(req *ie.IE) (*forwarder.URRPlan, error) {
+func (s *Session) ValidateQueryURR(req *ie.IE) (*forwarder.URRPlan, error) {
 	plan, err := s.driver.BuildQueryURRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -270,7 +268,7 @@ func (s *Sess) ValidateQueryURR(req *ie.IE) (*forwarder.URRPlan, error) {
 }
 
 // ValidateCreateBAR validates CreateBAR and builds plan without modifying state
-func (s *Sess) ValidateCreateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
+func (s *Session) ValidateCreateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 	plan, err := s.driver.BuildCreateBARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -280,7 +278,7 @@ func (s *Sess) ValidateCreateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 }
 
 // ValidateUpdateBAR validates UpdateBAR and builds plan without modifying state
-func (s *Sess) ValidateUpdateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
+func (s *Session) ValidateUpdateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 	plan, err := s.driver.BuildUpdateBARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -290,7 +288,7 @@ func (s *Sess) ValidateUpdateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 }
 
 // ValidateRemoveBAR validates RemoveBAR and builds plan without modifying state
-func (s *Sess) ValidateRemoveBAR(req *ie.IE) (*forwarder.BARPlan, error) {
+func (s *Session) ValidateRemoveBAR(req *ie.IE) (*forwarder.BARPlan, error) {
 	plan, err := s.driver.BuildRemoveBARPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -348,7 +346,7 @@ func mergePDRInfo(current *PDRInfo, patch *forwarder.PDRPlan) *PDRInfo {
 }
 
 // ApplyCreatePDR updates session state after CreatePDR execution
-func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
+func (s *Session) ApplyCreatePDR(plan *forwarder.PDRPlan) {
 	info := newPDRInfo(plan)
 	for urrid := range info.RelatedURRIDs {
 		s.URRIDs[urrid].refPdrNum++
@@ -359,7 +357,7 @@ func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
 
 // ApplyUpdatePDR updates session state after UpdatePDR execution
 // Returns USAReports from disassociated URRs
-func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
+func (s *Session) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
 	current := s.PDRIDs[plan.PDRID]
 	next := mergePDRInfo(current, plan)
 
@@ -383,7 +381,7 @@ func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
 
 // ApplyRemovePDR updates session state after RemovePDR execution
 // Returns USAReports from disassociated URRs
-func (s *Sess) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
+func (s *Session) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
 	pdrInfo := s.PDRIDs[plan.PDRID]
 
 	var usars []report.USAReport
@@ -396,12 +394,12 @@ func (s *Sess) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
 }
 
 // ApplyCreateFAR updates session state after CreateFAR execution
-func (s *Sess) ApplyCreateFAR(plan *forwarder.FARPlan) {
+func (s *Session) ApplyCreateFAR(plan *forwarder.FARPlan) {
 	s.FARIDs[plan.FARID] = struct{}{}
 }
 
 // ApplyRemoveFAR updates session state after RemoveFAR execution
-func (s *Sess) ApplyRemoveFAR(plan *forwarder.FARPlan) {
+func (s *Session) ApplyRemoveFAR(plan *forwarder.FARPlan) {
 	delete(s.FARIDs, plan.FARID)
 }
 
@@ -440,22 +438,22 @@ func (q *QERInfo) applyDesiredStatePatch(patch forwarder.QERDesiredStatePatch) {
 }
 
 // ApplyCreateQER updates session state after CreateQER execution
-func (s *Sess) ApplyCreateQER(plan *forwarder.QERPlan) {
+func (s *Session) ApplyCreateQER(plan *forwarder.QERPlan) {
 	s.QERIDs[plan.QERID] = newQERInfo(plan.DesiredState)
 }
 
 // ApplyUpdateQER merges fields present in Update QER into desired state.
-func (s *Sess) ApplyUpdateQER(plan *forwarder.QERPlan) {
+func (s *Session) ApplyUpdateQER(plan *forwarder.QERPlan) {
 	s.QERIDs[plan.QERID] = mergeQERInfo(s.QERIDs[plan.QERID], plan.DesiredState)
 }
 
 // ApplyRemoveQER updates session state after RemoveQER execution
-func (s *Sess) ApplyRemoveQER(plan *forwarder.QERPlan) {
+func (s *Session) ApplyRemoveQER(plan *forwarder.QERPlan) {
 	delete(s.QERIDs, plan.QERID)
 }
 
 // ApplyCreateURR updates session state after CreateURR execution
-func (s *Sess) ApplyCreateURR(plan *forwarder.URRPlan) {
+func (s *Session) ApplyCreateURR(plan *forwarder.URRPlan) {
 	mInfo := &ie.IE{}
 	if plan.MeasureInfoIE != nil {
 		mInfo = plan.MeasureInfoIE
@@ -478,7 +476,7 @@ func (s *Sess) ApplyCreateURR(plan *forwarder.URRPlan) {
 }
 
 // ApplyUpdateURR updates session state after UpdateURR execution
-func (s *Sess) ApplyUpdateURR(plan *forwarder.URRPlan) {
+func (s *Session) ApplyUpdateURR(plan *forwarder.URRPlan) {
 	urrInfo, ok := s.URRIDs[plan.URRID]
 	if !ok {
 		return
@@ -502,143 +500,27 @@ func (s *Sess) ApplyUpdateURR(plan *forwarder.URRPlan) {
 }
 
 // ApplyRemoveURR updates session state after RemoveURR execution
-func (s *Sess) ApplyRemoveURR(plan *forwarder.URRPlan) {
+func (s *Session) ApplyRemoveURR(plan *forwarder.URRPlan) {
 	if info, ok := s.URRIDs[plan.URRID]; ok {
 		info.removed = true
 	}
 }
 
 // ApplyCreateBAR updates session state after CreateBAR execution
-func (s *Sess) ApplyCreateBAR(plan *forwarder.BARPlan) {
+func (s *Session) ApplyCreateBAR(plan *forwarder.BARPlan) {
 	s.BARIDs[plan.BARID] = struct{}{}
 }
 
 // ApplyRemoveBAR updates session state after RemoveBAR execution
-func (s *Sess) ApplyRemoveBAR(plan *forwarder.BARPlan) {
+func (s *Session) ApplyRemoveBAR(plan *forwarder.BARPlan) {
 	delete(s.BARIDs, plan.BARID)
 }
 
 // CleanupRemovedURRs removes URRInfo entries marked as removed
-func (s *Sess) CleanupRemovedURRs() {
+func (s *Session) CleanupRemovedURRs() {
 	for id, info := range s.URRIDs {
 		if info.removed {
 			delete(s.URRIDs, id)
 		}
 	}
-}
-
-// SessionStore owns the UPF-wide Local SEID namespace and canonical Session objects.
-type SessionStore struct {
-	sessions  []*Sess
-	freeSEIDs []uint64
-}
-
-func (s *SessionStore) Get(localSEID uint64) (*Sess, error) {
-	if localSEID == 0 {
-		return nil, errors.New("SessionStore.Get: invalid localSEID:0")
-	}
-
-	// Length as int; compare as uint64 to match localSEID type.
-	sessionCount := len(s.sessions)
-	if localSEID > uint64(sessionCount) {
-		return nil, errors.Errorf(
-			"SessionStore.Get: session not found (localSEID:%#x)",
-			localSEID,
-		)
-	}
-
-	// Safe: 1 <= localSEID <= sessionCount guarantees a valid index.
-	index := int(localSEID) - 1
-	sess := s.sessions[index]
-	if sess == nil {
-		return nil, errors.Errorf(
-			"SessionStore.Get: session not found (localSEID:%#x)",
-			localSEID,
-		)
-	}
-	return sess, nil
-}
-
-func (s *SessionStore) FindByRemoteSEID(
-	remoteSEID uint64,
-	peerAddr net.Addr,
-) (*Sess, error) {
-	peerAddrString := ""
-	if peerAddr != nil {
-		peerAddrString = peerAddr.String()
-	}
-
-	for _, sess := range s.sessions {
-		if sess == nil || sess.association == nil || sess.association.peerAddr == nil {
-			continue
-		}
-		if sess.RemoteID == remoteSEID &&
-			sess.association.peerAddr.String() == peerAddrString {
-			return sess, nil
-		}
-	}
-	return nil, errors.Errorf(
-		"SessionStore.FindByRemoteSEID: session not found (remoteSEID:%#x, addr:%s)",
-		remoteSEID,
-		peerAddr,
-	)
-}
-
-func (s *SessionStore) Create(
-	remoteSEID uint64,
-	queueLen int,
-	driver forwarder.Driver,
-) *Sess {
-	sess := &Sess{
-		RemoteID: remoteSEID,
-		driver:   driver,
-		PDRIDs:   make(map[uint16]*PDRInfo),
-		FARIDs:   make(map[uint32]struct{}),
-		QERIDs:   make(map[uint32]*QERInfo),
-		URRIDs:   make(map[uint32]*URRInfo),
-		BARIDs:   make(map[uint8]struct{}),
-		q:        make(map[uint16]chan []byte),
-		qlen:     queueLen,
-	}
-	last := len(s.freeSEIDs) - 1
-	if last >= 0 {
-		sess.LocalID = s.freeSEIDs[last]
-		s.freeSEIDs = s.freeSEIDs[:last]
-		s.sessions[sess.LocalID-1] = sess
-	} else {
-		s.sessions = append(s.sessions, sess)
-		sess.LocalID = uint64(len(s.sessions))
-	}
-	return sess
-}
-
-func (s *SessionStore) Delete(localSEID uint64) ([]report.USAReport, error) {
-	if localSEID == 0 {
-		return nil, errors.New("SessionStore.Delete: invalid localSEID:0")
-	}
-
-	// Capacity as int; compare as uint64 to match localSEID type.
-	sessionCapacity := len(s.sessions)
-	if localSEID > uint64(sessionCapacity) {
-		return nil, errors.Errorf(
-			"SessionStore.Delete: session not found (localSEID:%#x)",
-			localSEID,
-		)
-	}
-
-	// Safe: 1 <= localSEID <= sessionCapacity guarantees a valid index.
-	index := int(localSEID) - 1
-	if s.sessions[index] == nil {
-		return nil, errors.Errorf(
-			"SessionStore.Delete: session not found (localSEID:%#x)",
-			localSEID,
-		)
-	}
-
-	s.sessions[index].log.Infoln("session deleted")
-	reports := s.sessions[index].Close()
-	s.sessions[index] = nil
-	s.freeSEIDs = append(s.freeSEIDs, localSEID)
-
-	return reports, nil
 }

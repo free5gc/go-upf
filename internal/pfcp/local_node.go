@@ -98,7 +98,7 @@ func (n *LocalNode) UpdateAssociationPeerNodeID(
 }
 
 // Session returns a session from the UPF-wide Local SEID namespace.
-func (n *LocalNode) Session(localSEID uint64) (*Sess, error) {
+func (n *LocalNode) Session(localSEID uint64) (*Session, error) {
 	return n.sessions.Get(localSEID)
 }
 
@@ -106,7 +106,7 @@ func (n *LocalNode) Session(localSEID uint64) (*Sess, error) {
 func (n *LocalNode) SessionForAssociation(
 	association *PFCPAssociation,
 	localSEID uint64,
-) (*Sess, error) {
+) (*Session, error) {
 	if association == nil {
 		return nil, errors.New("LocalNode.SessionForAssociation: nil association")
 	}
@@ -123,7 +123,7 @@ func (n *LocalNode) SessionForAssociation(
 func (n *LocalNode) FindSessionByRemoteSEID(
 	remoteSEID uint64,
 	peerAddr net.Addr,
-) (*Sess, error) {
+) (*Session, error) {
 	return n.sessions.FindByRemoteSEID(remoteSEID, peerAddr)
 }
 
@@ -131,7 +131,7 @@ func (n *LocalNode) FindSessionByRemoteSEID(
 func (n *LocalNode) CreateSession(
 	association *PFCPAssociation,
 	remoteSEID uint64,
-) *Sess {
+) *Session {
 	sess := n.sessions.Create(remoteSEID, BUFFQ_LEN, n.datapath)
 	association.sessionIDs[sess.LocalID] = struct{}{}
 	sess.association = association
