@@ -4,11 +4,14 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/khirono/go-nl"
+
+	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder"
 )
 
 func newRuleStateTestSession() *Session {
-	return &Session{
+	sess := &Session{
 		PDRIDs: map[uint16]*PDRInfo{
 			11: {
 				FARID:         1,
@@ -22,6 +25,12 @@ func newRuleStateTestSession() *Session {
 		URRIDs: map[uint32]*URRInfo{3: {}},
 		BARIDs: make(map[uint8]struct{}),
 	}
+	sess.appliedRules = newAppliedRulePlans()
+	sess.appliedRules.pdrs[11] = &forwarder.PDRPlan{PDRID: 11}
+	sess.appliedRules.fars[1] = &forwarder.FARPlan{FARID: 1}
+	sess.appliedRules.qers[7] = &forwarder.QERPlan{QERID: 7}
+	sess.appliedRules.urrs[3] = &forwarder.URRPlan{URRID: 3}
+	return sess
 }
 
 func TestRuleStateAllowsAtomicPDRRewire(t *testing.T) {
@@ -315,9 +324,157 @@ func TestRuleStateMergesQERPatchAndCommits(t *testing.T) {
 		t.Fatalf("QER-only update did not affect referencing PDR: %v", got)
 	}
 
-	ruleState.Commit()
+	ruleState.Commit(plan)
 	committed := sess.QERIDs[7]
 	if !committed.HasMBR || committed.MBRULBps != mbr.UplinkBps {
 		t.Fatalf("commit did not publish validated QER state: %+v", committed)
 	}
+}
+
+func TestRuleStateCommitAppliesOnlyExecutorResult(t *testing.T) {
+	session := newRuleStateTestSession()
+	qfi := uint8(9)
+	mbr := &forwarder.DirectionalBitRate{
+		UplinkBps:   2_000_000,
+		DownlinkBps: 1_000_000,
+	}
+	requested := &forwarder.ModificationPlan{
+		CreateQERs: []*forwarder.QERPlan{{
+			QERID: 8,
+			DesiredState: forwarder.QERDesiredStatePatch{
+				QFI: &qfi,
+			},
+		}},
+		UpdateQERs: []*forwarder.QERPlan{{
+			QERID: 7,
+			DesiredState: forwarder.QERDesiredStatePatch{
+				MBR: mbr,
+			},
+		}},
+	}
+
+	state, err := session.ValidateRuleState(requested)
+	if err != nil {
+		t.Fatalf("ValidateRuleState: %v", err)
+	}
+
+	applied := forwarder.NewModificationPlan(requested.SEID)
+	applied.CreateQERs = requested.CreateQERs
+	state.Commit(applied)
+
+	if _, exists := session.QERIDs[8]; !exists {
+		t.Fatal("successfully applied CreateQER was not committed")
+	}
+	if session.QERIDs[7].HasMBR {
+		t.Fatal("failed UpdateQER was committed to Session")
+	}
+}
+
+func TestRuleStateBuildsRollbackFromKernelAppliedPlans(t *testing.T) {
+	sess := &Session{
+		PDRIDs: make(map[uint16]*PDRInfo),
+		FARIDs: make(map[uint32]struct{}),
+		QERIDs: make(map[uint32]*QERInfo),
+		URRIDs: make(map[uint32]*URRInfo),
+		BARIDs: make(map[uint8]struct{}),
+	}
+
+	create := &forwarder.QERPlan{
+		QERID: 7,
+		Attrs: []nl.Attr{{
+			Type:  gtp5gnl.QER_GATE,
+			Value: nl.AttrU8(1),
+		}},
+	}
+	sess.ApplyCreateQER(create)
+
+	update := &forwarder.QERPlan{
+		QERID: 7,
+		Attrs: []nl.Attr{{
+			Type:  gtp5gnl.QER_QFI,
+			Value: nl.AttrU8(9),
+		}},
+	}
+	first := &forwarder.ModificationPlan{UpdateQERs: []*forwarder.QERPlan{update}}
+	state, err := sess.ValidateRuleState(first)
+	if err != nil {
+		t.Fatalf("ValidateRuleState first update: %v", err)
+	}
+	before := first.Rollback.QERs[7]
+	if before == nil || len(before.Attrs) != 1 || before.Attrs[0].Type != gtp5gnl.QER_GATE {
+		t.Fatalf("first rollback image does not contain original QER: %+v", before)
+	}
+
+	state.Commit(first)
+
+	second := &forwarder.ModificationPlan{
+		UpdateQERs: []*forwarder.QERPlan{{
+			QERID: 7,
+			Attrs: []nl.Attr{{
+				Type:  gtp5gnl.QER_MBR,
+				Value: nl.AttrList{},
+			}},
+		}},
+	}
+	if _, err := sess.ValidateRuleState(second); err != nil {
+		t.Fatalf("ValidateRuleState second update: %v", err)
+	}
+	before = second.Rollback.QERs[7]
+	if before == nil || len(before.Attrs) != 2 {
+		t.Fatalf("second rollback image is not the complete applied QER: %+v", before)
+	}
+	if before.Attrs[0].Type != gtp5gnl.QER_GATE ||
+		before.Attrs[1].Type != gtp5gnl.QER_QFI {
+		t.Fatalf("unexpected merged rollback attrs: %+v", before.Attrs)
+	}
+}
+
+func TestAppliedRuleAttrMergeKeepsRuleNamespacesSeparate(t *testing.T) {
+	t.Run("PDR PDI is replaced as a complete field", func(t *testing.T) {
+		current := &forwarder.PDRPlan{Attrs: []nl.Attr{{
+			Type: gtp5gnl.PDR_PDI,
+			Value: nl.AttrList{
+				{Type: gtp5gnl.PDI_SRC_INTF, Value: nl.AttrU8(1)},
+				{Type: gtp5gnl.PDI_UE_ADDR_IPV4, Value: nl.AttrBytes{10, 0, 0, 1}},
+			},
+		}}}
+		patch := &forwarder.PDRPlan{Attrs: []nl.Attr{{
+			Type: gtp5gnl.PDR_PDI,
+			Value: nl.AttrList{
+				{Type: gtp5gnl.PDI_SRC_INTF, Value: nl.AttrU8(2)},
+			},
+		}}}
+
+		merged := mergePDRRulePlan(current, patch)
+		pdi, ok := merged.Attrs[0].Value.(nl.AttrList)
+		if !ok || len(pdi) != 1 || pdi[0].Type != gtp5gnl.PDI_SRC_INTF {
+			t.Fatalf("PDI was recursively merged across rule namespaces: %+v", merged.Attrs)
+		}
+	})
+
+	t.Run("FAR forwarding parameters preserve omitted nested fields", func(t *testing.T) {
+		current := &forwarder.FARPlan{Attrs: []nl.Attr{{
+			Type: gtp5gnl.FAR_FORWARDING_PARAMETER,
+			Value: nl.AttrList{
+				{Type: gtp5gnl.FORWARDING_PARAMETER_OUTER_HEADER_CREATION, Value: nl.AttrList{}},
+				{Type: gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY, Value: nl.AttrString("1")},
+			},
+		}}}
+		patch := &forwarder.FARPlan{Attrs: []nl.Attr{{
+			Type: gtp5gnl.FAR_FORWARDING_PARAMETER,
+			Value: nl.AttrList{
+				{Type: gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY, Value: nl.AttrString("2")},
+			},
+		}}}
+
+		merged := mergeFARRulePlan(current, patch)
+		params, ok := merged.Attrs[0].Value.(nl.AttrList)
+		if !ok || len(params) != 2 {
+			t.Fatalf("FAR nested state was not preserved: %+v", merged.Attrs)
+		}
+		if params[0].Type != gtp5gnl.FORWARDING_PARAMETER_OUTER_HEADER_CREATION ||
+			params[1].Type != gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY {
+			t.Fatalf("unexpected FAR nested merge: %+v", params)
+		}
+	})
 }

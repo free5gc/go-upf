@@ -72,15 +72,16 @@ func (s *SessionStore) Create(
 	driver forwarder.Driver,
 ) *Session {
 	sess := &Session{
-		RemoteID: remoteSEID,
-		driver:   driver,
-		PDRIDs:   make(map[uint16]*PDRInfo),
-		FARIDs:   make(map[uint32]struct{}),
-		QERIDs:   make(map[uint32]*QERInfo),
-		URRIDs:   make(map[uint32]*URRInfo),
-		BARIDs:   make(map[uint8]struct{}),
-		q:        make(map[uint16]chan []byte),
-		qlen:     queueLen,
+		RemoteID:     remoteSEID,
+		driver:       driver,
+		PDRIDs:       make(map[uint16]*PDRInfo),
+		FARIDs:       make(map[uint32]struct{}),
+		QERIDs:       make(map[uint32]*QERInfo),
+		URRIDs:       make(map[uint32]*URRInfo),
+		BARIDs:       make(map[uint8]struct{}),
+		appliedRules: newAppliedRulePlans(),
+		q:            make(map[uint16]chan []byte),
+		qlen:         queueLen,
 	}
 	last := len(s.freeSEIDs) - 1
 	if last >= 0 {

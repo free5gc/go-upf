@@ -68,6 +68,7 @@ func TestPDRDesiredStateCreateAndPartialUpdate(t *testing.T) {
 	g := new(forwarder.Gtp5g)
 	createPlan, err := g.BuildCreatePDRPlan(10, ie.NewCreatePDR(
 		ie.NewPDRID(11),
+		ie.NewPrecedence(100),
 		ie.NewPDI(ie.NewSourceInterface(ie.SrcInterfaceAccess)),
 		ie.NewFARID(5),
 		ie.NewURRID(20),
@@ -181,6 +182,7 @@ func TestQERDesiredStateRejectsInvalidQFIAndGate(t *testing.T) {
 
 	if _, err := g.BuildCreateQERPlan(10, ie.NewCreateQER(
 		ie.NewQERID(1),
+		ie.NewGateStatus(ie.GateStatusOpen, ie.GateStatusOpen),
 		ie.NewQFI(64),
 	)); err == nil {
 		t.Fatal("QFI 64 was accepted")

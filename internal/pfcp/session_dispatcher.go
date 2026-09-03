@@ -7,7 +7,6 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
-	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 )
 
@@ -53,69 +52,14 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	// allocate a session
 	sess := d.node.CreateSession(association, fseid.SEID)
 
-	// ========================================================================
-	// PHASE 1: Validation - Build all plans and validate without execution
-	// ========================================================================
-	plan := forwarder.NewModificationPlan(sess.LocalID)
-
-	for _, i := range req.CreateFAR {
-		p, err1 := sess.ValidateCreateFAR(i)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreateFAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessEstFailRsp(req, addr, cause)
-			d.node.DeleteSession(sess.LocalID)
-			return
-		}
-		plan.CreateFARs = append(plan.CreateFARs, p)
-	}
-
-	for _, i := range req.CreateQER {
-		p, err1 := sess.ValidateCreateQER(i)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreateQER error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessEstFailRsp(req, addr, cause)
-			d.node.DeleteSession(sess.LocalID)
-			return
-		}
-		plan.CreateQERs = append(plan.CreateQERs, p)
-	}
-
-	for _, i := range req.CreateURR {
-		p, err1 := sess.ValidateCreateURR(i)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreateURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessEstFailRsp(req, addr, cause)
-			d.node.DeleteSession(sess.LocalID)
-			return
-		}
-		plan.CreateURRs = append(plan.CreateURRs, p)
-	}
-
-	if req.CreateBAR != nil {
-		p, err1 := sess.ValidateCreateBAR(req.CreateBAR)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreateBAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessEstFailRsp(req, addr, cause)
-			d.node.DeleteSession(sess.LocalID)
-			return
-		}
-		plan.CreateBARs = append(plan.CreateBARs, p)
-	}
-
-	for _, i := range req.CreatePDR {
-		p, err1 := sess.ValidateCreatePDR(i)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreatePDR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessEstFailRsp(req, addr, cause)
-			d.node.DeleteSession(sess.LocalID)
-			return
-		}
-		plan.CreatePDRs = append(plan.CreatePDRs, p)
+	// Build one request-level plan without mutating Session or the kernel.
+	plan, err1 := sess.BuildEstablishmentPlan(req)
+	if err1 != nil {
+		sess.log.Errorf("Est plan build error: %v", err1)
+		cause := pfcpCauseFromError(err1)
+		d.sendSessEstFailRsp(req, addr, cause)
+		d.node.DeleteSession(sess.LocalID)
+		return
 	}
 
 	ruleState, err1 := sess.ValidateRuleState(plan)
@@ -130,7 +74,8 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	// ========================================================================
 	// PHASE 2: Execution - Execute all Create operations (fail-fast)
 	// ========================================================================
-	if _, err1 := sess.driver.ExecuteEstablishmentPlan(plan); err1 != nil {
+	execResult, err1 := sess.driver.ExecuteEstablishmentPlan(plan)
+	if err1 != nil {
 		sess.log.Errorf("Est execution error: %v", err1)
 		d.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
 		d.node.DeleteSession(sess.LocalID)
@@ -138,9 +83,9 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	}
 
 	// ========================================================================
-	// PHASE 3: Commit - Publish the validated desired state
+	// PHASE 3: Commit - Publish only kernel-applied state
 	// ========================================================================
-	ruleState.Commit()
+	ruleState.Commit(execResult.AppliedPlan)
 
 	CreatedPDRList := make([]*ie.IE, 0)
 	for _, p := range plan.CreatePDRs {
@@ -228,186 +173,15 @@ func (d *Dispatcher) handleSessionModificationRequest(
 		d.node.UpdateAssociationPeerNodeID(sess.association, peerNodeID)
 	}
 
-	// ========================================================================
-	// PHASE 1: Validation - Build all plans and validate without execution
-	// ========================================================================
-	plan := forwarder.NewModificationPlan(sess.LocalID)
-
-	for _, i := range req.CreateFAR {
-		p, err1 := sess.ValidateCreateFAR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreateFAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreateFARs = append(plan.CreateFARs, p)
+	// Build one request-level plan without mutating Session or the kernel.
+	plan, err1 := sess.BuildModificationPlan(req)
+	if err1 != nil {
+		sess.log.Errorf("Mod plan build error: %v", err1)
+		cause := pfcpCauseFromError(err1)
+		d.sendSessModFailRsp(req, sess, addr, cause)
+		return
 	}
 
-	for _, i := range req.CreateQER {
-		p, err1 := sess.ValidateCreateQER(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreateQER error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreateQERs = append(plan.CreateQERs, p)
-	}
-
-	for _, i := range req.CreateURR {
-		p, err1 := sess.ValidateCreateURR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreateURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreateURRs = append(plan.CreateURRs, p)
-	}
-
-	if req.CreateBAR != nil {
-		p, err1 := sess.ValidateCreateBAR(req.CreateBAR)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreateBAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreateBARs = append(plan.CreateBARs, p)
-	}
-
-	for _, i := range req.CreatePDR {
-		p, err1 := sess.ValidateCreatePDR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreatePDR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreatePDRs = append(plan.CreatePDRs, p)
-	}
-
-	for _, i := range req.UpdateFAR {
-		p, err1 := sess.ValidateUpdateFAR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdateFAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdateFARs = append(plan.UpdateFARs, p)
-	}
-
-	for _, i := range req.UpdateQER {
-		p, err1 := sess.ValidateUpdateQER(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdateQER error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdateQERs = append(plan.UpdateQERs, p)
-	}
-
-	for _, i := range req.UpdateURR {
-		p, err1 := sess.ValidateUpdateURR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdateURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdateURRs = append(plan.UpdateURRs, p)
-	}
-
-	if req.UpdateBAR != nil {
-		p, err1 := sess.ValidateUpdateBAR(req.UpdateBAR)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdateBAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdateBARs = append(plan.UpdateBARs, p)
-	}
-
-	for _, i := range req.UpdatePDR {
-		p, err1 := sess.ValidateUpdatePDR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdatePDR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdatePDRs = append(plan.UpdatePDRs, p)
-	}
-
-	for _, i := range req.QueryURR {
-		p, err1 := sess.ValidateQueryURR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateQueryURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.QueryURRs = append(plan.QueryURRs, p)
-	}
-
-	for _, i := range req.RemoveFAR {
-		p, err1 := sess.ValidateRemoveFAR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemoveFAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemoveFARs = append(plan.RemoveFARs, p)
-	}
-
-	for _, i := range req.RemoveQER {
-		p, err1 := sess.ValidateRemoveQER(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemoveQER error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemoveQERs = append(plan.RemoveQERs, p)
-	}
-
-	for _, i := range req.RemoveURR {
-		p, err1 := sess.ValidateRemoveURR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemoveURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemoveURRs = append(plan.RemoveURRs, p)
-	}
-
-	if req.RemoveBAR != nil {
-		p, err1 := sess.ValidateRemoveBAR(req.RemoveBAR)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemoveBAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemoveBARs = append(plan.RemoveBARs, p)
-	}
-
-	for _, i := range req.RemovePDR {
-		p, err1 := sess.ValidateRemovePDR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemovePDR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			d.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemovePDRs = append(plan.RemovePDRs, p)
-	}
 	ruleState, err1 := sess.ValidateRuleState(plan)
 	if err1 != nil {
 		sess.log.Errorf("Mod rule-state validation error: %v", err1)
@@ -417,25 +191,25 @@ func (d *Dispatcher) handleSessionModificationRequest(
 	}
 
 	// ========================================================================
-	// PHASE 2: Execution - Execute all operations via gtp5gnl
-	// Create operations are fail-fast: an error here means a rule creation
-	// failed and the rules created by this plan were rolled back. Remove/Update
-	// operations are best-effort and never surface an error.
+	// PHASE 2: Execution - Execute all operations via gtp5gnl.
+	// The result records only operations that reached the kernel successfully.
 	// ========================================================================
 	execResult, err1 := sess.driver.ExecuteModificationPlan(plan)
 	if err1 != nil {
-		// A Create operation failed and was rolled back, so the session state
-		// must not be updated: reject the request instead of reporting success
-		// for rules that were not installed.
+		// The executor has already rolled back every successful operation. Session
+		// still represents the pre-request kernel state, so nothing is committed.
 		sess.log.Errorf("Mod execution error: %v", err1)
 		d.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
 		return
 	}
 
 	// ========================================================================
-	// PHASE 3: Commit - Publish the validated desired state
+	// PHASE 3: Commit - Publish the fully applied request.
 	// ========================================================================
-	usars := ruleState.Commit()
+	var usars []report.USAReport
+	if execResult != nil {
+		usars = ruleState.Commit(execResult.AppliedPlan)
+	}
 
 	// Collect USAReports from execution result (RemoveURR, UpdateURR, QueryURR)
 	if execResult != nil && len(execResult.USAReports) > 0 {

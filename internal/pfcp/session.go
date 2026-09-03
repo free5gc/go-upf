@@ -20,7 +20,7 @@ type PDRInfo struct {
 	HasSourceInterface bool
 }
 
-// QERInfo is the merged PFCP desired state used by the FlowQoS resolver.
+// QERInfo is the last kernel-applied PFCP state used by the FlowQoS resolver.
 // Rate values are stored in bits per second, not PFCP's wire-level kbps.
 type QERInfo struct {
 	QFI uint8
@@ -45,19 +45,48 @@ type URRInfo struct {
 	refPdrNum uint16
 }
 
+// appliedRulePlans keeps the complete create-form plans for the rules currently
+// applied in the kernel. The PFCP-facing Info maps remain optimized for runtime
+// lookups, while these plans provide before-images for request rollback.
+type appliedRulePlans struct {
+	pdrs map[uint16]*forwarder.PDRPlan
+	fars map[uint32]*forwarder.FARPlan
+	qers map[uint32]*forwarder.QERPlan
+	urrs map[uint32]*forwarder.URRPlan
+	bars map[uint8]*forwarder.BARPlan
+}
+
+func newAppliedRulePlans() *appliedRulePlans {
+	return &appliedRulePlans{
+		pdrs: make(map[uint16]*forwarder.PDRPlan),
+		fars: make(map[uint32]*forwarder.FARPlan),
+		qers: make(map[uint32]*forwarder.QERPlan),
+		urrs: make(map[uint32]*forwarder.URRPlan),
+		bars: make(map[uint8]*forwarder.BARPlan),
+	}
+}
+
+func (s *Session) ensureAppliedRulePlans() *appliedRulePlans {
+	if s.appliedRules == nil {
+		s.appliedRules = newAppliedRulePlans()
+	}
+	return s.appliedRules
+}
+
 type Session struct {
-	association *PFCPAssociation // remote PFCP association that owns this session
-	driver      forwarder.Driver // local UPF datapath dependency
-	LocalID     uint64
-	RemoteID    uint64
-	PDRIDs      map[uint16]*PDRInfo    // key: PDR_ID
-	FARIDs      map[uint32]struct{}    // key: FAR_ID
-	QERIDs      map[uint32]*QERInfo    // key: QER_ID
-	URRIDs      map[uint32]*URRInfo    // key: URR_ID
-	BARIDs      map[uint8]struct{}     // key: BAR_ID
-	q           map[uint16]chan []byte // key: PDR_ID
-	qlen        int
-	log         *logrus.Entry
+	association  *PFCPAssociation // remote PFCP association that owns this session
+	driver       forwarder.Driver // local UPF datapath dependency
+	LocalID      uint64
+	RemoteID     uint64
+	PDRIDs       map[uint16]*PDRInfo    // key: PDR_ID
+	FARIDs       map[uint32]struct{}    // key: FAR_ID
+	QERIDs       map[uint32]*QERInfo    // key: QER_ID
+	URRIDs       map[uint32]*URRInfo    // key: URR_ID
+	BARIDs       map[uint8]struct{}     // key: BAR_ID
+	appliedRules *appliedRulePlans      // complete kernel-applied rule before-images
+	q            map[uint16]chan []byte // key: PDR_ID
+	qlen         int
+	log          *logrus.Entry
 }
 
 func (s *Session) Push(pdrid uint16, p []byte) {

@@ -44,14 +44,14 @@ type Driver interface {
 	BuildUpdateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
 	BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
 
-	// ExecuteModificationPlan executes all operations in the plan.
-	// Create operations are fail-fast: on failure the rules created by this plan
-	// are rolled back and an error is returned. Remove/Update/Query operations
-	// are best-effort: failures are logged and execution continues.
+	// ExecuteModificationPlan executes all operations in the plan. A plan with
+	// rollback before-images is fail-fast and reverses successful state changes
+	// before returning an error. Plans without rollback metadata retain
+	// best-effort cleanup semantics.
 	ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error)
 
-	// ExecuteEstablishmentPlan executes Create operations for session establishment
-	// Uses fail-fast: returns error on first failure
+	// ExecuteEstablishmentPlan stops on the first Create failure and rolls back
+	// every rule created earlier by the same plan.
 	ExecuteEstablishmentPlan(plan *ModificationPlan) (*ExecutionResult, error)
 }
 

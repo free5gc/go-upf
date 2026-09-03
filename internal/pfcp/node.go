@@ -1,9 +1,13 @@
 package pfcp
 
 import (
+	"time"
+
+	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 
+	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 )
@@ -134,172 +138,206 @@ func (s *Session) diassociateURR(urrid uint32) []report.USAReport {
 }
 
 // ============================================================================
-// Validate* methods - validation phase (check state, build plans)
-// ============================================================================
-
-// ValidateCreatePDR validates CreatePDR and builds plan without modifying state
-func (s *Session) ValidateCreatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
-	plan, err := s.driver.BuildCreatePDRPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrRuleCreationModificationFailed
-	}
-
-	return plan, nil
-}
-
-// ValidateUpdatePDR validates UpdatePDR and builds plan without modifying state
-func (s *Session) ValidateUpdatePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
-	plan, err := s.driver.BuildUpdatePDRPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateRemovePDR validates RemovePDR and builds plan without modifying state
-func (s *Session) ValidateRemovePDR(req *ie.IE) (*forwarder.PDRPlan, error) {
-	plan, err := s.driver.BuildRemovePDRPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateCreateFAR validates CreateFAR and builds plan without modifying state
-func (s *Session) ValidateCreateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
-	plan, err := s.driver.BuildCreateFARPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateUpdateFAR validates UpdateFAR and builds plan without modifying state
-func (s *Session) ValidateUpdateFAR(req *ie.IE) (*forwarder.FARPlan, error) {
-	plan, err := s.driver.BuildUpdateFARPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateRemoveFAR validates RemoveFAR and builds plan without modifying state
-func (s *Session) ValidateRemoveFAR(req *ie.IE) (*forwarder.FARPlan, error) {
-	plan, err := s.driver.BuildRemoveFARPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateCreateQER validates CreateQER and builds plan without modifying state
-func (s *Session) ValidateCreateQER(req *ie.IE) (*forwarder.QERPlan, error) {
-	plan, err := s.driver.BuildCreateQERPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateUpdateQER validates UpdateQER and builds plan without modifying state
-func (s *Session) ValidateUpdateQER(req *ie.IE) (*forwarder.QERPlan, error) {
-	plan, err := s.driver.BuildUpdateQERPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateRemoveQER validates RemoveQER and builds plan without modifying state
-func (s *Session) ValidateRemoveQER(req *ie.IE) (*forwarder.QERPlan, error) {
-	plan, err := s.driver.BuildRemoveQERPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateCreateURR validates CreateURR and builds plan without modifying state
-func (s *Session) ValidateCreateURR(req *ie.IE) (*forwarder.URRPlan, error) {
-	plan, err := s.driver.BuildCreateURRPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateUpdateURR validates UpdateURR and builds plan without modifying state
-func (s *Session) ValidateUpdateURR(req *ie.IE) (*forwarder.URRPlan, error) {
-	plan, err := s.driver.BuildUpdateURRPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateRemoveURR validates RemoveURR and builds plan without modifying state
-func (s *Session) ValidateRemoveURR(req *ie.IE) (*forwarder.URRPlan, error) {
-	plan, err := s.driver.BuildRemoveURRPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateQueryURR validates QueryURR and builds plan without modifying state
-func (s *Session) ValidateQueryURR(req *ie.IE) (*forwarder.URRPlan, error) {
-	plan, err := s.driver.BuildQueryURRPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateCreateBAR validates CreateBAR and builds plan without modifying state
-func (s *Session) ValidateCreateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
-	plan, err := s.driver.BuildCreateBARPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateUpdateBAR validates UpdateBAR and builds plan without modifying state
-func (s *Session) ValidateUpdateBAR(req *ie.IE) (*forwarder.BARPlan, error) {
-	plan, err := s.driver.BuildUpdateBARPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ValidateRemoveBAR validates RemoveBAR and builds plan without modifying state
-func (s *Session) ValidateRemoveBAR(req *ie.IE) (*forwarder.BARPlan, error) {
-	plan, err := s.driver.BuildRemoveBARPlan(s.LocalID, req)
-	if err != nil {
-		return nil, ErrMissingMandatoryIE
-	}
-
-	return plan, nil
-}
-
-// ============================================================================
 // Apply* methods - apply phase (update internal state after execution)
 // ============================================================================
+
+func cloneRuleAttrs(attrs []nl.Attr) []nl.Attr {
+	cloned := make([]nl.Attr, 0, len(attrs))
+	for _, attr := range attrs {
+		var value nl.Encoder
+		switch v := attr.Value.(type) {
+		case nl.AttrList:
+			value = nl.AttrList(cloneRuleAttrs(v))
+		case nl.AttrBytes:
+			value = nl.AttrBytes(append([]byte(nil), v...))
+		default:
+			value = v
+		}
+		cloned = append(cloned, nl.Attr{Type: attr.Type, Value: value})
+	}
+	return cloned
+}
+
+func mergeRuleAttrs(current, patch []nl.Attr) []nl.Attr {
+	replaced := make(map[uint16]struct{}, len(patch))
+	for _, attr := range patch {
+		replaced[attr.Type] = struct{}{}
+	}
+
+	merged := make([]nl.Attr, 0, len(current)+len(patch))
+	for _, attr := range current {
+		if _, replace := replaced[attr.Type]; !replace {
+			merged = append(merged, cloneRuleAttrs([]nl.Attr{attr})[0])
+		}
+	}
+	merged = append(merged, cloneRuleAttrs(patch)...)
+	return merged
+}
+
+func mergeFARRuleAttrs(current, patch []nl.Attr) []nl.Attr {
+	merged := mergeRuleAttrs(current, patch)
+	for i := range merged {
+		if merged[i].Type != gtp5gnl.FAR_FORWARDING_PARAMETER {
+			continue
+		}
+		patchNested, patchOK := merged[i].Value.(nl.AttrList)
+		if !patchOK {
+			continue
+		}
+		for _, old := range current {
+			oldNested, oldOK := old.Value.(nl.AttrList)
+			if old.Type == merged[i].Type && oldOK {
+				// Update Forwarding Parameters is the only partial nested rule
+				// attribute merged here. Rule families use overlapping numeric
+				// attribute IDs, so this must remain FAR-specific.
+				merged[i].Value = nl.AttrList(mergeRuleAttrs(oldNested, patchNested))
+				break
+			}
+		}
+	}
+	return merged
+}
+
+func clonePDRRulePlan(plan *forwarder.PDRPlan) *forwarder.PDRPlan {
+	if plan == nil {
+		return nil
+	}
+	cloned := *plan
+	cloned.Op = forwarder.OpCreate
+	cloned.Attrs = cloneRuleAttrs(plan.Attrs)
+	cloned.URRIDs = append([]uint32(nil), plan.URRIDs...)
+	cloned.QERIDs = append([]uint32(nil), plan.QERIDs...)
+	if plan.SourceInterface != nil {
+		value := *plan.SourceInterface
+		cloned.SourceInterface = &value
+	}
+	return &cloned
+}
+
+func mergePDRRulePlan(current, patch *forwarder.PDRPlan) *forwarder.PDRPlan {
+	if current == nil {
+		return clonePDRRulePlan(patch)
+	}
+	next := clonePDRRulePlan(current)
+	next.Attrs = mergeRuleAttrs(current.Attrs, patch.Attrs)
+	next.OriginalIE = patch.OriginalIE
+	if patch.FARIDPresent {
+		next.FARID = patch.FARID
+		next.FARIDPresent = true
+	}
+	if patch.URRIDsPresent {
+		next.URRIDs = append([]uint32(nil), patch.URRIDs...)
+		next.URRIDsPresent = true
+	}
+	if patch.QERIDsPresent {
+		next.QERIDs = append([]uint32(nil), patch.QERIDs...)
+		next.QERIDsPresent = true
+	}
+	if patch.SourceInterface != nil {
+		value := *patch.SourceInterface
+		next.SourceInterface = &value
+	}
+	return next
+}
+
+func cloneFARRulePlan(plan *forwarder.FARPlan) *forwarder.FARPlan {
+	if plan == nil {
+		return nil
+	}
+	cloned := *plan
+	cloned.Op = forwarder.OpCreate
+	cloned.Attrs = cloneRuleAttrs(plan.Attrs)
+	cloned.ApplyAction = nil
+	return &cloned
+}
+
+func mergeFARRulePlan(current, patch *forwarder.FARPlan) *forwarder.FARPlan {
+	if current == nil {
+		return cloneFARRulePlan(patch)
+	}
+	next := cloneFARRulePlan(current)
+	next.Attrs = mergeFARRuleAttrs(current.Attrs, patch.Attrs)
+	next.OriginalIE = patch.OriginalIE
+	return next
+}
+
+func cloneQERRulePlan(plan *forwarder.QERPlan) *forwarder.QERPlan {
+	if plan == nil {
+		return nil
+	}
+	cloned := *plan
+	cloned.Op = forwarder.OpCreate
+	cloned.Attrs = cloneRuleAttrs(plan.Attrs)
+	return &cloned
+}
+
+func mergeQERRulePlan(current, patch *forwarder.QERPlan) *forwarder.QERPlan {
+	if current == nil {
+		return cloneQERRulePlan(patch)
+	}
+	next := cloneQERRulePlan(current)
+	next.Attrs = mergeRuleAttrs(current.Attrs, patch.Attrs)
+	next.OriginalIE = patch.OriginalIE
+	return next
+}
+
+func cloneURRRulePlan(plan *forwarder.URRPlan) *forwarder.URRPlan {
+	if plan == nil {
+		return nil
+	}
+	cloned := *plan
+	cloned.Op = forwarder.OpCreate
+	cloned.Attrs = cloneRuleAttrs(plan.Attrs)
+	return &cloned
+}
+
+func mergeURRRulePlan(current, patch *forwarder.URRPlan) *forwarder.URRPlan {
+	if current == nil {
+		return cloneURRRulePlan(patch)
+	}
+	next := cloneURRRulePlan(current)
+	next.Attrs = mergeRuleAttrs(current.Attrs, patch.Attrs)
+	next.OriginalIE = patch.OriginalIE
+	if patch.MeasureMethod != 0 {
+		next.MeasureMethod = patch.MeasureMethod
+	}
+	if patch.MeasureInfoIE != nil {
+		next.MeasureInfoIE = patch.MeasureInfoIE
+	}
+	for _, attr := range next.Attrs {
+		switch attr.Type {
+		case gtp5gnl.URR_REPORTING_TRIGGER:
+			if value, ok := attr.Value.(nl.AttrU32); ok {
+				next.ReportingTrigger.Flags = uint32(value)
+			}
+		case gtp5gnl.URR_MEASUREMENT_PERIOD:
+			if value, ok := attr.Value.(nl.AttrU32); ok {
+				next.MeasurePeriod = time.Duration(value)
+			}
+		}
+	}
+	return next
+}
+
+func cloneBARRulePlan(plan *forwarder.BARPlan) *forwarder.BARPlan {
+	if plan == nil {
+		return nil
+	}
+	cloned := *plan
+	cloned.Op = forwarder.OpCreate
+	cloned.Attrs = cloneRuleAttrs(plan.Attrs)
+	return &cloned
+}
+
+func mergeBARRulePlan(current, patch *forwarder.BARPlan) *forwarder.BARPlan {
+	if current == nil {
+		return cloneBARRulePlan(patch)
+	}
+	next := cloneBARRulePlan(current)
+	next.Attrs = mergeRuleAttrs(current.Attrs, patch.Attrs)
+	next.OriginalIE = patch.OriginalIE
+	return next
+}
 
 func uint32Set(ids []uint32) map[uint32]struct{} {
 	set := make(map[uint32]struct{}, len(ids))
@@ -347,6 +385,7 @@ func mergePDRInfo(current *PDRInfo, patch *forwarder.PDRPlan) *PDRInfo {
 
 // ApplyCreatePDR updates session state after CreatePDR execution
 func (s *Session) ApplyCreatePDR(plan *forwarder.PDRPlan) {
+	s.ensureAppliedRulePlans().pdrs[plan.PDRID] = clonePDRRulePlan(plan)
 	info := newPDRInfo(plan)
 	for urrid := range info.RelatedURRIDs {
 		s.URRIDs[urrid].refPdrNum++
@@ -358,6 +397,8 @@ func (s *Session) ApplyCreatePDR(plan *forwarder.PDRPlan) {
 // ApplyUpdatePDR updates session state after UpdatePDR execution
 // Returns USAReports from disassociated URRs
 func (s *Session) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
+	applied := s.ensureAppliedRulePlans()
+	applied.pdrs[plan.PDRID] = mergePDRRulePlan(applied.pdrs[plan.PDRID], plan)
 	current := s.PDRIDs[plan.PDRID]
 	next := mergePDRInfo(current, plan)
 
@@ -389,6 +430,7 @@ func (s *Session) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
 		usars = append(usars, s.diassociateURR(urrid)...)
 	}
 	delete(s.PDRIDs, plan.PDRID)
+	delete(s.ensureAppliedRulePlans().pdrs, plan.PDRID)
 
 	return usars
 }
@@ -396,11 +438,19 @@ func (s *Session) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
 // ApplyCreateFAR updates session state after CreateFAR execution
 func (s *Session) ApplyCreateFAR(plan *forwarder.FARPlan) {
 	s.FARIDs[plan.FARID] = struct{}{}
+	s.ensureAppliedRulePlans().fars[plan.FARID] = cloneFARRulePlan(plan)
+}
+
+// ApplyUpdateFAR refreshes the stored kernel-applied rule image.
+func (s *Session) ApplyUpdateFAR(plan *forwarder.FARPlan) {
+	applied := s.ensureAppliedRulePlans()
+	applied.fars[plan.FARID] = mergeFARRulePlan(applied.fars[plan.FARID], plan)
 }
 
 // ApplyRemoveFAR updates session state after RemoveFAR execution
 func (s *Session) ApplyRemoveFAR(plan *forwarder.FARPlan) {
 	delete(s.FARIDs, plan.FARID)
+	delete(s.ensureAppliedRulePlans().fars, plan.FARID)
 }
 
 func newQERInfo(patch forwarder.QERDesiredStatePatch) *QERInfo {
@@ -440,20 +490,25 @@ func (q *QERInfo) applyDesiredStatePatch(patch forwarder.QERDesiredStatePatch) {
 // ApplyCreateQER updates session state after CreateQER execution
 func (s *Session) ApplyCreateQER(plan *forwarder.QERPlan) {
 	s.QERIDs[plan.QERID] = newQERInfo(plan.DesiredState)
+	s.ensureAppliedRulePlans().qers[plan.QERID] = cloneQERRulePlan(plan)
 }
 
 // ApplyUpdateQER merges fields present in Update QER into desired state.
 func (s *Session) ApplyUpdateQER(plan *forwarder.QERPlan) {
 	s.QERIDs[plan.QERID] = mergeQERInfo(s.QERIDs[plan.QERID], plan.DesiredState)
+	applied := s.ensureAppliedRulePlans()
+	applied.qers[plan.QERID] = mergeQERRulePlan(applied.qers[plan.QERID], plan)
 }
 
 // ApplyRemoveQER updates session state after RemoveQER execution
 func (s *Session) ApplyRemoveQER(plan *forwarder.QERPlan) {
 	delete(s.QERIDs, plan.QERID)
+	delete(s.ensureAppliedRulePlans().qers, plan.QERID)
 }
 
 // ApplyCreateURR updates session state after CreateURR execution
 func (s *Session) ApplyCreateURR(plan *forwarder.URRPlan) {
+	s.ensureAppliedRulePlans().urrs[plan.URRID] = cloneURRRulePlan(plan)
 	mInfo := &ie.IE{}
 	if plan.MeasureInfoIE != nil {
 		mInfo = plan.MeasureInfoIE
@@ -477,6 +532,8 @@ func (s *Session) ApplyCreateURR(plan *forwarder.URRPlan) {
 
 // ApplyUpdateURR updates session state after UpdateURR execution
 func (s *Session) ApplyUpdateURR(plan *forwarder.URRPlan) {
+	applied := s.ensureAppliedRulePlans()
+	applied.urrs[plan.URRID] = mergeURRRulePlan(applied.urrs[plan.URRID], plan)
 	urrInfo, ok := s.URRIDs[plan.URRID]
 	if !ok {
 		return
@@ -504,16 +561,25 @@ func (s *Session) ApplyRemoveURR(plan *forwarder.URRPlan) {
 	if info, ok := s.URRIDs[plan.URRID]; ok {
 		info.removed = true
 	}
+	delete(s.ensureAppliedRulePlans().urrs, plan.URRID)
 }
 
 // ApplyCreateBAR updates session state after CreateBAR execution
 func (s *Session) ApplyCreateBAR(plan *forwarder.BARPlan) {
 	s.BARIDs[plan.BARID] = struct{}{}
+	s.ensureAppliedRulePlans().bars[plan.BARID] = cloneBARRulePlan(plan)
+}
+
+// ApplyUpdateBAR refreshes the stored kernel-applied rule image.
+func (s *Session) ApplyUpdateBAR(plan *forwarder.BARPlan) {
+	applied := s.ensureAppliedRulePlans()
+	applied.bars[plan.BARID] = mergeBARRulePlan(applied.bars[plan.BARID], plan)
 }
 
 // ApplyRemoveBAR updates session state after RemoveBAR execution
 func (s *Session) ApplyRemoveBAR(plan *forwarder.BARPlan) {
 	delete(s.BARIDs, plan.BARID)
+	delete(s.ensureAppliedRulePlans().bars, plan.BARID)
 }
 
 // CleanupRemovedURRs removes URRInfo entries marked as removed

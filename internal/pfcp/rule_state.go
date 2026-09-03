@@ -71,9 +71,151 @@ func (s *Session) ValidateRuleState(
 	if err := state.validateReferences(); err != nil {
 		return nil, err
 	}
+	rollback, err := state.buildRollbackPlan()
+	if err != nil {
+		return nil, err
+	}
+	plan.Rollback = rollback
 	state.findAffectedPDRs()
 
 	return state, nil
+}
+
+func (state *RuleState) buildRollbackPlan() (*forwarder.RollbackPlan, error) {
+	rollback := forwarder.NewRollbackPlan()
+	applied := state.sess.ensureAppliedRulePlans()
+
+	addPDR := func(id uint16) error {
+		if _, exists := state.sess.PDRIDs[id]; !exists {
+			return nil
+		}
+		before, exists := applied.pdrs[id]
+		if !exists {
+			return errors.Wrapf(
+				ErrRuleCreationModificationFailed,
+				"missing kernel-applied PDR before-image for ID %d",
+				id,
+			)
+		}
+		rollback.PDRs[id] = clonePDRRulePlan(before)
+		return nil
+	}
+	for _, rule := range state.plan.UpdatePDRs {
+		if err := addPDR(rule.PDRID); err != nil {
+			return nil, err
+		}
+	}
+	for _, rule := range state.plan.RemovePDRs {
+		if err := addPDR(rule.PDRID); err != nil {
+			return nil, err
+		}
+	}
+
+	addFAR := func(id uint32) error {
+		if _, exists := state.sess.FARIDs[id]; !exists {
+			return nil
+		}
+		before, exists := applied.fars[id]
+		if !exists {
+			return errors.Wrapf(
+				ErrRuleCreationModificationFailed,
+				"missing kernel-applied FAR before-image for ID %d",
+				id,
+			)
+		}
+		rollback.FARs[id] = cloneFARRulePlan(before)
+		return nil
+	}
+	for _, rule := range state.plan.UpdateFARs {
+		if err := addFAR(rule.FARID); err != nil {
+			return nil, err
+		}
+	}
+	for _, rule := range state.plan.RemoveFARs {
+		if err := addFAR(rule.FARID); err != nil {
+			return nil, err
+		}
+	}
+
+	addQER := func(id uint32) error {
+		if _, exists := state.sess.QERIDs[id]; !exists {
+			return nil
+		}
+		before, exists := applied.qers[id]
+		if !exists {
+			return errors.Wrapf(
+				ErrRuleCreationModificationFailed,
+				"missing kernel-applied QER before-image for ID %d",
+				id,
+			)
+		}
+		rollback.QERs[id] = cloneQERRulePlan(before)
+		return nil
+	}
+	for _, rule := range state.plan.UpdateQERs {
+		if err := addQER(rule.QERID); err != nil {
+			return nil, err
+		}
+	}
+	for _, rule := range state.plan.RemoveQERs {
+		if err := addQER(rule.QERID); err != nil {
+			return nil, err
+		}
+	}
+
+	addURR := func(id uint32) error {
+		if _, exists := state.sess.URRIDs[id]; !exists {
+			return nil
+		}
+		before, exists := applied.urrs[id]
+		if !exists {
+			return errors.Wrapf(
+				ErrRuleCreationModificationFailed,
+				"missing kernel-applied URR before-image for ID %d",
+				id,
+			)
+		}
+		rollback.URRs[id] = cloneURRRulePlan(before)
+		return nil
+	}
+	for _, rule := range state.plan.UpdateURRs {
+		if err := addURR(rule.URRID); err != nil {
+			return nil, err
+		}
+	}
+	for _, rule := range state.plan.RemoveURRs {
+		if err := addURR(rule.URRID); err != nil {
+			return nil, err
+		}
+	}
+
+	addBAR := func(id uint8) error {
+		if _, exists := state.sess.BARIDs[id]; !exists {
+			return nil
+		}
+		before, exists := applied.bars[id]
+		if !exists {
+			return errors.Wrapf(
+				ErrRuleCreationModificationFailed,
+				"missing kernel-applied BAR before-image for ID %d",
+				id,
+			)
+		}
+		rollback.BARs[id] = cloneBARRulePlan(before)
+		return nil
+	}
+	for _, rule := range state.plan.UpdateBARs {
+		if err := addBAR(rule.BARID); err != nil {
+			return nil, err
+		}
+	}
+	for _, rule := range state.plan.RemoveBARs {
+		if err := addBAR(rule.BARID); err != nil {
+			return nil, err
+		}
+	}
+
+	return rollback, nil
 }
 
 // Plan returns the parsed operations and netlink attributes that correspond to
@@ -146,10 +288,12 @@ func (state *RuleState) AffectedPDRIDs() []uint16 {
 	return ids
 }
 
-// Commit applies the already validated plan to Session after kernel execution.
+// Commit applies only operations confirmed by the datapath executor.
 // It preserves the existing URR reporting/refcount side effects.
-func (state *RuleState) Commit() []report.USAReport {
-	plan := state.plan
+func (state *RuleState) Commit(plan *forwarder.ModificationPlan) []report.USAReport {
+	if plan == nil {
+		return nil
+	}
 	sess := state.sess
 
 	for _, rule := range plan.CreateFARs {
@@ -168,11 +312,17 @@ func (state *RuleState) Commit() []report.USAReport {
 		sess.ApplyCreatePDR(rule)
 	}
 
+	for _, rule := range plan.UpdateFARs {
+		sess.ApplyUpdateFAR(rule)
+	}
 	for _, rule := range plan.UpdateQERs {
 		sess.ApplyUpdateQER(rule)
 	}
 	for _, rule := range plan.UpdateURRs {
 		sess.ApplyUpdateURR(rule)
+	}
+	for _, rule := range plan.UpdateBARs {
+		sess.ApplyUpdateBAR(rule)
 	}
 
 	var reports []report.USAReport

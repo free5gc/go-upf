@@ -175,11 +175,37 @@ type BARPlan struct {
 	BARID uint8
 }
 
+// RollbackPlan contains the kernel-applied rule images that existed before a
+// transactional PFCP request. Create operations do not need a before-image;
+// Update and Remove operations use these plans to restore the previous rule.
+type RollbackPlan struct {
+	PDRs map[uint16]*PDRPlan
+	FARs map[uint32]*FARPlan
+	QERs map[uint32]*QERPlan
+	URRs map[uint32]*URRPlan
+	BARs map[uint8]*BARPlan
+}
+
+func NewRollbackPlan() *RollbackPlan {
+	return &RollbackPlan{
+		PDRs: make(map[uint16]*PDRPlan),
+		FARs: make(map[uint32]*FARPlan),
+		QERs: make(map[uint32]*QERPlan),
+		URRs: make(map[uint32]*URRPlan),
+		BARs: make(map[uint8]*BARPlan),
+	}
+}
+
 // ModificationPlan contains all validated rule operations for a session modification
 // The executor enforces dependency order across these groups:
 // Create -> Update -> Query -> Remove.
 type ModificationPlan struct {
 	SEID uint64
+
+	// Rollback is non-nil for transactional PFCP requests. It holds the
+	// before-images needed to undo successful Update and Remove operations.
+	// A nil value keeps the legacy best-effort behaviour used by session cleanup.
+	Rollback *RollbackPlan
 
 	// Create operations - order: FAR -> QER -> URR -> BAR -> PDR
 	CreateFARs []*FARPlan
@@ -213,15 +239,32 @@ func NewModificationPlan(seid uint64) *ModificationPlan {
 	}
 }
 
-// ExecutionResult contains the result of executing a ModificationPlan
+// ExecutionResult describes what the datapath actually applied.
+//
+// AppliedPlan contains only state-changing operations that remain applied when
+// execution returns. A successful transactional request contains the complete
+// plan; a failed request whose rollback completed contains an empty plan.
 type ExecutionResult struct {
-	// USAReports collected from URR operations (Update, Remove, Query)
+	AppliedPlan *ModificationPlan
+
+	// USAReports collected from successful URR operations (Update, Remove, Query).
 	USAReports []report.USAReport
 }
 
-// NewExecutionResult creates a new empty ExecutionResult
-func NewExecutionResult() *ExecutionResult {
+// NewExecutionResult creates an empty execution result for one session.
+func NewExecutionResult(seid uint64) *ExecutionResult {
 	return &ExecutionResult{
-		USAReports: make([]report.USAReport, 0),
+		AppliedPlan: NewModificationPlan(seid),
+		USAReports:  make([]report.USAReport, 0),
 	}
+}
+
+// NewSuccessfulExecutionResult records every operation in plan as applied.
+func NewSuccessfulExecutionResult(plan *ModificationPlan) *ExecutionResult {
+	if plan == nil {
+		return NewExecutionResult(0)
+	}
+	result := NewExecutionResult(plan.SEID)
+	result.AppliedPlan = plan
+	return result
 }
