@@ -3,6 +3,7 @@ package pfcp
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/khirono/go-nl"
 
@@ -11,26 +12,30 @@ import (
 )
 
 func newRuleStateTestSession() *Session {
-	sess := &Session{
-		PDRIDs: map[uint16]*PDRInfo{
-			11: {
-				FARID:         1,
-				HasFARID:      true,
-				RelatedQERIDs: uint32Set([]uint32{7}),
-				RelatedURRIDs: uint32Set([]uint32{3}),
-			},
-		},
-		FARIDs: map[uint32]struct{}{1: {}},
-		QERIDs: map[uint32]*QERInfo{7: {}},
-		URRIDs: map[uint32]*URRInfo{3: {}},
-		BARIDs: make(map[uint8]struct{}),
+	pdr := &forwarder.PDRPlan{
+		PDRID:         11,
+		FARID:         1,
+		FARIDPresent:  true,
+		QERIDs:        []uint32{7},
+		QERIDsPresent: true,
+		URRIDs:        []uint32{3},
+		URRIDsPresent: true,
 	}
-	sess.appliedRules = newAppliedRulePlans()
-	sess.appliedRules.pdrs[11] = &forwarder.PDRPlan{PDRID: 11}
-	sess.appliedRules.fars[1] = &forwarder.FARPlan{FARID: 1}
-	sess.appliedRules.qers[7] = &forwarder.QERPlan{QERID: 7}
-	sess.appliedRules.urrs[3] = &forwarder.URRPlan{URRID: 3}
-	return sess
+	return &Session{
+		PDRIDs: map[uint16]*PDRInfo{
+			11: newPDRInfo(pdr),
+		},
+		FARIDs: map[uint32]*FARInfo{
+			1: newFARInfo(&forwarder.FARPlan{FARID: 1}),
+		},
+		QERIDs: map[uint32]*QERInfo{
+			7: newQERInfo(&forwarder.QERPlan{QERID: 7}),
+		},
+		URRIDs: map[uint32]*URRInfo{
+			3: newURRInfo(&forwarder.URRPlan{URRID: 3}),
+		},
+		BARIDs: make(map[uint8]*BARInfo),
+	}
 }
 
 func TestRuleStateAllowsAtomicPDRRewire(t *testing.T) {
@@ -159,10 +164,10 @@ func TestRuleStateAllowsReferencedRulesToLeaveWithPDR(t *testing.T) {
 func TestRuleStateAcceptsReferencesToInFlightCreates(t *testing.T) {
 	sess := &Session{
 		PDRIDs: make(map[uint16]*PDRInfo),
-		FARIDs: make(map[uint32]struct{}),
+		FARIDs: make(map[uint32]*FARInfo),
 		QERIDs: make(map[uint32]*QERInfo),
 		URRIDs: make(map[uint32]*URRInfo),
-		BARIDs: make(map[uint8]struct{}),
+		BARIDs: make(map[uint8]*BARInfo),
 	}
 	plan := &forwarder.ModificationPlan{
 		CreateFARs: []*forwarder.FARPlan{{FARID: 2}},
@@ -370,13 +375,13 @@ func TestRuleStateCommitAppliesOnlyExecutorResult(t *testing.T) {
 	}
 }
 
-func TestRuleStateBuildsRollbackFromKernelAppliedPlans(t *testing.T) {
+func TestRuleStateBuildsRollbackFromCanonicalInfo(t *testing.T) {
 	sess := &Session{
 		PDRIDs: make(map[uint16]*PDRInfo),
-		FARIDs: make(map[uint32]struct{}),
+		FARIDs: make(map[uint32]*FARInfo),
 		QERIDs: make(map[uint32]*QERInfo),
 		URRIDs: make(map[uint32]*URRInfo),
-		BARIDs: make(map[uint8]struct{}),
+		BARIDs: make(map[uint8]*BARInfo),
 	}
 
 	create := &forwarder.QERPlan{
@@ -402,7 +407,7 @@ func TestRuleStateBuildsRollbackFromKernelAppliedPlans(t *testing.T) {
 	}
 	before := first.Rollback.QERs[7]
 	if before == nil || len(before.Attrs) != 1 || before.Attrs[0].Type != gtp5gnl.QER_GATE {
-		t.Fatalf("first rollback image does not contain original QER: %+v", before)
+		t.Fatalf("first rollback configuration does not contain original QER: %+v", before)
 	}
 
 	state.Commit(first)
@@ -421,11 +426,97 @@ func TestRuleStateBuildsRollbackFromKernelAppliedPlans(t *testing.T) {
 	}
 	before = second.Rollback.QERs[7]
 	if before == nil || len(before.Attrs) != 2 {
-		t.Fatalf("second rollback image is not the complete applied QER: %+v", before)
+		t.Fatalf("second rollback configuration is not the complete applied QER: %+v", before)
 	}
 	if before.Attrs[0].Type != gtp5gnl.QER_GATE ||
 		before.Attrs[1].Type != gtp5gnl.QER_QFI {
 		t.Fatalf("unexpected merged rollback attrs: %+v", before.Attrs)
+	}
+}
+
+func TestURRCanonicalInfoPatchPreservesRuntime(t *testing.T) {
+	sess := &Session{
+		PDRIDs: make(map[uint16]*PDRInfo),
+		FARIDs: make(map[uint32]*FARInfo),
+		QERIDs: make(map[uint32]*QERInfo),
+		URRIDs: make(map[uint32]*URRInfo),
+		BARIDs: make(map[uint8]*BARInfo),
+	}
+	create := &forwarder.URRPlan{
+		OID:   gtp5gnl.OID{10, 20},
+		URRID: 20,
+		Attrs: []nl.Attr{
+			{Type: gtp5gnl.URR_MEASUREMENT_METHOD, Value: nl.AttrU8(0x03)},
+			{Type: gtp5gnl.URR_REPORTING_TRIGGER, Value: nl.AttrU32(0x01)},
+			{Type: gtp5gnl.URR_MEASUREMENT_PERIOD, Value: nl.AttrU32(10)},
+		},
+	}
+	sess.ApplyCreateURR(create)
+	info := sess.URRIDs[20]
+	info.SEQN = 7
+	info.refPdrNum = 2
+
+	update := &forwarder.URRPlan{
+		OID:   create.OID,
+		URRID: 20,
+		Attrs: []nl.Attr{
+			{Type: gtp5gnl.URR_MEASUREMENT_PERIOD, Value: nl.AttrU32(20)},
+			{Type: gtp5gnl.URR_MEASUREMENT_INFO, Value: nl.AttrU64(0x1f)},
+		},
+	}
+	request := &forwarder.ModificationPlan{
+		SEID:       10,
+		UpdateURRs: []*forwarder.URRPlan{update},
+	}
+	state, err := sess.ValidateRuleState(request)
+	if err != nil {
+		t.Fatalf("ValidateRuleState: %v", err)
+	}
+	before := request.Rollback.URRs[20]
+	if before == nil || before.MeasurePeriod != 10 {
+		t.Fatalf("rollback did not capture the pre-update URR: %+v", before)
+	}
+
+	state.Commit(request)
+	got := sess.URRIDs[20]
+	if got != info {
+		t.Fatal("UpdateURR replaced the canonical URRInfo instead of patching it")
+	}
+	if got.SEQN != 7 || got.refPdrNum != 2 {
+		t.Fatalf(
+			"UpdateURR changed runtime state: SEQN=%d refPdrNum=%d",
+			got.SEQN,
+			got.refPdrNum,
+		)
+	}
+	if got.MeasurePeriod != 20*time.Nanosecond {
+		t.Fatalf("measurement period was not patched: %s", got.MeasurePeriod)
+	}
+	if !got.DURAT || !got.VOLUM || got.EVENT {
+		t.Fatalf("omitted measurement method was not preserved: %+v", got.MeasureMethod)
+	}
+	if !got.MBQE || !got.INAM || !got.RADI || !got.ISTM || !got.MNOP {
+		t.Fatalf("measurement information was not projected from the applied configuration: %+v", got.MeasureInformation)
+	}
+
+	next := &forwarder.ModificationPlan{
+		SEID: 10,
+		UpdateURRs: []*forwarder.URRPlan{{
+			OID:   create.OID,
+			URRID: 20,
+			Attrs: []nl.Attr{{
+				Type:  gtp5gnl.URR_MEASUREMENT_METHOD,
+				Value: nl.AttrU8(0),
+			}},
+		}},
+	}
+	if _, err := sess.ValidateRuleState(next); err != nil {
+		t.Fatalf("ValidateRuleState next update: %v", err)
+	}
+	current := next.Rollback.URRs[20]
+	if current == nil || current.MeasurePeriod != 20*time.Nanosecond ||
+		len(current.Attrs) != 4 {
+		t.Fatalf("next rollback configuration is not the complete patched URR: %+v", current)
 	}
 }
 
@@ -445,7 +536,7 @@ func TestAppliedRuleAttrMergeKeepsRuleNamespacesSeparate(t *testing.T) {
 			},
 		}}}
 
-		merged := mergePDRRulePlan(current, patch)
+		merged := mergePDRInfo(newPDRInfo(current), patch)
 		pdi, ok := merged.Attrs[0].Value.(nl.AttrList)
 		if !ok || len(pdi) != 1 || pdi[0].Type != gtp5gnl.PDI_SRC_INTF {
 			t.Fatalf("PDI was recursively merged across rule namespaces: %+v", merged.Attrs)
@@ -467,10 +558,11 @@ func TestAppliedRuleAttrMergeKeepsRuleNamespacesSeparate(t *testing.T) {
 			},
 		}}}
 
-		merged := mergeFARRulePlan(current, patch)
-		params, ok := merged.Attrs[0].Value.(nl.AttrList)
+		info := newFARInfo(current)
+		info.ruleConfig = info.ruleConfig.mergeFAR(patch.Attrs)
+		params, ok := info.Attrs[0].Value.(nl.AttrList)
 		if !ok || len(params) != 2 {
-			t.Fatalf("FAR nested state was not preserved: %+v", merged.Attrs)
+			t.Fatalf("FAR nested state was not preserved: %+v", info.Attrs)
 		}
 		if params[0].Type != gtp5gnl.FORWARDING_PARAMETER_OUTER_HEADER_CREATION ||
 			params[1].Type != gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY {

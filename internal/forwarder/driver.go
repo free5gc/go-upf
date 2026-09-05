@@ -16,7 +16,7 @@ import (
 type Driver interface {
 	Close()
 
-	// QueryURR is used internally by diassociateURR when a PDR is removed/updated
+	// QueryURR is used for terminal reporting when a PDR releases its last URR reference.
 	QueryURR(uint64, uint32) ([]report.USAReport, error)
 
 	HandleReport(report.Handler)
@@ -45,7 +45,7 @@ type Driver interface {
 	BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
 
 	// ExecuteModificationPlan executes all operations in the plan. A plan with
-	// rollback before-images is fail-fast and reverses successful state changes
+	// rollback configurations are applied fail-fast to reverse successful state changes
 	// before returning an error. Plans without rollback metadata retain
 	// best-effort cleanup semantics.
 	ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error)

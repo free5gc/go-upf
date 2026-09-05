@@ -52,7 +52,11 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	// allocate a session
 	sess := d.node.CreateSession(association, fseid.SEID)
 
-	// Build one request-level plan without mutating Session or the kernel.
+	// ========================================================================
+	// PHASE 1: Planning and prospective-state validation.
+	// No Session rule state or kernel state is mutated in this phase.
+	// ========================================================================
+	// 1A: Parse the request and build one request-level plan.
 	plan, err1 := sess.BuildEstablishmentPlan(req)
 	if err1 != nil {
 		sess.log.Errorf("Est plan build error: %v", err1)
@@ -62,6 +66,7 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 		return
 	}
 
+	// 1B: Validate the complete post-request rule state and prepare rollback.
 	ruleState, err1 := sess.ValidateRuleState(plan)
 	if err1 != nil {
 		sess.log.Errorf("Est rule-state validation error: %v", err1)
@@ -173,7 +178,11 @@ func (d *Dispatcher) handleSessionModificationRequest(
 		d.node.UpdateAssociationPeerNodeID(sess.association, peerNodeID)
 	}
 
-	// Build one request-level plan without mutating Session or the kernel.
+	// ========================================================================
+	// PHASE 1: Planning and prospective-state validation.
+	// No Session rule state or kernel state is mutated in this phase.
+	// ========================================================================
+	// 1A: Parse the request and build one request-level plan.
 	plan, err1 := sess.BuildModificationPlan(req)
 	if err1 != nil {
 		sess.log.Errorf("Mod plan build error: %v", err1)
@@ -182,6 +191,7 @@ func (d *Dispatcher) handleSessionModificationRequest(
 		return
 	}
 
+	// 1B: Validate the complete post-request rule state and prepare rollback.
 	ruleState, err1 := sess.ValidateRuleState(plan)
 	if err1 != nil {
 		sess.log.Errorf("Mod rule-state validation error: %v", err1)

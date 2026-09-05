@@ -71,7 +71,7 @@ type PDRPlan struct {
 	OID        gtp5gnl.OID
 	Attrs      []nl.Attr
 	OriginalIE *ie.IE
-	// Parsed fields for node.go to use
+	// Parsed fields used by PFCP validation and committed Session state.
 	PDRID uint16
 
 	FARID        uint32
@@ -160,7 +160,6 @@ type URRPlan struct {
 	MeasureMethod    uint8
 	ReportingTrigger report.ReportingTrigger
 	MeasurePeriod    time.Duration
-	MeasureInfoIE    *ie.IE // for node.go to extract MeasureInformation
 	// For QueryURR
 	QueryURRID uint32
 }
@@ -175,8 +174,8 @@ type BARPlan struct {
 	BARID uint8
 }
 
-// RollbackPlan contains the kernel-applied rule images that existed before a
-// transactional PFCP request. Create operations do not need a before-image;
+// RollbackPlan contains the previously applied rule configurations for a
+// transactional PFCP request. Create operations do not need prior configuration;
 // Update and Remove operations use these plans to restore the previous rule.
 type RollbackPlan struct {
 	PDRs map[uint16]*PDRPlan
@@ -203,7 +202,7 @@ type ModificationPlan struct {
 	SEID uint64
 
 	// Rollback is non-nil for transactional PFCP requests. It holds the
-	// before-images needed to undo successful Update and Remove operations.
+	// prior configurations needed to undo successful Update and Remove operations.
 	// A nil value keeps the legacy best-effort behaviour used by session cleanup.
 	Rollback *RollbackPlan
 

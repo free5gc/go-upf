@@ -83,21 +83,20 @@ func (s *Session) ValidateRuleState(
 
 func (state *RuleState) buildRollbackPlan() (*forwarder.RollbackPlan, error) {
 	rollback := forwarder.NewRollbackPlan()
-	applied := state.sess.ensureAppliedRulePlans()
 
 	addPDR := func(id uint16) error {
-		if _, exists := state.sess.PDRIDs[id]; !exists {
+		info, exists := state.sess.PDRIDs[id]
+		if !exists {
 			return nil
 		}
-		before, exists := applied.pdrs[id]
-		if !exists {
+		if info == nil {
 			return errors.Wrapf(
 				ErrRuleCreationModificationFailed,
-				"missing kernel-applied PDR before-image for ID %d",
+				"missing canonical PDR state for ID %d",
 				id,
 			)
 		}
-		rollback.PDRs[id] = clonePDRRulePlan(before)
+		rollback.PDRs[id] = info.rollbackPlan(id)
 		return nil
 	}
 	for _, rule := range state.plan.UpdatePDRs {
@@ -112,18 +111,18 @@ func (state *RuleState) buildRollbackPlan() (*forwarder.RollbackPlan, error) {
 	}
 
 	addFAR := func(id uint32) error {
-		if _, exists := state.sess.FARIDs[id]; !exists {
+		info, exists := state.sess.FARIDs[id]
+		if !exists {
 			return nil
 		}
-		before, exists := applied.fars[id]
-		if !exists {
+		if info == nil {
 			return errors.Wrapf(
 				ErrRuleCreationModificationFailed,
-				"missing kernel-applied FAR before-image for ID %d",
+				"missing canonical FAR state for ID %d",
 				id,
 			)
 		}
-		rollback.FARs[id] = cloneFARRulePlan(before)
+		rollback.FARs[id] = info.rollbackPlan(id)
 		return nil
 	}
 	for _, rule := range state.plan.UpdateFARs {
@@ -138,18 +137,18 @@ func (state *RuleState) buildRollbackPlan() (*forwarder.RollbackPlan, error) {
 	}
 
 	addQER := func(id uint32) error {
-		if _, exists := state.sess.QERIDs[id]; !exists {
+		info, exists := state.sess.QERIDs[id]
+		if !exists {
 			return nil
 		}
-		before, exists := applied.qers[id]
-		if !exists {
+		if info == nil {
 			return errors.Wrapf(
 				ErrRuleCreationModificationFailed,
-				"missing kernel-applied QER before-image for ID %d",
+				"missing canonical QER state for ID %d",
 				id,
 			)
 		}
-		rollback.QERs[id] = cloneQERRulePlan(before)
+		rollback.QERs[id] = info.rollbackPlan(id)
 		return nil
 	}
 	for _, rule := range state.plan.UpdateQERs {
@@ -164,18 +163,18 @@ func (state *RuleState) buildRollbackPlan() (*forwarder.RollbackPlan, error) {
 	}
 
 	addURR := func(id uint32) error {
-		if _, exists := state.sess.URRIDs[id]; !exists {
+		info, exists := state.sess.URRIDs[id]
+		if !exists {
 			return nil
 		}
-		before, exists := applied.urrs[id]
-		if !exists {
+		if info == nil {
 			return errors.Wrapf(
 				ErrRuleCreationModificationFailed,
-				"missing kernel-applied URR before-image for ID %d",
+				"missing canonical URR state for ID %d",
 				id,
 			)
 		}
-		rollback.URRs[id] = cloneURRRulePlan(before)
+		rollback.URRs[id] = info.rollbackPlan(id)
 		return nil
 	}
 	for _, rule := range state.plan.UpdateURRs {
@@ -190,18 +189,18 @@ func (state *RuleState) buildRollbackPlan() (*forwarder.RollbackPlan, error) {
 	}
 
 	addBAR := func(id uint8) error {
-		if _, exists := state.sess.BARIDs[id]; !exists {
+		info, exists := state.sess.BARIDs[id]
+		if !exists {
 			return nil
 		}
-		before, exists := applied.bars[id]
-		if !exists {
+		if info == nil {
 			return errors.Wrapf(
 				ErrRuleCreationModificationFailed,
-				"missing kernel-applied BAR before-image for ID %d",
+				"missing canonical BAR state for ID %d",
 				id,
 			)
 		}
-		rollback.BARs[id] = cloneBARRulePlan(before)
+		rollback.BARs[id] = info.rollbackPlan(id)
 		return nil
 	}
 	for _, rule := range state.plan.UpdateBARs {
@@ -557,11 +556,11 @@ func (state *RuleState) buildOverlays() {
 	}
 
 	for _, rule := range state.plan.CreateQERs {
-		state.qerOverrides[rule.QERID] = newQERInfo(rule.DesiredState)
+		state.qerOverrides[rule.QERID] = newQERInfo(rule)
 	}
 	for _, rule := range state.plan.UpdateQERs {
 		current, _ := state.QER(rule.QERID)
-		state.qerOverrides[rule.QERID] = mergeQERInfo(current, rule.DesiredState)
+		state.qerOverrides[rule.QERID] = mergeQERInfo(current, rule)
 	}
 
 	for id := range state.removedPDRs {

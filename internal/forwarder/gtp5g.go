@@ -1398,7 +1398,6 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	var measureMethod uint8
 	var rptTrig report.ReportingTrigger
 	var measurePeriod time.Duration
-	var measureInfoIE *ie.IE
 	var attrs []nl.Attr
 	var hasURRID bool
 	var hasMeasurementMethod bool
@@ -1456,7 +1455,6 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 				Value: nl.AttrU32(measurePeriod),
 			})
 		case ie.MeasurementInformation:
-			measureInfoIE = i
 			v, err := i.MeasurementInformation()
 			if err != nil {
 				return nil, err
@@ -1509,7 +1507,6 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 		MeasureMethod:    measureMethod,
 		ReportingTrigger: rptTrig,
 		MeasurePeriod:    measurePeriod,
-		MeasureInfoIE:    measureInfoIE,
 	}, nil
 }
 
@@ -1517,7 +1514,6 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	var urrid uint64
 	var measureMethod uint8
-	var measureInfoIE *ie.IE
 	var attrs []nl.Attr
 	var hasURRID bool
 
@@ -1572,7 +1568,6 @@ func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 				Value: nl.AttrU32(v),
 			})
 		case ie.MeasurementInformation:
-			measureInfoIE = i
 			v, err := i.MeasurementInformation()
 			if err != nil {
 				return nil, err
@@ -1615,7 +1610,6 @@ func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 		OriginalIE:    req,
 		URRID:         uint32(urrid),
 		MeasureMethod: measureMethod,
-		MeasureInfoIE: measureInfoIE,
 	}, nil
 }
 
