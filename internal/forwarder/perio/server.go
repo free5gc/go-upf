@@ -89,11 +89,15 @@ func (pg *PERIOGroup) stopTicker() {
 }
 
 type Server struct {
+	mu        sync.RWMutex
 	evtCh     chan Event
 	perioList map[time.Duration]*PERIOGroup // key: period
 
 	handler  report.Handler
 	queryURR func(map[uint64][]uint32) (map[uint64][]report.USAReport, error)
+
+	// Callback when a new URR is added (for EES period adjustment)
+	onURRAdded func(urrid uint32, period time.Duration)
 }
 
 func OpenServer(wg *sync.WaitGroup) (*Server, error) {
@@ -120,6 +124,12 @@ func (s *Server) Handle(
 	s.queryURR = queryURR
 }
 
+// SetOnURRAdded sets the callback function that is invoked when a new URR is added.
+// This is used by EES to trigger automatic period adjustment.
+func (s *Server) SetOnURRAdded(callback func(urrid uint32, period time.Duration)) {
+	s.onURRAdded = callback
+}
+
 func (s *Server) Serve(wg *sync.WaitGroup) {
 	logger.PerioLog.Infof("perio server started")
 	defer func() {
@@ -132,6 +142,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 		logger.PerioLog.Infof("recv event[%s][%+v]", e.eType, e)
 		switch e.eType {
 		case TYPE_PERIO_ADD:
+			s.mu.Lock()
 			perioGroup, ok := s.perioList[e.period]
 			if !ok {
 				// New ticker if no this period ticker found
@@ -142,10 +153,13 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 				err := perioGroup.newTicker(wg, s.evtCh)
 				if err != nil {
 					logger.PerioLog.Errorln(err)
+					s.mu.Unlock()
 					continue
 				}
 				s.perioList[e.period] = perioGroup
 			}
+
+			cb := s.onURRAdded
 
 			urrids := perioGroup.urrids[e.lSeid]
 			if urrids == nil {
@@ -157,7 +171,14 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					perioGroup.urrids[e.lSeid][e.urrid] = struct{}{}
 				}
 			}
+			s.mu.Unlock()
+
+			// Trigger callback for EES period adjustment outside the lock
+			if cb != nil {
+				cb(e.urrid, e.period)
+			}
 		case TYPE_PERIO_DEL:
+			s.mu.Lock()
 			for period, perioGroup := range s.perioList {
 				_, ok := perioGroup.urrids[e.lSeid][e.urrid]
 				if ok {
@@ -174,11 +195,14 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					break
 				}
 			}
+			s.mu.Unlock()
 		case TYPE_PERIO_TIMEOUT:
 			var lSeidUrridsMap map[uint64][]uint32
 
+			s.mu.RLock()
 			perioGroup, ok := s.perioList[e.period]
 			if !ok {
+				s.mu.RUnlock()
 				logger.PerioLog.Warnf("no periodGroup found for period[%v]", e.period)
 				break
 			}
@@ -189,6 +213,7 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					lSeidUrridsMap[lSeid] = append(lSeidUrridsMap[lSeid], urrId)
 				}
 			}
+			s.mu.RUnlock()
 
 			seidUsars, err := s.queryURR(lSeidUrridsMap)
 			if err != nil {
@@ -215,10 +240,12 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 					})
 			}
 		case TYPE_SERVER_CLOSE:
+			s.mu.Lock()
 			for period, perioGroup := range s.perioList {
 				perioGroup.stopTicker()
 				delete(s.perioList, period)
 			}
+			s.mu.Unlock()
 			return
 		}
 	}
@@ -239,4 +266,21 @@ func (s *Server) DelPeriodReportTimer(lSeid uint64, urrid uint32) {
 		lSeid: lSeid,
 		urrid: urrid,
 	}
+}
+
+// GetAnyURRPeriod returns the period of any active URR with the specified ID
+// across all sessions. Useful for getting a representative period when the
+// exact session is unknown. Returns 0 if the URR is not found.
+func (s *Server) GetAnyURRPeriod(urrid uint32) time.Duration {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for period, perioGroup := range s.perioList {
+		for _, urrids := range perioGroup.urrids {
+			_, ok := urrids[urrid]
+			if ok {
+				return period // Found an instance of this URR
+			}
+		}
+	}
+	return 0
 }
