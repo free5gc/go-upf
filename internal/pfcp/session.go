@@ -1,63 +1,22 @@
 package pfcp
 
 import (
-	"time"
-
 	"github.com/sirupsen/logrus"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
-	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/internal/rules"
 )
 
 const (
 	BUFFQ_LEN = 512
 )
 
-type PDRInfo struct {
-	FARID              uint32
-	HasFARID           bool
-	RelatedURRIDs      map[uint32]struct{}
-	RelatedQERIDs      map[uint32]struct{}
-	SourceInterface    uint8
-	HasSourceInterface bool
-}
-
-type FARInfo struct {
-}
-
-// QERInfo is the last kernel-applied PFCP state used by the FlowQoS resolver.
-// Rate values are stored in bits per second, not PFCP's wire-level kbps.
-type QERInfo struct {
-	QFI    uint8
-	HasQFI bool
-
-	GateUL  uint8
-	GateDL  uint8
-	HasGate bool
-
-	GBRULBps uint64
-	GBRDLBps uint64
-	MBRULBps uint64
-	MBRDLBps uint64
-	HasGBR   bool
-	HasMBR   bool
-}
-
+// URRInfo separates shared rule configuration from PFCP reporting runtime.
 type URRInfo struct {
-
-	// Applied reporting configuration.
-	report.MeasureMethod
-	report.MeasureInformation
-	ReportingTrigger report.ReportingTrigger
-	MeasurePeriod    time.Duration
-
-	// Runtime state is intentionally preserved by UpdateURR patches.
+	Config    rules.URRConfig
 	removed   bool
 	SEQN      uint32
 	refPdrNum uint16
-}
-
-type BARInfo struct {
 }
 
 type Session struct {
@@ -66,11 +25,11 @@ type Session struct {
 	datapath    forwarder.SessionDatapath // execution handle owned by this session
 	LocalID     uint64
 	RemoteID    uint64
-	PDRIDs      map[uint16]*PDRInfo // key: PDR_ID
-	FARIDs      map[uint32]*FARInfo // key: FAR_ID
-	QERIDs      map[uint32]*QERInfo // key: QER_ID
-	URRIDs      map[uint32]*URRInfo // key: URR_ID
-	BARIDs      map[uint8]*BARInfo  // key: BAR_ID
+	PDRIDs      map[uint16]*rules.PDRConfig // key: PDR_ID
+	FARIDs      map[uint32]*rules.FARConfig // key: FAR_ID
+	QERIDs      map[uint32]*rules.QERConfig // key: QER_ID
+	URRIDs      map[uint32]*URRInfo         // key: URR_ID
+	BARIDs      map[uint8]*rules.BARConfig  // key: BAR_ID
 	q           map[uint16]chan []byte
 	qlen        int
 	log         *logrus.Entry

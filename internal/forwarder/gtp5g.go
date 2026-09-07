@@ -206,11 +206,15 @@ func (g *Gtp5g) Link() *Gtp5gLink {
 }
 
 func (g *Gtp5g) newFlowDesc(s string, swapSrcDst bool) (nl.AttrList, error) {
-	var attrs nl.AttrList
 	fd, err := ParseFlowDesc(s)
 	if err != nil {
 		return nil, err
 	}
+	return encodeFlowDesc(*fd, swapSrcDst)
+}
+
+func encodeFlowDesc(fd FlowDesc, swapSrcDst bool) (nl.AttrList, error) {
+	var attrs nl.AttrList
 	if swapSrcDst {
 		fd.Src, fd.Dst = fd.Dst, fd.Src
 		fd.SrcPorts, fd.DstPorts = fd.DstPorts, fd.SrcPorts

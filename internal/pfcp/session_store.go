@@ -7,6 +7,7 @@ import (
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/internal/rules"
 )
 
 // SessionStore owns the UPF-wide Local SEID namespace and canonical Session objects.
@@ -74,11 +75,11 @@ func (s *SessionStore) Create(
 	sess := &Session{
 		RemoteID: remoteSEID,
 		driver:   driver,
-		PDRIDs:   make(map[uint16]*PDRInfo),
-		FARIDs:   make(map[uint32]*FARInfo),
-		QERIDs:   make(map[uint32]*QERInfo),
+		PDRIDs:   make(map[uint16]*rules.PDRConfig),
+		FARIDs:   make(map[uint32]*rules.FARConfig),
+		QERIDs:   make(map[uint32]*rules.QERConfig),
 		URRIDs:   make(map[uint32]*URRInfo),
-		BARIDs:   make(map[uint8]*BARInfo),
+		BARIDs:   make(map[uint8]*rules.BARConfig),
 		q:        make(map[uint16]chan []byte),
 		qlen:     queueLen,
 	}

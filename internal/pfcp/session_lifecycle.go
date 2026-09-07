@@ -69,22 +69,22 @@ func (s *Session) Close() []report.USAReport {
 	var usars []report.USAReport
 
 	for _, p := range plan.RemovePDRs {
-		rs := s.ApplyRemovePDR(p)
+		rs := s.ApplyRemovePDR(p.PDRID)
 		if len(rs) > 0 {
 			usars = append(usars, rs...)
 		}
 	}
 	for _, p := range plan.RemoveBARs {
-		s.ApplyRemoveBAR(p)
+		s.ApplyRemoveBAR(p.BARID)
 	}
 	for _, p := range plan.RemoveURRs {
-		s.ApplyRemoveURR(p)
+		s.ApplyRemoveURR(p.URRID)
 	}
 	for _, p := range plan.RemoveQERs {
-		s.ApplyRemoveQER(p)
+		s.ApplyRemoveQER(p.QERID)
 	}
 	for _, p := range plan.RemoveFARs {
-		s.ApplyRemoveFAR(p)
+		s.ApplyRemoveFAR(p.FARID)
 	}
 
 	// Collect USAReports from execution result (RemoveURR)

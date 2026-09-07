@@ -1,4 +1,4 @@
-package forwarder
+package rules
 
 import (
 	"net"

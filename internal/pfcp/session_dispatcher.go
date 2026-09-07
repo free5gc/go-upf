@@ -8,6 +8,7 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/internal/rules"
 )
 
 func (d *Dispatcher) handleSessionEstablishmentRequest(
@@ -57,7 +58,7 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	// No Session rule state or kernel state is mutated in this phase.
 	// ========================================================================
 	// 1A: Parse the request and build one request-level plan.
-	plan, err1 := sess.BuildEstablishmentPlan(req)
+	changes, err1 := sess.BuildEstablishmentPlan(req)
 	if err1 != nil {
 		sess.log.Errorf("Est plan build error: %v", err1)
 		cause := pfcpCauseFromError(err1)
@@ -67,7 +68,7 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	}
 
 	// 1B: Validate the complete post-request rule state. The datapath prepares rollback.
-	ruleState, err1 := sess.ValidateRuleState(plan)
+	ruleState, err1 := sess.ValidateRuleState(changes)
 	if err1 != nil {
 		sess.log.Errorf("Est rule-state validation error: %v", err1)
 		cause := pfcpCauseFromError(err1)
@@ -76,10 +77,18 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 		return
 	}
 
+	plan, err1 := sess.datapath.CompileChanges(changes)
+	if err1 != nil {
+		sess.log.Errorf("Est plan encoding error: %v", err1)
+		d.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
+		d.node.DeleteSession(sess.LocalID)
+		return
+	}
+
 	// ========================================================================
 	// PHASE 2: Execution - Execute all Create operations (fail-fast)
 	// ========================================================================
-	execResult, err1 := sess.datapath.ExecuteEstablishmentPlan(plan)
+	_, err1 = sess.datapath.ExecuteEstablishmentPlan(plan)
 	if err1 != nil {
 		sess.log.Errorf("Est execution error: %v", err1)
 		d.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
@@ -90,21 +99,9 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	// ========================================================================
 	// PHASE 3: Commit - Publish only kernel-applied state
 	// ========================================================================
-	ruleState.Commit(execResult.AppliedPlan)
+	ruleState.Commit()
 
-	CreatedPDRList := make([]*ie.IE, 0)
-	for _, p := range plan.CreatePDRs {
-		ueIPAddress := getUEAddressFromPDR(p.OriginalIE)
-		pdrId := getPDRIDFromPDR(p.OriginalIE)
-
-		if ueIPAddress != nil {
-			ueIPv4 := ueIPAddress.IPv4Address.String()
-			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
-				ie.NewPDRID(pdrId),
-				ie.NewUEIPAddress(2, ueIPv4, "", 0, 0),
-			))
-		}
-	}
+	CreatedPDRList := createdPDRResponseIEs(changes)
 
 	var v4 net.IP
 	addrv4, err := net.ResolveIPAddr("ip4", d.node.NodeID)
@@ -183,7 +180,7 @@ func (d *Dispatcher) handleSessionModificationRequest(
 	// No Session rule state or kernel state is mutated in this phase.
 	// ========================================================================
 	// 1A: Parse the request and build one request-level plan.
-	plan, err1 := sess.BuildModificationPlan(req)
+	changes, err1 := sess.BuildModificationPlan(req)
 	if err1 != nil {
 		sess.log.Errorf("Mod plan build error: %v", err1)
 		cause := pfcpCauseFromError(err1)
@@ -192,11 +189,18 @@ func (d *Dispatcher) handleSessionModificationRequest(
 	}
 
 	// 1B: Validate the complete post-request rule state. The datapath prepares rollback.
-	ruleState, err1 := sess.ValidateRuleState(plan)
+	ruleState, err1 := sess.ValidateRuleState(changes)
 	if err1 != nil {
 		sess.log.Errorf("Mod rule-state validation error: %v", err1)
 		cause := pfcpCauseFromError(err1)
 		d.sendSessModFailRsp(req, sess, addr, cause)
+		return
+	}
+
+	plan, err1 := sess.datapath.CompileChanges(changes)
+	if err1 != nil {
+		sess.log.Errorf("Mod plan encoding error: %v", err1)
+		d.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
 		return
 	}
 
@@ -216,10 +220,7 @@ func (d *Dispatcher) handleSessionModificationRequest(
 	// ========================================================================
 	// PHASE 3: Commit - Publish the fully applied request.
 	// ========================================================================
-	var usars []report.USAReport
-	if execResult != nil {
-		usars = ruleState.Commit(execResult.AppliedPlan)
-	}
+	usars := ruleState.Commit()
 
 	// Collect USAReports from execution result (RemoveURR, UpdateURR, QueryURR)
 	if execResult != nil && len(execResult.USAReports) > 0 {
@@ -261,7 +262,7 @@ func (d *Dispatcher) handleSessionModificationRequest(
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionModificationResponse(
 				r.IEsWithinSessModRsp(
-					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
+					urrInfo.measurementMethod(), urrInfo.measurementInformation())...,
 			))
 	}
 
@@ -325,7 +326,7 @@ func (d *Dispatcher) handleSessionDeletionRequest(
 		rsp.UsageReport = append(rsp.UsageReport,
 			ie.NewUsageReportWithinSessionDeletionResponse(
 				r.IEsWithinSessDelRsp(
-					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
+					urrInfo.measurementMethod(), urrInfo.measurementInformation())...,
 			))
 
 		if urrInfo.removed {
@@ -390,50 +391,17 @@ func (d *Dispatcher) handleSessionReportRequestTimeout(
 	// TODO?
 }
 
-// getUEAddressFromPDR returns the UEIPaddress() from the PDR IE.
-func getUEAddressFromPDR(pdr *ie.IE) *ie.UEIPAddressFields {
-	ies, err := pdr.CreatePDR()
-	if err != nil {
-		return nil
-	}
-
-	for _, i := range ies {
-		// only care about PDI
-		if i.Type == ie.PDI {
-			ies, err := i.PDI()
-			if err != nil {
-				return nil
-			}
-			for _, x := range ies {
-				if x.Type == ie.UEIPAddress {
-					fields, err := x.UEIPAddress()
-					if err != nil {
-						return nil
-					}
-					return fields
-				}
-			}
+// createdPDRResponseIEs uses decoded PFCP metadata, never a datapath plan or IE retained by the driver.
+func createdPDRResponseIEs(changes *rules.RuleChangeSet) []*ie.IE {
+	var result []*ie.IE
+	for _, p := range changes.CreatePDRs {
+		if p.PDI == nil || p.PDI.UEIPAddress == nil {
+			continue
 		}
+		result = append(result, ie.NewCreatedPDR(ie.NewPDRID(p.PDRID),
+			ie.NewUEIPAddress(2, p.PDI.UEIPAddress.IPv4Address.String(), "", 0, 0)))
 	}
-	return nil
-}
-
-func getPDRIDFromPDR(pdr *ie.IE) uint16 {
-	ies, err := pdr.CreatePDR()
-	if err != nil {
-		return 0
-	}
-
-	for _, i := range ies {
-		if i.Type == ie.PDRID {
-			id, err := i.PDRID()
-			if err != nil {
-				return 0
-			}
-			return id
-		}
-	}
-	return 0
+	return result
 }
 
 func (d *Dispatcher) sendSessEstFailRsp(

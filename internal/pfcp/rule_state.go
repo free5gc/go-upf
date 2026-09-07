@@ -5,113 +5,264 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/free5gc/go-upf/internal/forwarder"
-	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/internal/rules"
 )
 
-// RuleState is the validated, effective session rule state produced by a PFCP
-// request. It stores only changed PDR/QER values and removal tombstones;
-// unchanged rules are read directly from Session.
+// RuleState is a request-scoped candidate, not a second live session. Only
+// changed configurations are copied. Unchanged values read through to Session.
+// Views are read-only; the caller must serialize validation, execution and commit
+// against other changes to the same session.
 type RuleState struct {
-	sess *Session
-	plan *forwarder.ModificationPlan
-
-	createdFARs map[uint32]struct{}
-	createdURRs map[uint32]struct{}
-
-	removedPDRs map[uint16]struct{}
-	removedFARs map[uint32]struct{}
-	removedQERs map[uint32]struct{}
-	removedURRs map[uint32]struct{}
-
-	pdrOverrides map[uint16]*PDRInfo
-	qerOverrides map[uint32]*QERInfo
-
+	sess         *Session
 	affectedPDRs map[uint16]struct{}
+	pdrOverrides map[uint16]*rules.PDRConfig
+	removedPDRs  map[uint16]struct{}
+	farOverrides map[uint32]*rules.FARConfig
+	removedFARs  map[uint32]struct{}
+	qerOverrides map[uint32]*rules.QERConfig
+	removedQERs  map[uint32]struct{}
+	urrOverrides map[uint32]*rules.URRConfig
+	removedURRs  map[uint32]struct{}
+	barOverrides map[uint8]*rules.BARConfig
+	removedBARs  map[uint8]struct{}
 }
 
-func newRuleState(
-	sess *Session,
-	plan *forwarder.ModificationPlan,
-) *RuleState {
-	return &RuleState{
-		sess: sess,
-		plan: plan,
-
-		createdFARs: make(map[uint32]struct{}),
-		createdURRs: make(map[uint32]struct{}),
-
-		removedPDRs: make(map[uint16]struct{}),
-		removedFARs: make(map[uint32]struct{}),
-		removedQERs: make(map[uint32]struct{}),
-		removedURRs: make(map[uint32]struct{}),
-
-		pdrOverrides: make(map[uint16]*PDRInfo),
-		qerOverrides: make(map[uint32]*QERInfo),
-
-		affectedPDRs: make(map[uint16]struct{}),
+// ValidateRuleState checks the complete request without changing Session or
+// calling the datapath. Commit is valid only after successful execution.
+func (s *Session) ValidateRuleState(changes *rules.RuleChangeSet) (*RuleState, error) {
+	if changes == nil {
+		return nil, errors.Wrap(ErrRuleCreationModificationFailed, "nil RuleChangeSet")
 	}
-}
-
-// ValidateRuleState builds and validates the effective state for the complete
-// request without modifying Session. The returned state can be used by resolvers
-// and committed only after successful kernel execution.
-func (s *Session) ValidateRuleState(
-	plan *forwarder.ModificationPlan,
-) (*RuleState, error) {
-	if plan == nil {
-		return nil, errors.Wrap(ErrRuleCreationModificationFailed, "nil ModificationPlan")
+	if changes.SEID != s.LocalID {
+		return nil, errors.Wrap(ErrRuleCreationModificationFailed, "session ID mismatch")
 	}
-
-	state := newRuleState(s, plan)
-	if err := state.validateOperations(); err != nil {
+	state := &RuleState{sess: s, affectedPDRs: make(map[uint16]struct{})}
+	if err := state.validateOperations(changes); err != nil {
 		return nil, err
 	}
-	state.buildOverlays()
+	state.buildOverlays(changes)
 	if err := state.validateReferences(); err != nil {
 		return nil, err
 	}
 	state.findAffectedPDRs()
-
 	return state, nil
 }
 
-// Plan returns the parsed operations and netlink attributes that correspond to
-// this effective rule view.
-func (state *RuleState) Plan() *forwarder.ModificationPlan {
-	return state.plan
+func (state *RuleState) validateOperations(changes *rules.RuleChangeSet) error {
+	s := state.sess
+	opsPDR, err := validateRuleOperations(
+		"PDR",
+		func(id uint16) bool { _, ok := s.PDRIDs[id]; return ok },
+		changes.CreatePDRs, changes.UpdatePDRs, changes.RemovePDRs,
+		func(c rules.PDRConfig) uint16 { return c.PDRID },
+		func(p rules.PDRPatch) uint16 { return p.PDRID },
+	)
+	if err != nil {
+		return err
+	}
+	state.removedPDRs = opsPDR.removed
+	state.pdrOverrides = make(map[uint16]*rules.PDRConfig)
+	opsFAR, err := validateRuleOperations(
+		"FAR",
+		func(id uint32) bool { _, ok := s.FARIDs[id]; return ok },
+		changes.CreateFARs, changes.UpdateFARs, changes.RemoveFARs,
+		func(c rules.FARConfig) uint32 { return c.FARID },
+		func(p rules.FARPatch) uint32 { return p.FARID },
+	)
+	if err != nil {
+		return err
+	}
+	state.removedFARs = opsFAR.removed
+	state.farOverrides = make(map[uint32]*rules.FARConfig)
+	opsQER, err := validateRuleOperations(
+		"QER",
+		func(id uint32) bool { _, ok := s.QERIDs[id]; return ok },
+		changes.CreateQERs, changes.UpdateQERs, changes.RemoveQERs,
+		func(c rules.QERConfig) uint32 { return c.QERID },
+		func(p rules.QERPatch) uint32 { return p.QERID },
+	)
+	if err != nil {
+		return err
+	}
+	state.removedQERs = opsQER.removed
+	state.qerOverrides = make(map[uint32]*rules.QERConfig)
+	opsURR, err := validateRuleOperations(
+		"URR",
+		func(id uint32) bool { _, ok := s.URRIDs[id]; return ok },
+		changes.CreateURRs, changes.UpdateURRs, changes.RemoveURRs,
+		func(c rules.URRConfig) uint32 { return c.URRID },
+		func(p rules.URRPatch) uint32 { return p.URRID },
+	)
+	if err != nil {
+		return err
+	}
+	state.removedURRs = opsURR.removed
+	state.urrOverrides = make(map[uint32]*rules.URRConfig)
+	opsBAR, err := validateRuleOperations(
+		"BAR",
+		func(id uint8) bool { _, ok := s.BARIDs[id]; return ok },
+		changes.CreateBARs, changes.UpdateBARs, changes.RemoveBARs,
+		func(c rules.BARConfig) uint8 { return c.BARID },
+		func(p rules.BARPatch) uint8 { return p.BARID },
+	)
+	if err != nil {
+		return err
+	}
+	state.removedBARs = opsBAR.removed
+	state.barOverrides = make(map[uint8]*rules.BARConfig)
+	for _, id := range changes.QueryURRs {
+		if _, removed := state.removedURRs[id]; removed {
+			return errors.Wrapf(ErrMutualExclusionConflict, "RemoveURR and QueryURR conflict for ID %d", id)
+		}
+		if _, created := opsURR.created[id]; !created {
+			if _, current := s.URRIDs[id]; !current {
+				return errors.Wrapf(ErrRuleNotFound, "QueryURR ID %d", id)
+			}
+		}
+	}
+	return nil
 }
 
-// PDR returns the effective PDR after all request operations. The returned value
-// is read-only and remains owned by RuleState or its base session.
-func (state *RuleState) PDR(id uint16) (*PDRInfo, bool) {
+// buildOverlays merges each update once and owns all changed values.
+func (state *RuleState) buildOverlays(changes *rules.RuleChangeSet) {
+	for _, c := range changes.CreatePDRs {
+		n := c.Clone()
+		state.pdrOverrides[c.PDRID] = &n
+	}
+	for _, p := range changes.UpdatePDRs {
+		c, _ := state.PDR(p.PDRID)
+		n := c.Merge(p)
+		state.pdrOverrides[p.PDRID] = &n
+	}
+	for _, c := range changes.CreateFARs {
+		n := c.Clone()
+		state.farOverrides[c.FARID] = &n
+	}
+	for _, p := range changes.UpdateFARs {
+		c, _ := state.FAR(p.FARID)
+		n := c.Merge(p)
+		state.farOverrides[p.FARID] = &n
+	}
+	for _, c := range changes.CreateQERs {
+		n := c.Clone()
+		state.qerOverrides[c.QERID] = &n
+	}
+	for _, p := range changes.UpdateQERs {
+		c, _ := state.QER(p.QERID)
+		n := c.Merge(p)
+		state.qerOverrides[p.QERID] = &n
+	}
+	for _, c := range changes.CreateURRs {
+		n := c.Clone()
+		state.urrOverrides[c.URRID] = &n
+	}
+	for _, p := range changes.UpdateURRs {
+		c, _ := state.URR(p.URRID)
+		n := c.Merge(p)
+		state.urrOverrides[p.URRID] = &n
+	}
+	for _, c := range changes.CreateBARs {
+		n := c.Clone()
+		state.barOverrides[c.BARID] = &n
+	}
+	for _, p := range changes.UpdateBARs {
+		c, _ := state.BAR(p.BARID)
+		n := c.Merge(p)
+		state.barOverrides[p.BARID] = &n
+	}
+}
+
+func (state *RuleState) findAffectedPDRs() {
+	for id := range state.pdrOverrides {
+		state.affectedPDRs[id] = struct{}{}
+	}
+	for id := range state.removedPDRs {
+		state.affectedPDRs[id] = struct{}{}
+	}
+	changedQERs := make(map[uint32]struct{})
+	for id := range state.qerOverrides {
+		changedQERs[id] = struct{}{}
+	}
+	for id := range state.removedQERs {
+		changedQERs[id] = struct{}{}
+	}
+	for id, pdr := range state.sess.PDRIDs {
+		for _, qid := range pdr.QERIDs {
+			if _, changed := changedQERs[qid]; changed {
+				state.affectedPDRs[id] = struct{}{}
+				break
+			}
+		}
+	}
+}
+
+// PDR returns a read-only effective configuration.
+func (state *RuleState) PDR(id uint16) (*rules.PDRConfig, bool) {
 	if _, removed := state.removedPDRs[id]; removed {
 		return nil, false
 	}
-	if info, changed := state.pdrOverrides[id]; changed {
-		return info, true
+	if c, changed := state.pdrOverrides[id]; changed {
+		return c, true
 	}
-	info, exists := state.sess.PDRIDs[id]
-	return info, exists
+	c, ok := state.sess.PDRIDs[id]
+	return c, ok
 }
 
-// QER returns the effective QER after all request operations. The returned value
-// is read-only and remains owned by RuleState or its base session.
-func (state *RuleState) QER(id uint32) (*QERInfo, bool) {
+// FAR returns a read-only effective configuration.
+func (state *RuleState) FAR(id uint32) (*rules.FARConfig, bool) {
+	if _, removed := state.removedFARs[id]; removed {
+		return nil, false
+	}
+	if c, changed := state.farOverrides[id]; changed {
+		return c, true
+	}
+	c, ok := state.sess.FARIDs[id]
+	return c, ok
+}
+
+// QER returns a read-only effective configuration.
+func (state *RuleState) QER(id uint32) (*rules.QERConfig, bool) {
 	if _, removed := state.removedQERs[id]; removed {
 		return nil, false
 	}
-	if info, changed := state.qerOverrides[id]; changed {
-		return info, true
+	if c, changed := state.qerOverrides[id]; changed {
+		return c, true
 	}
-	info, exists := state.sess.QERIDs[id]
-	return info, exists
+	c, ok := state.sess.QERIDs[id]
+	return c, ok
+}
+
+// URR returns a read-only effective configuration.
+func (state *RuleState) URR(id uint32) (*rules.URRConfig, bool) {
+	if _, removed := state.removedURRs[id]; removed {
+		return nil, false
+	}
+	if c, changed := state.urrOverrides[id]; changed {
+		return c, true
+	}
+	c, ok := state.sess.URRIDs[id]
+	if !ok {
+		return nil, false
+	}
+	return &c.Config, true
+}
+
+// BAR returns a read-only effective configuration.
+func (state *RuleState) BAR(id uint8) (*rules.BARConfig, bool) {
+	if _, removed := state.removedBARs[id]; removed {
+		return nil, false
+	}
+	if c, changed := state.barOverrides[id]; changed {
+		return c, true
+	}
+	c, ok := state.sess.BARIDs[id]
+	return c, ok
 }
 
 // RangePDR visits every PDR in the effective final state without copying
 // unchanged PDRs into a second session-wide map.
 func (state *RuleState) RangePDR(
-	visit func(id uint16, info *PDRInfo) error,
+	visit func(id uint16, info *rules.PDRConfig) error,
 ) error {
 	for id, info := range state.sess.PDRIDs {
 		if _, removed := state.removedPDRs[id]; removed {
@@ -146,79 +297,19 @@ func (state *RuleState) AffectedPDRIDs() []uint16 {
 	return ids
 }
 
-// Commit applies only operations confirmed by the datapath executor.
-// It preserves the existing URR reporting/refcount side effects.
-func (state *RuleState) Commit(plan *forwarder.ModificationPlan) []report.USAReport {
-	if plan == nil {
-		return nil
-	}
-	sess := state.sess
-
-	for _, rule := range plan.CreateFARs {
-		sess.ApplyCreateFAR(rule)
-	}
-	for _, rule := range plan.CreateQERs {
-		sess.ApplyCreateQER(rule)
-	}
-	for _, rule := range plan.CreateURRs {
-		sess.ApplyCreateURR(rule)
-	}
-	for _, rule := range plan.CreateBARs {
-		sess.ApplyCreateBAR(rule)
-	}
-	for _, rule := range plan.CreatePDRs {
-		sess.ApplyCreatePDR(rule)
-	}
-
-	for _, rule := range plan.UpdateFARs {
-		sess.ApplyUpdateFAR(rule)
-	}
-	for _, rule := range plan.UpdateQERs {
-		sess.ApplyUpdateQER(rule)
-	}
-	for _, rule := range plan.UpdateURRs {
-		sess.ApplyUpdateURR(rule)
-	}
-	for _, rule := range plan.UpdateBARs {
-		sess.ApplyUpdateBAR(rule)
-	}
-
-	var reports []report.USAReport
-	for _, rule := range plan.UpdatePDRs {
-		reports = append(reports, sess.ApplyUpdatePDR(rule)...)
-	}
-	for _, rule := range plan.RemovePDRs {
-		reports = append(reports, sess.ApplyRemovePDR(rule)...)
-	}
-
-	for _, rule := range plan.RemoveBARs {
-		sess.ApplyRemoveBAR(rule)
-	}
-	for _, rule := range plan.RemoveURRs {
-		sess.ApplyRemoveURR(rule)
-	}
-	for _, rule := range plan.RemoveQERs {
-		sess.ApplyRemoveQER(rule)
-	}
-	for _, rule := range plan.RemoveFARs {
-		sess.ApplyRemoveFAR(rule)
-	}
-
-	return reports
-}
-
 type ruleOperations[K comparable] struct {
 	created map[K]struct{}
 	removed map[K]struct{}
 }
 
-func validateRuleOperations[K comparable, P any](
+func validateRuleOperations[K comparable, C, U any](
 	ruleName string,
 	currentExists func(K) bool,
-	creates []P,
-	updates []P,
-	removes []P,
-	idOf func(P) K,
+	creates []C,
+	updates []U,
+	removes []K,
+	createID func(C) K,
+	updateID func(U) K,
 ) (ruleOperations[K], error) {
 	operations := ruleOperations[K]{
 		created: make(map[K]struct{}, len(creates)),
@@ -227,7 +318,7 @@ func validateRuleOperations[K comparable, P any](
 	updated := make(map[K]struct{}, len(updates))
 
 	for _, rule := range creates {
-		id := idOf(rule)
+		id := createID(rule)
 		if _, duplicate := operations.created[id]; duplicate {
 			return ruleOperations[K]{}, errors.Wrapf(
 				ErrMutualExclusionConflict,
@@ -239,10 +330,9 @@ func validateRuleOperations[K comparable, P any](
 		operations.created[id] = struct{}{}
 	}
 	for _, rule := range updates {
-		updated[idOf(rule)] = struct{}{}
+		updated[updateID(rule)] = struct{}{}
 	}
-	for _, rule := range removes {
-		id := idOf(rule)
+	for _, id := range removes {
 		if _, duplicate := operations.removed[id]; duplicate {
 			return ruleOperations[K]{}, errors.Wrapf(
 				ErrMutualExclusionConflict,
@@ -281,7 +371,7 @@ func validateRuleOperations[K comparable, P any](
 		return currentExists(id)
 	}
 	for _, rule := range updates {
-		id := idOf(rule)
+		id := updateID(rule)
 		if !available(id) {
 			return ruleOperations[K]{}, errors.Wrapf(
 				ErrRuleNotFound,
@@ -291,8 +381,7 @@ func validateRuleOperations[K comparable, P any](
 			)
 		}
 	}
-	for _, rule := range removes {
-		id := idOf(rule)
+	for _, id := range removes {
 		if !available(id) {
 			return ruleOperations[K]{}, errors.Wrapf(
 				ErrRuleNotFound,
@@ -306,240 +395,35 @@ func validateRuleOperations[K comparable, P any](
 	return operations, nil
 }
 
-func (state *RuleState) validateOperations() error {
-	pdrOperations, err := validateRuleOperations(
-		"PDR",
-		func(id uint16) bool {
-			_, exists := state.sess.PDRIDs[id]
-			return exists
-		},
-		state.plan.CreatePDRs,
-		state.plan.UpdatePDRs,
-		state.plan.RemovePDRs,
-		func(rule *forwarder.PDRPlan) uint16 { return rule.PDRID },
-	)
-	if err != nil {
-		return err
-	}
-	state.removedPDRs = pdrOperations.removed
-
-	farOperations, err := validateRuleOperations(
-		"FAR",
-		func(id uint32) bool {
-			_, exists := state.sess.FARIDs[id]
-			return exists
-		},
-		state.plan.CreateFARs,
-		state.plan.UpdateFARs,
-		state.plan.RemoveFARs,
-		func(rule *forwarder.FARPlan) uint32 { return rule.FARID },
-	)
-	if err != nil {
-		return err
-	}
-	state.createdFARs = farOperations.created
-	state.removedFARs = farOperations.removed
-
-	qerOperations, err := validateRuleOperations(
-		"QER",
-		func(id uint32) bool {
-			_, exists := state.sess.QERIDs[id]
-			return exists
-		},
-		state.plan.CreateQERs,
-		state.plan.UpdateQERs,
-		state.plan.RemoveQERs,
-		func(rule *forwarder.QERPlan) uint32 { return rule.QERID },
-	)
-	if err != nil {
-		return err
-	}
-	state.removedQERs = qerOperations.removed
-
-	urrOperations, err := validateRuleOperations(
-		"URR",
-		func(id uint32) bool {
-			_, exists := state.sess.URRIDs[id]
-			return exists
-		},
-		state.plan.CreateURRs,
-		state.plan.UpdateURRs,
-		state.plan.RemoveURRs,
-		func(rule *forwarder.URRPlan) uint32 { return rule.URRID },
-	)
-	if err != nil {
-		return err
-	}
-	state.createdURRs = urrOperations.created
-	state.removedURRs = urrOperations.removed
-
-	for _, query := range state.plan.QueryURRs {
-		id := query.QueryURRID
-		if _, removed := state.removedURRs[id]; removed {
-			return errors.Wrapf(
-				ErrMutualExclusionConflict,
-				"RemoveURR and QueryURR conflict for ID %d",
-				id,
-			)
-		}
-		_, created := state.createdURRs[id]
-		_, current := state.sess.URRIDs[id]
-		if !created && !current {
-			return errors.Wrapf(ErrRuleNotFound, "QueryURR ID %v", id)
-		}
-	}
-
-	_, err = validateRuleOperations(
-		"BAR",
-		func(id uint8) bool {
-			_, exists := state.sess.BARIDs[id]
-			return exists
-		},
-		state.plan.CreateBARs,
-		state.plan.UpdateBARs,
-		state.plan.RemoveBARs,
-		func(rule *forwarder.BARPlan) uint8 { return rule.BARID },
-	)
-	return err
-}
-
-func (state *RuleState) buildOverlays() {
-	for _, rule := range state.plan.CreatePDRs {
-		state.pdrOverrides[rule.PDRID] = newPDRInfo(rule)
-		state.affectedPDRs[rule.PDRID] = struct{}{}
-	}
-	for _, rule := range state.plan.UpdatePDRs {
-		current, _ := state.PDR(rule.PDRID)
-		state.pdrOverrides[rule.PDRID] = mergePDRInfo(current, rule)
-		state.affectedPDRs[rule.PDRID] = struct{}{}
-	}
-
-	for _, rule := range state.plan.CreateQERs {
-		state.qerOverrides[rule.QERID] = newQERInfo(rule)
-	}
-	for _, rule := range state.plan.UpdateQERs {
-		current, _ := state.QER(rule.QERID)
-		state.qerOverrides[rule.QERID] = mergeQERInfo(current, rule)
-	}
-
-	for id := range state.removedPDRs {
-		state.affectedPDRs[id] = struct{}{}
-	}
-}
-
-func effectiveExists[K comparable](
-	id K,
-	currentExists bool,
-	created map[K]struct{},
-	removed map[K]struct{},
-) bool {
-	if _, deleted := removed[id]; deleted {
-		return false
-	}
-	if _, added := created[id]; added {
-		return true
-	}
-	return currentExists
-}
-
-func (state *RuleState) farExists(id uint32) bool {
-	_, current := state.sess.FARIDs[id]
-	return effectiveExists(id, current, state.createdFARs, state.removedFARs)
-}
-
-func (state *RuleState) qerExists(id uint32) bool {
-	_, exists := state.QER(id)
-	return exists
-}
-
-func (state *RuleState) urrExists(id uint32) bool {
-	_, current := state.sess.URRIDs[id]
-	return effectiveExists(id, current, state.createdURRs, state.removedURRs)
-}
-
-func (state *RuleState) validatePDRReferences(
-	pdrID uint16,
-	info *PDRInfo,
-) error {
-	if info.HasFARID && !state.farExists(info.FARID) {
-		return errors.Wrapf(
-			ErrRuleCreationModificationFailed,
-			"PDR %d references missing FAR %d",
-			pdrID,
-			info.FARID,
-		)
-	}
-	for qerID := range info.RelatedQERIDs {
-		if !state.qerExists(qerID) {
-			return errors.Wrapf(
-				ErrRuleCreationModificationFailed,
-				"PDR %d references missing QER %d",
-				pdrID,
-				qerID,
-			)
-		}
-	}
-	for urrID := range info.RelatedURRIDs {
-		if !state.urrExists(urrID) {
-			return errors.Wrapf(
-				ErrRuleCreationModificationFailed,
-				"PDR %d references missing URR %d",
-				pdrID,
-				urrID,
-			)
-		}
-	}
-	return nil
-}
-
 func (state *RuleState) validateReferences() error {
-	if len(state.removedFARs) > 0 || len(state.removedQERs) > 0 || len(state.removedURRs) > 0 {
-		return state.RangePDR(state.validatePDRReferences)
+	validate := func(id uint16, c *rules.PDRConfig) error {
+		if c.FARID != nil {
+			if _, ok := state.FAR(*c.FARID); !ok {
+				return errors.Wrapf(ErrRuleCreationModificationFailed, "PDR %d references missing FAR %d", id, *c.FARID)
+			}
+		}
+		for _, qid := range c.QERIDs {
+			if _, ok := state.QER(qid); !ok {
+				return errors.Wrapf(ErrRuleCreationModificationFailed, "PDR %d references missing QER %d", id, qid)
+			}
+		}
+		for _, uid := range c.URRIDs {
+			if _, ok := state.URR(uid); !ok {
+				return errors.Wrapf(ErrRuleCreationModificationFailed, "PDR %d references missing URR %d", id, uid)
+			}
+		}
+		return nil
 	}
-
-	for id, info := range state.pdrOverrides {
+	if len(state.removedFARs) > 0 || len(state.removedQERs) > 0 || len(state.removedURRs) > 0 {
+		return state.RangePDR(validate)
+	}
+	for id, c := range state.pdrOverrides {
 		if _, removed := state.removedPDRs[id]; removed {
 			continue
 		}
-		if err := state.validatePDRReferences(id, info); err != nil {
+		if err := validate(id, c); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func referencesAnyQER(info *PDRInfo, qerIDs map[uint32]struct{}) bool {
-	for id := range info.RelatedQERIDs {
-		if _, changed := qerIDs[id]; changed {
-			return true
-		}
-	}
-	return false
-}
-
-func (state *RuleState) findAffectedPDRs() {
-	changedQERs := make(map[uint32]struct{},
-		len(state.plan.CreateQERs)+len(state.plan.UpdateQERs)+len(state.plan.RemoveQERs))
-	for _, rule := range state.plan.CreateQERs {
-		changedQERs[rule.QERID] = struct{}{}
-	}
-	for _, rule := range state.plan.UpdateQERs {
-		changedQERs[rule.QERID] = struct{}{}
-	}
-	for _, rule := range state.plan.RemoveQERs {
-		changedQERs[rule.QERID] = struct{}{}
-	}
-
-	if len(changedQERs) == 0 {
-		return
-	}
-
-	// Directly changed PDRs were marked while building overlays. This single pass adds
-	// otherwise unchanged PDRs affected by a QER operation and retains the old
-	// side of any PDR rewire for future resolver cleanup.
-	for id, info := range state.sess.PDRIDs {
-		if referencesAnyQER(info, changedQERs) {
-			state.affectedPDRs[id] = struct{}{}
-		}
-	}
 }

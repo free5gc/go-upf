@@ -124,7 +124,7 @@ func (d *Dispatcher) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 		req.UsageReport = append(req.UsageReport,
 			ie.NewUsageReportWithinSessionReportRequest(
 				r.IEsWithinSessReportReq(
-					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
+					urrInfo.measurementMethod(), urrInfo.measurementInformation())...,
 			))
 	}
 

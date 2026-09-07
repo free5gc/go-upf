@@ -4,12 +4,14 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/internal/rules"
 )
 
 // SessionDatapath is a datapath handle owned by one PFCP session. It shares the driver's
 // clients and services; creating or cleaning up a SessionDatapath never closes the driver.
 // Applied attributes and rollback snapshots remain private to the handle.
 type SessionDatapath interface {
+	CompileChanges(*rules.RuleChangeSet) (*ModificationPlan, error)
 	QueryURR(urrID uint32) ([]report.USAReport, error)
 	ExecuteEstablishmentPlan(*ModificationPlan) (*ExecutionResult, error)
 	// ExecuteModificationPlan always prepares rollback from owned snapshots.
