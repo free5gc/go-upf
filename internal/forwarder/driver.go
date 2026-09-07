@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
@@ -21,38 +20,8 @@ type Driver interface {
 
 	HandleReport(report.Handler)
 
-	// Plan-based methods for two-phase commit
-	// Build*Plan methods parse and validate IEs without executing
-	BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
-	BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
-	BuildRemovePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
-
-	BuildCreateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error)
-	BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error)
-	BuildRemoveFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error)
-
-	BuildCreateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error)
-	BuildUpdateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error)
-	BuildRemoveQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error)
-
-	BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
-	BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
-	BuildRemoveURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
-	BuildQueryURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
-
-	BuildCreateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
-	BuildUpdateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
-	BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
-
-	// ExecuteModificationPlan executes all operations in the plan. A plan with
-	// rollback configurations are applied fail-fast to reverse successful state changes
-	// before returning an error. Plans without rollback metadata retain
-	// best-effort cleanup semantics.
-	ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error)
-
-	// ExecuteEstablishmentPlan stops on the first Create failure and rolls back
-	// every rule created earlier by the same plan.
-	ExecuteEstablishmentPlan(plan *ModificationPlan) (*ExecutionResult, error)
+	// Execution plans are an implementation detail shared only within forwarder.
+	sessionBackend
 }
 
 func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {

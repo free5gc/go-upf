@@ -8,7 +8,7 @@ import (
 	"github.com/free5gc/go-gtp5gnl"
 )
 
-func decodePlanFlowQoS(t *testing.T, plan *PDRPlan) gtp5gnl.FlowQoS {
+func decodePlanFlowQoS(t *testing.T, plan *pdrPlan) gtp5gnl.FlowQoS {
 	t.Helper()
 
 	for _, attr := range plan.Attrs {
@@ -36,7 +36,7 @@ func decodePlanFlowQoS(t *testing.T, plan *PDRPlan) gtp5gnl.FlowQoS {
 }
 
 func TestPDRPlanSetAndClearFlowQoSBinding(t *testing.T) {
-	plan := &PDRPlan{
+	plan := &pdrPlan{
 		Attrs: []nl.Attr{
 			{Type: gtp5gnl.PDR_PRECEDENCE, Value: nl.AttrU32(255)},
 		},
@@ -97,7 +97,7 @@ func TestPDRPlanSetAndClearFlowQoSBinding(t *testing.T) {
 }
 
 func TestPDRPlanRejectsFlowQoSPolicyIDOverflow(t *testing.T) {
-	plan := new(PDRPlan)
+	plan := new(pdrPlan)
 	err := plan.SetFlowQoSBinding(FlowQoSBinding{
 		PolicyID: gtp5gnl.FLOW_QOS_POLICY_ID_MAX + 1,
 	})

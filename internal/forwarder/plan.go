@@ -65,13 +65,14 @@ type QERDesiredStatePatch struct {
 	MBR        *DirectionalBitRate
 }
 
-// PDRPlan contains validated PDR operation parameters
-type PDRPlan struct {
+// pdrPlan contains validated PDR operation parameters
+type pdrPlan struct {
 	Op         OpType
 	OID        gtp5gnl.OID
 	Attrs      []nl.Attr
 	OriginalIE *ie.IE
-	// Parsed fields used by PFCP validation and committed Session state.
+	// Transitional builder metadata, retained for encoding parity tests.
+	// PFCP validates and stores rules.Config instead.
 	PDRID uint16
 
 	FARID        uint32
@@ -90,8 +91,8 @@ type PDRPlan struct {
 
 // SetFlowQoSBinding adds or replaces the nested PDR FlowQoS attribute. The
 // CreatePDROID and UpdatePDROID execution paths already publish every
-// attribute in PDRPlan.Attrs, so no separate netlink command is required.
-func (p *PDRPlan) SetFlowQoSBinding(binding FlowQoSBinding) error {
+// attribute in pdrPlan.Attrs, so no separate netlink command is required.
+func (p *pdrPlan) SetFlowQoSBinding(binding FlowQoSBinding) error {
 	return p.setFlowQoS(gtp5gnl.FlowQoS{
 		Version:    gtp5gnl.SHARED_MARK_ABI_VERSION,
 		PolicyID:   binding.PolicyID,
@@ -103,14 +104,14 @@ func (p *PDRPlan) SetFlowQoSBinding(binding FlowQoSBinding) error {
 
 // ClearFlowQoSBinding publishes an explicit clear operation for an existing
 // PDR binding.
-func (p *PDRPlan) ClearFlowQoSBinding(generation uint32) error {
+func (p *pdrPlan) ClearFlowQoSBinding(generation uint32) error {
 	return p.setFlowQoS(gtp5gnl.FlowQoS{
 		Version:    gtp5gnl.SHARED_MARK_ABI_VERSION,
 		Generation: generation,
 	})
 }
 
-func (p *PDRPlan) setFlowQoS(flowQoS gtp5gnl.FlowQoS) error {
+func (p *pdrPlan) setFlowQoS(flowQoS gtp5gnl.FlowQoS) error {
 	attr, err := gtp5gnl.NewFlowQoSAttr(flowQoS)
 	if err != nil {
 		return err
@@ -127,8 +128,8 @@ func (p *PDRPlan) setFlowQoS(flowQoS gtp5gnl.FlowQoS) error {
 	return nil
 }
 
-// FARPlan contains validated FAR operation parameters
-type FARPlan struct {
+// farPlan contains validated FAR operation parameters
+type farPlan struct {
 	Op         OpType
 	OID        gtp5gnl.OID
 	Attrs      []nl.Attr
@@ -138,8 +139,8 @@ type FARPlan struct {
 	ApplyAction *report.ApplyAction // for UpdateFAR side effects
 }
 
-// QERPlan contains validated QER operation parameters
-type QERPlan struct {
+// qerPlan contains validated QER operation parameters
+type qerPlan struct {
 	Op         OpType
 	OID        gtp5gnl.OID
 	Attrs      []nl.Attr
@@ -150,7 +151,7 @@ type QERPlan struct {
 }
 
 // URRReportingPatch records field presence independently of zero values.
-// PFCP applies this semantic metadata without inspecting netlink attributes.
+// Retained for legacy builder parity and private URR timer restoration.
 type URRReportingPatch struct {
 	MeasureMethod      *uint8
 	MeasureInformation *uint64
@@ -158,8 +159,8 @@ type URRReportingPatch struct {
 	MeasurePeriod      *time.Duration
 }
 
-// URRPlan contains validated URR operation parameters
-type URRPlan struct {
+// urrPlan contains validated URR operation parameters
+type urrPlan struct {
 	Op         OpType
 	OID        gtp5gnl.OID
 	Attrs      []nl.Attr
@@ -174,8 +175,8 @@ type URRPlan struct {
 	QueryURRID uint32
 }
 
-// BARPlan contains validated BAR operation parameters
-type BARPlan struct {
+// barPlan contains validated BAR operation parameters
+type barPlan struct {
 	Op         OpType
 	OID        gtp5gnl.OID
 	Attrs      []nl.Attr
@@ -184,97 +185,97 @@ type BARPlan struct {
 	BARID uint8
 }
 
-// RollbackPlan contains the previously applied rule configurations for a
+// rollbackPlan contains the previously applied rule configurations for a
 // transactional PFCP request. Create operations do not need prior configuration;
 // Update and Remove operations use these plans to restore the previous rule.
-type RollbackPlan struct {
-	PDRs map[uint16]*PDRPlan
-	FARs map[uint32]*FARPlan
-	QERs map[uint32]*QERPlan
-	URRs map[uint32]*URRPlan
-	BARs map[uint8]*BARPlan
+type rollbackPlan struct {
+	PDRs map[uint16]*pdrPlan
+	FARs map[uint32]*farPlan
+	QERs map[uint32]*qerPlan
+	URRs map[uint32]*urrPlan
+	BARs map[uint8]*barPlan
 }
 
-func NewRollbackPlan() *RollbackPlan {
-	return &RollbackPlan{
-		PDRs: make(map[uint16]*PDRPlan),
-		FARs: make(map[uint32]*FARPlan),
-		QERs: make(map[uint32]*QERPlan),
-		URRs: make(map[uint32]*URRPlan),
-		BARs: make(map[uint8]*BARPlan),
+func newRollbackPlan() *rollbackPlan {
+	return &rollbackPlan{
+		PDRs: make(map[uint16]*pdrPlan),
+		FARs: make(map[uint32]*farPlan),
+		QERs: make(map[uint32]*qerPlan),
+		URRs: make(map[uint32]*urrPlan),
+		BARs: make(map[uint8]*barPlan),
 	}
 }
 
-// ModificationPlan contains all validated rule operations for a session modification
+// modificationPlan contains all validated rule operations for a session modification
 // The executor enforces dependency order across these groups:
 // Create -> Update -> Query -> Remove.
-type ModificationPlan struct {
+type modificationPlan struct {
 	SEID uint64
 
 	// Rollback is populated by SessionDatapath on its execution copy; PFCP
 	// callers do not construct it. It is non-nil for transactions and holds the
 	// prior configurations needed to undo successful Update and Remove operations.
 	// A nil value keeps the legacy best-effort behaviour used by session cleanup.
-	Rollback *RollbackPlan
+	Rollback *rollbackPlan
 
 	// Create operations - order: FAR -> QER -> URR -> BAR -> PDR
-	CreateFARs []*FARPlan
-	CreateQERs []*QERPlan
-	CreateURRs []*URRPlan
-	CreateBARs []*BARPlan
-	CreatePDRs []*PDRPlan
+	CreateFARs []*farPlan
+	CreateQERs []*qerPlan
+	CreateURRs []*urrPlan
+	CreateBARs []*barPlan
+	CreatePDRs []*pdrPlan
 
 	// Remove operations - order: PDR -> BAR -> URR -> QER -> FAR
-	RemovePDRs []*PDRPlan
-	RemoveBARs []*BARPlan
-	RemoveURRs []*URRPlan
-	RemoveQERs []*QERPlan
-	RemoveFARs []*FARPlan
+	RemovePDRs []*pdrPlan
+	RemoveBARs []*barPlan
+	RemoveURRs []*urrPlan
+	RemoveQERs []*qerPlan
+	RemoveFARs []*farPlan
 
 	// Update operations - order: FAR -> QER -> URR -> BAR -> PDR
-	UpdateFARs []*FARPlan
-	UpdateQERs []*QERPlan
-	UpdateURRs []*URRPlan
-	UpdateBARs []*BARPlan
-	UpdatePDRs []*PDRPlan
+	UpdateFARs []*farPlan
+	UpdateQERs []*qerPlan
+	UpdateURRs []*urrPlan
+	UpdateBARs []*barPlan
+	UpdatePDRs []*pdrPlan
 
 	// Query operations
-	QueryURRs []*URRPlan
+	QueryURRs []*urrPlan
 }
 
-// NewModificationPlan creates a new empty ModificationPlan
-func NewModificationPlan(seid uint64) *ModificationPlan {
-	return &ModificationPlan{
+// newModificationPlan creates a new empty modificationPlan
+func newModificationPlan(seid uint64) *modificationPlan {
+	return &modificationPlan{
 		SEID: seid,
 	}
 }
 
-// ExecutionResult describes what the datapath actually applied.
+// executionResult describes what the datapath actually applied.
 //
 // AppliedPlan contains only state-changing operations that remain applied when
 // execution returns. A successful transactional request contains the complete
 // plan; a failed request whose rollback completed contains an empty plan.
-type ExecutionResult struct {
-	AppliedPlan *ModificationPlan
+type executionResult struct {
+	AppliedPlan *modificationPlan
 
 	// USAReports collected from successful URR operations (Update, Remove, Query).
 	USAReports []report.USAReport
 }
 
-// NewExecutionResult creates an empty execution result for one session.
-func NewExecutionResult(seid uint64) *ExecutionResult {
-	return &ExecutionResult{
-		AppliedPlan: NewModificationPlan(seid),
+// newExecutionResult creates an empty execution result for one session.
+func newExecutionResult(seid uint64) *executionResult {
+	return &executionResult{
+		AppliedPlan: newModificationPlan(seid),
 		USAReports:  make([]report.USAReport, 0),
 	}
 }
 
-// NewSuccessfulExecutionResult records every operation in plan as applied.
-func NewSuccessfulExecutionResult(plan *ModificationPlan) *ExecutionResult {
+// newSuccessfulExecutionResult records every operation in plan as applied.
+func newSuccessfulExecutionResult(plan *modificationPlan) *executionResult {
 	if plan == nil {
-		return NewExecutionResult(0)
+		return newExecutionResult(0)
 	}
-	result := NewExecutionResult(plan.SEID)
+	result := newExecutionResult(plan.SEID)
 	result.AppliedPlan = plan
 	return result
 }

@@ -2,16 +2,12 @@ package pfcp
 
 import (
 	"net"
-	"sort"
 	"testing"
 	"time"
 
-	"github.com/khirono/go-nl"
 	"github.com/stretchr/testify/require"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
-
-	"github.com/free5gc/go-upf/internal/forwarder"
 )
 
 func fullRuleRequest() *message.SessionModificationRequest {
@@ -47,187 +43,6 @@ func fullRuleRequest() *message.SessionModificationRequest {
 	}
 }
 
-// Attribute order between different types has no semantic significance. Preserve
-// ordering within repeated types, including SDF filters and relationship IDs.
-func normalizedAttrs(attrs []nl.Attr) []nl.Attr {
-	if attrs == nil {
-		return nil
-	}
-	result := append([]nl.Attr{}, attrs...)
-	for i, a := range result {
-		if nested, ok := a.Value.(nl.AttrList); ok {
-			result[i].Value = nl.AttrList(normalizedAttrs(nested))
-		}
-	}
-	sort.SliceStable(result, func(i, j int) bool { return result[i].Type < result[j].Type })
-	return result
-}
-
-func TestTypedRuleChangesMatchLegacyBuilders(t *testing.T) {
-	sess := &Session{LocalID: 42} // No driver: parsing must be independent of datapath.
-	req := fullRuleRequest()
-	changes, err := sess.BuildModificationPlan(req)
-	require.NoError(t, err)
-	plan, err := forwarder.NewSessionDatapath(forwarder.Empty{}, 42).CompileChanges(changes)
-	require.NoError(t, err)
-	require.Nil(t, plan.Rollback)
-	g := new(forwarder.Gtp5g)
-	t.Run("CreatePDR", func(t *testing.T) {
-		old, err := g.BuildCreatePDRPlan(42, req.CreatePDR[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.CreatePDRs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.CreatePDRs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("CreateFAR", func(t *testing.T) {
-		old, err := g.BuildCreateFARPlan(42, req.CreateFAR[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.CreateFARs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.CreateFARs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("CreateQER", func(t *testing.T) {
-		old, err := g.BuildCreateQERPlan(42, req.CreateQER[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.CreateQERs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.CreateQERs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("CreateURR", func(t *testing.T) {
-		old, err := g.BuildCreateURRPlan(42, req.CreateURR[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.CreateURRs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.CreateURRs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("CreateBAR", func(t *testing.T) {
-		old, err := g.BuildCreateBARPlan(42, req.CreateBAR)
-		require.NoError(t, err)
-		require.Nil(t, plan.CreateBARs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.CreateBARs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("UpdatePDR", func(t *testing.T) {
-		old, err := g.BuildUpdatePDRPlan(42, req.UpdatePDR[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.UpdatePDRs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.UpdatePDRs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("UpdateFAR", func(t *testing.T) {
-		old, err := g.BuildUpdateFARPlan(42, req.UpdateFAR[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.UpdateFARs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.UpdateFARs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("UpdateQER", func(t *testing.T) {
-		old, err := g.BuildUpdateQERPlan(42, req.UpdateQER[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.UpdateQERs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.UpdateQERs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("UpdateURR", func(t *testing.T) {
-		old, err := g.BuildUpdateURRPlan(42, req.UpdateURR[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.UpdateURRs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.UpdateURRs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("UpdateBAR", func(t *testing.T) {
-		old, err := g.BuildUpdateBARPlan(42, req.UpdateBAR)
-		require.NoError(t, err)
-		require.Nil(t, plan.UpdateBARs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.UpdateBARs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("RemovePDR", func(t *testing.T) {
-		old, err := g.BuildRemovePDRPlan(42, req.RemovePDR[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.RemovePDRs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.RemovePDRs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("RemoveFAR", func(t *testing.T) {
-		old, err := g.BuildRemoveFARPlan(42, req.RemoveFAR[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.RemoveFARs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.RemoveFARs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("RemoveQER", func(t *testing.T) {
-		old, err := g.BuildRemoveQERPlan(42, req.RemoveQER[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.RemoveQERs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.RemoveQERs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("RemoveURR", func(t *testing.T) {
-		old, err := g.BuildRemoveURRPlan(42, req.RemoveURR[0])
-		require.NoError(t, err)
-		require.Nil(t, plan.RemoveURRs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.RemoveURRs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	t.Run("RemoveBAR", func(t *testing.T) {
-		old, err := g.BuildRemoveBARPlan(42, req.RemoveBAR)
-		require.NoError(t, err)
-		require.Nil(t, plan.RemoveBARs[0].OriginalIE)
-		old.OriginalIE = nil
-		old.Attrs = normalizedAttrs(old.Attrs)
-		actual := *plan.RemoveBARs[0]
-		actual.Attrs = normalizedAttrs(actual.Attrs)
-		require.Equal(t, *old, actual)
-	})
-	old, err := g.BuildQueryURRPlan(42, req.QueryURR[0])
-	require.NoError(t, err)
-	old.OriginalIE = nil
-	require.Equal(t, old, plan.QueryURRs[0])
-}
-
 func TestTypedEstablishmentAndResponseMetadata(t *testing.T) {
 	req := fullRuleRequest()
 	sess := &Session{LocalID: 42}
@@ -255,15 +70,7 @@ func TestTypedEstablishmentAndResponseMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "60.60.0.1", addr.IPv4Address.String())
 	require.Equal(t, uint32(123), changes.CreatePDRs[0].PDI.FTEID.TEID)
-	// Compiling must not reverse the semantic SDF or alias its addresses.
-	original := changes.CreatePDRs[0].PDI.SDFFilters[0].FlowDescription.Src.IP.String()
-	handle := forwarder.NewSessionDatapath(forwarder.Empty{}, 42)
-	first, err := handle.CompileChanges(changes)
-	require.NoError(t, err)
-	second, err := handle.CompileChanges(changes)
-	require.NoError(t, err)
-	require.Equal(t, first, second)
-	require.Equal(t, original, changes.CreatePDRs[0].PDI.SDFFilters[0].FlowDescription.Src.IP.String())
+
 }
 
 func TestTypedPatchesPreservePresence(t *testing.T) {

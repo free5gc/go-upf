@@ -1090,8 +1090,8 @@ func pdrPlanFromParsed(
 	localSEID uint64,
 	req *ie.IE,
 	parsed parsedPDRIEs,
-) *PDRPlan {
-	return &PDRPlan{
+) *pdrPlan {
+	return &pdrPlan{
 		Op:              operation,
 		OID:             gtp5gnl.OID{localSEID, parsed.pdrID},
 		Attrs:           parsed.attrs,
@@ -1107,7 +1107,7 @@ func pdrPlanFromParsed(
 	}
 }
 
-func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
+func (g *Gtp5g) buildCreatePDRPlan(lSeid uint64, req *ie.IE) (*pdrPlan, error) {
 	ies, err := req.CreatePDR()
 	if err != nil {
 		return nil, err
@@ -1135,7 +1135,7 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	return pdrPlanFromParsed(OpCreate, lSeid, req, parsed), nil
 }
 
-func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
+func (g *Gtp5g) buildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*pdrPlan, error) {
 	ies, err := req.UpdatePDR()
 	if err != nil {
 		return nil, err
@@ -1151,13 +1151,13 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	return pdrPlanFromParsed(OpUpdate, lSeid, req, parsed), nil
 }
 
-func (g *Gtp5g) BuildRemovePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
+func (g *Gtp5g) buildRemovePDRPlan(lSeid uint64, req *ie.IE) (*pdrPlan, error) {
 	v, err := req.PDRID()
 	if err != nil {
 		return nil, errors.New("not found PDRID")
 	}
 
-	return &PDRPlan{
+	return &pdrPlan{
 		Op:         OpRemove,
 		OID:        gtp5gnl.OID{lSeid, uint64(v)},
 		Attrs:      nil,
@@ -1166,7 +1166,7 @@ func (g *Gtp5g) BuildRemovePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildCreateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
+func (g *Gtp5g) buildCreateFARPlan(lSeid uint64, req *ie.IE) (*farPlan, error) {
 	var farid uint64
 	var attrs []nl.Attr
 	var hasFARID bool
@@ -1234,7 +1234,7 @@ func (g *Gtp5g) BuildCreateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
 		return nil, err
 	}
 
-	return &FARPlan{
+	return &farPlan{
 		Op:         OpCreate,
 		OID:        gtp5gnl.OID{lSeid, farid},
 		Attrs:      attrs,
@@ -1243,7 +1243,7 @@ func (g *Gtp5g) BuildCreateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
+func (g *Gtp5g) buildUpdateFARPlan(lSeid uint64, req *ie.IE) (*farPlan, error) {
 	var farid uint64
 	var attrs []nl.Attr
 	var applyAction *report.ApplyAction
@@ -1308,7 +1308,7 @@ func (g *Gtp5g) BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
 		return nil, err
 	}
 
-	return &FARPlan{
+	return &farPlan{
 		Op:          OpUpdate,
 		OID:         gtp5gnl.OID{lSeid, farid},
 		Attrs:       attrs,
@@ -1318,13 +1318,13 @@ func (g *Gtp5g) BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildRemoveFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
+func (g *Gtp5g) buildRemoveFARPlan(lSeid uint64, req *ie.IE) (*farPlan, error) {
 	v, err := req.FARID()
 	if err != nil {
 		return nil, errors.New("not found FARID")
 	}
 
-	return &FARPlan{
+	return &farPlan{
 		Op:         OpRemove,
 		OID:        gtp5gnl.OID{lSeid, uint64(v)},
 		Attrs:      nil,
@@ -1333,7 +1333,7 @@ func (g *Gtp5g) BuildRemoveFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildCreateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
+func (g *Gtp5g) buildCreateQERPlan(lSeid uint64, req *ie.IE) (*qerPlan, error) {
 	ies, err := req.CreateQER()
 	if err != nil {
 		return nil, err
@@ -1349,7 +1349,7 @@ func (g *Gtp5g) BuildCreateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
 		return nil, err
 	}
 
-	return &QERPlan{
+	return &qerPlan{
 		Op:           OpCreate,
 		OID:          gtp5gnl.OID{lSeid, parsed.qerID},
 		Attrs:        parsed.attrs,
@@ -1359,7 +1359,7 @@ func (g *Gtp5g) BuildCreateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildUpdateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
+func (g *Gtp5g) buildUpdateQERPlan(lSeid uint64, req *ie.IE) (*qerPlan, error) {
 	ies, err := req.UpdateQER()
 	if err != nil {
 		return nil, err
@@ -1372,7 +1372,7 @@ func (g *Gtp5g) BuildUpdateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
 		return nil, err
 	}
 
-	return &QERPlan{
+	return &qerPlan{
 		Op:           OpUpdate,
 		OID:          gtp5gnl.OID{lSeid, parsed.qerID},
 		Attrs:        parsed.attrs,
@@ -1382,13 +1382,13 @@ func (g *Gtp5g) BuildUpdateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildRemoveQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
+func (g *Gtp5g) buildRemoveQERPlan(lSeid uint64, req *ie.IE) (*qerPlan, error) {
 	v, err := req.QERID()
 	if err != nil {
 		return nil, errors.New("not found QERID")
 	}
 
-	return &QERPlan{
+	return &qerPlan{
 		Op:         OpRemove,
 		OID:        gtp5gnl.OID{lSeid, uint64(v)},
 		Attrs:      nil,
@@ -1397,7 +1397,7 @@ func (g *Gtp5g) BuildRemoveQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
+func (g *Gtp5g) buildCreateURRPlan(lSeid uint64, req *ie.IE) (*urrPlan, error) {
 	var urrid uint32
 	var measureMethod uint8
 	var rptTrig report.ReportingTrigger
@@ -1502,7 +1502,7 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 		return nil, errors.New("invalid measurement period for PERIO trigger")
 	}
 
-	return &URRPlan{
+	return &urrPlan{
 		ReportingConfig:  urrReportingPatch(attrs),
 		Op:               OpCreate,
 		OID:              gtp5gnl.OID{lSeid, uint64(urrid)},
@@ -1515,8 +1515,8 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	}, nil
 }
 
-// BuildUpdateURRPlan parses and validates UpdateURR IE without executing
-func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
+// buildUpdateURRPlan parses and validates UpdateURR IE without executing
+func (g *Gtp5g) buildUpdateURRPlan(lSeid uint64, req *ie.IE) (*urrPlan, error) {
 	var urrid uint64
 	var measureMethod uint8
 	var attrs []nl.Attr
@@ -1608,7 +1608,7 @@ func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 		return nil, err
 	}
 
-	return &URRPlan{
+	return &urrPlan{
 		ReportingConfig: urrReportingPatch(attrs),
 		Op:              OpUpdate,
 		OID:             gtp5gnl.OID{lSeid, urrid},
@@ -1619,13 +1619,13 @@ func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildRemoveURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
+func (g *Gtp5g) buildRemoveURRPlan(lSeid uint64, req *ie.IE) (*urrPlan, error) {
 	v, err := req.URRID()
 	if err != nil {
 		return nil, errors.New("not found URRID")
 	}
 
-	return &URRPlan{
+	return &urrPlan{
 		Op:         OpRemove,
 		OID:        gtp5gnl.OID{lSeid, uint64(v)},
 		Attrs:      nil,
@@ -1634,13 +1634,13 @@ func (g *Gtp5g) BuildRemoveURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildQueryURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
+func (g *Gtp5g) buildQueryURRPlan(lSeid uint64, req *ie.IE) (*urrPlan, error) {
 	v, err := req.URRID()
 	if err != nil {
 		return nil, errors.New("not found URRID")
 	}
 
-	return &URRPlan{
+	return &urrPlan{
 		Op:         OpRemove, // Query is not Create/Update/Remove, but we need a value
 		OID:        gtp5gnl.OID{lSeid, uint64(v)},
 		Attrs:      nil,
@@ -1649,7 +1649,7 @@ func (g *Gtp5g) BuildQueryURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildCreateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
+func (g *Gtp5g) buildCreateBARPlan(lSeid uint64, req *ie.IE) (*barPlan, error) {
 	var barid uint64
 	var attrs []nl.Attr
 	var hasBARID bool
@@ -1694,7 +1694,7 @@ func (g *Gtp5g) BuildCreateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
 		return nil, err
 	}
 
-	return &BARPlan{
+	return &barPlan{
 		Op:         OpCreate,
 		OID:        gtp5gnl.OID{lSeid, barid},
 		Attrs:      attrs,
@@ -1703,7 +1703,7 @@ func (g *Gtp5g) BuildCreateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildUpdateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
+func (g *Gtp5g) buildUpdateBARPlan(lSeid uint64, req *ie.IE) (*barPlan, error) {
 	var barid uint64
 	var attrs []nl.Attr
 	var hasBARID bool
@@ -1748,7 +1748,7 @@ func (g *Gtp5g) BuildUpdateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
 		return nil, err
 	}
 
-	return &BARPlan{
+	return &barPlan{
 		Op:         OpUpdate,
 		OID:        gtp5gnl.OID{lSeid, barid},
 		Attrs:      attrs,
@@ -1757,13 +1757,13 @@ func (g *Gtp5g) BuildUpdateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
 	}, nil
 }
 
-func (g *Gtp5g) BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
+func (g *Gtp5g) buildRemoveBARPlan(lSeid uint64, req *ie.IE) (*barPlan, error) {
 	v, err := req.BARID()
 	if err != nil {
 		return nil, errors.New("not found BARID")
 	}
 
-	return &BARPlan{
+	return &barPlan{
 		Op:         OpRemove,
 		OID:        gtp5gnl.OID{lSeid, uint64(v)},
 		Attrs:      nil,
@@ -1773,14 +1773,14 @@ func (g *Gtp5g) BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
 }
 
 // rollbackApplied reverses successful state-changing operations in the exact
-// reverse of ExecuteModificationPlan's dependency order.
+// reverse of executeModificationPlan's dependency order.
 //
 // TODO: URR rollback restores configuration only. Remove-and-recreate does not
 // preserve kernel accounting runtime; full restoration requires gtp5g support.
 //
 // TODO: Return and reconcile rollback failures. For now they are logged and the
 // caller assumes the pre-request kernel state was restored.
-func (g *Gtp5g) rollbackApplied(request, applied *ModificationPlan) {
+func (g *Gtp5g) rollbackApplied(request, applied *modificationPlan) {
 	if applied == nil {
 		return
 	}
@@ -1911,14 +1911,14 @@ func (g *Gtp5g) rollbackApplied(request, applied *ModificationPlan) {
 	}
 }
 
-// ExecuteModificationPlan executes all operations in dependency order.
+// executeModificationPlan executes all operations in dependency order.
 // A non-nil Rollback plan enables PFCP request transaction semantics: execution
 // stops on the first error and all successful state-changing operations are
 // reversed. A nil Rollback plan retains best-effort cleanup semantics.
-func (g *Gtp5g) ExecuteModificationPlan(
-	plan *ModificationPlan,
-) (*ExecutionResult, error) {
-	result := NewExecutionResult(plan.SEID)
+func (g *Gtp5g) executeModificationPlan(
+	plan *modificationPlan,
+) (*executionResult, error) {
+	result := newExecutionResult(plan.SEID)
 	applied := result.AppliedPlan
 	transactional := plan.Rollback != nil
 
@@ -1927,7 +1927,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 		g.log.Error(err)
 		if transactional {
 			g.rollbackApplied(plan, applied)
-			result.AppliedPlan = NewModificationPlan(plan.SEID)
+			result.AppliedPlan = newModificationPlan(plan.SEID)
 			result.USAReports = nil
 			return true
 		}
@@ -1939,7 +1939,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 
 	for _, p := range plan.CreateFARs {
 		if err := gtp5gnl.CreateFAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			wrapped := errors.Wrapf(err, "ModificationPlan: CreateFAR[%#x] failed", p.FARID)
+			wrapped := errors.Wrapf(err, "modificationPlan: CreateFAR[%#x] failed", p.FARID)
 			handleFailure(wrapped)
 			return result, wrapped
 		}
@@ -1947,7 +1947,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	}
 	for _, p := range plan.CreateQERs {
 		if err := gtp5gnl.CreateQEROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			wrapped := errors.Wrapf(err, "ModificationPlan: CreateQER[%#x] failed", p.QERID)
+			wrapped := errors.Wrapf(err, "modificationPlan: CreateQER[%#x] failed", p.QERID)
 			handleFailure(wrapped)
 			return result, wrapped
 		}
@@ -1959,7 +1959,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 		}
 		if err := gtp5gnl.CreateURROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
 			g.ps.DelPeriodReportTimer(plan.SEID, p.URRID)
-			wrapped := errors.Wrapf(err, "ModificationPlan: CreateURR[%#x] failed", p.URRID)
+			wrapped := errors.Wrapf(err, "modificationPlan: CreateURR[%#x] failed", p.URRID)
 			handleFailure(wrapped)
 			return result, wrapped
 		}
@@ -1967,7 +1967,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	}
 	for _, p := range plan.CreateBARs {
 		if err := gtp5gnl.CreateBAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			wrapped := errors.Wrapf(err, "ModificationPlan: CreateBAR[%#x] failed", p.BARID)
+			wrapped := errors.Wrapf(err, "modificationPlan: CreateBAR[%#x] failed", p.BARID)
 			handleFailure(wrapped)
 			return result, wrapped
 		}
@@ -1975,7 +1975,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	}
 	for _, p := range plan.CreatePDRs {
 		if err := gtp5gnl.CreatePDROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			wrapped := errors.Wrapf(err, "ModificationPlan: CreatePDR[%#x] failed", p.PDRID)
+			wrapped := errors.Wrapf(err, "modificationPlan: CreatePDR[%#x] failed", p.PDRID)
 			handleFailure(wrapped)
 			return result, wrapped
 		}
@@ -1984,7 +1984,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 
 	for _, p := range plan.UpdateFARs {
 		if err := gtp5gnl.UpdateFAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: UpdateFAR[%#x] failed", p.FARID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: UpdateFAR[%#x] failed", p.FARID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -1997,7 +1997,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	}
 	for _, p := range plan.UpdateQERs {
 		if err := gtp5gnl.UpdateQEROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: UpdateQER[%#x] failed", p.QERID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: UpdateQER[%#x] failed", p.QERID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2008,7 +2008,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	for _, p := range plan.UpdateURRs {
 		rs, err := gtp5gnl.UpdateURROID(g.client, g.link.link, p.OID, p.Attrs)
 		if err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: UpdateURR[%#x] failed", p.URRID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: UpdateURR[%#x] failed", p.URRID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2021,7 +2021,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	}
 	for _, p := range plan.UpdateBARs {
 		if err := gtp5gnl.UpdateBAROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: UpdateBAR[%#x] failed", p.BARID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: UpdateBAR[%#x] failed", p.BARID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2031,7 +2031,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	}
 	for _, p := range plan.UpdatePDRs {
 		if err := gtp5gnl.UpdatePDROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: UpdatePDR[%#x] failed", p.PDRID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: UpdatePDR[%#x] failed", p.PDRID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2043,7 +2043,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	for _, p := range plan.QueryURRs {
 		rs, err := gtp5gnl.GetReportOID(g.client, g.link.link, p.OID)
 		if err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: QueryURR[%#x] failed", p.QueryURRID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: QueryURR[%#x] failed", p.QueryURRID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2057,7 +2057,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 
 	for _, p := range plan.RemovePDRs {
 		if err := gtp5gnl.RemovePDROID(g.client, g.link.link, p.OID); err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: RemovePDR[%#x] failed", p.PDRID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: RemovePDR[%#x] failed", p.PDRID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2067,7 +2067,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	}
 	for _, p := range plan.RemoveBARs {
 		if err := gtp5gnl.RemoveBAROID(g.client, g.link.link, p.OID); err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: RemoveBAR[%#x] failed", p.BARID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: RemoveBAR[%#x] failed", p.BARID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2078,7 +2078,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	for _, p := range plan.RemoveURRs {
 		rs, err := gtp5gnl.RemoveURROID(g.client, g.link.link, p.OID)
 		if err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: RemoveURR[%#x] failed", p.URRID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: RemoveURR[%#x] failed", p.URRID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2092,7 +2092,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	}
 	for _, p := range plan.RemoveQERs {
 		if err := gtp5gnl.RemoveQEROID(g.client, g.link.link, p.OID); err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: RemoveQER[%#x] failed", p.QERID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: RemoveQER[%#x] failed", p.QERID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2102,7 +2102,7 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	}
 	for _, p := range plan.RemoveFARs {
 		if err := gtp5gnl.RemoveFAROID(g.client, g.link.link, p.OID); err != nil {
-			wrapped := errors.Wrapf(err, "ExecuteModificationPlan: RemoveFAR[%#x] failed", p.FARID)
+			wrapped := errors.Wrapf(err, "executeModificationPlan: RemoveFAR[%#x] failed", p.FARID)
 			if handleFailure(wrapped) {
 				return result, wrapped
 			}
@@ -2123,16 +2123,16 @@ func (g *Gtp5g) ExecuteModificationPlan(
 	return result, executionErr
 }
 
-// ExecuteEstablishmentPlan executes Create operations for session establishment.
+// executeEstablishmentPlan executes Create operations for session establishment.
 // It rolls back every successful Create if a later Create fails.
-func (g *Gtp5g) ExecuteEstablishmentPlan(
-	plan *ModificationPlan,
-) (*ExecutionResult, error) {
-	result := NewExecutionResult(plan.SEID)
+func (g *Gtp5g) executeEstablishmentPlan(
+	plan *modificationPlan,
+) (*executionResult, error) {
+	result := newExecutionResult(plan.SEID)
 	applied := result.AppliedPlan
-	fail := func(err error) (*ExecutionResult, error) {
+	fail := func(err error) (*executionResult, error) {
 		g.rollbackApplied(plan, applied)
-		result.AppliedPlan = NewModificationPlan(plan.SEID)
+		result.AppliedPlan = newModificationPlan(plan.SEID)
 		result.USAReports = nil
 		return result, err
 	}

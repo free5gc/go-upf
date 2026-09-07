@@ -113,33 +113,33 @@ func snapshotBefore[K comparable, P any](current map[K]ruleConfig, creates, upda
 	return nil
 }
 
-func (s *sessionDatapath) buildRollbackPlan(plan *ModificationPlan) (*RollbackPlan, error) {
-	before := NewRollbackPlan()
+func (s *sessionDatapath) buildRollbackPlan(plan *modificationPlan) (*rollbackPlan, error) {
+	before := newRollbackPlan()
 	if err := snapshotBefore(s.applied.pdrs, plan.CreatePDRs, plan.UpdatePDRs, plan.RemovePDRs,
-		func(p *PDRPlan) uint16 { return p.PDRID },
+		func(p *pdrPlan) uint16 { return p.PDRID },
 		func(id uint16, old ruleConfig) {
-			before.PDRs[id] = &PDRPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, PDRID: id}
+			before.PDRs[id] = &pdrPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, PDRID: id}
 		}); err != nil {
 		return nil, errors.Wrap(err, "PDR rollback")
 	}
 	if err := snapshotBefore(s.applied.fars, plan.CreateFARs, plan.UpdateFARs, plan.RemoveFARs,
-		func(p *FARPlan) uint32 { return p.FARID },
+		func(p *farPlan) uint32 { return p.FARID },
 		func(id uint32, old ruleConfig) {
-			before.FARs[id] = &FARPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, FARID: id}
+			before.FARs[id] = &farPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, FARID: id}
 		}); err != nil {
 		return nil, errors.Wrap(err, "FAR rollback")
 	}
 	if err := snapshotBefore(s.applied.qers, plan.CreateQERs, plan.UpdateQERs, plan.RemoveQERs,
-		func(p *QERPlan) uint32 { return p.QERID },
+		func(p *qerPlan) uint32 { return p.QERID },
 		func(id uint32, old ruleConfig) {
-			before.QERs[id] = &QERPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, QERID: id}
+			before.QERs[id] = &qerPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, QERID: id}
 		}); err != nil {
 		return nil, errors.Wrap(err, "QER rollback")
 	}
 	if err := snapshotBefore(s.applied.urrs, plan.CreateURRs, plan.UpdateURRs, plan.RemoveURRs,
-		func(p *URRPlan) uint32 { return p.URRID },
+		func(p *urrPlan) uint32 { return p.URRID },
 		func(id uint32, old ruleConfig) {
-			before.URRs[id] = &URRPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, URRID: id}
+			before.URRs[id] = &urrPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, URRID: id}
 			patch := urrReportingPatch(old.Attrs)
 			p := before.URRs[id]
 			p.ReportingConfig = patch
@@ -156,9 +156,9 @@ func (s *sessionDatapath) buildRollbackPlan(plan *ModificationPlan) (*RollbackPl
 		return nil, errors.Wrap(err, "URR rollback")
 	}
 	if err := snapshotBefore(s.applied.bars, plan.CreateBARs, plan.UpdateBARs, plan.RemoveBARs,
-		func(p *BARPlan) uint8 { return p.BARID },
+		func(p *barPlan) uint8 { return p.BARID },
 		func(id uint8, old ruleConfig) {
-			before.BARs[id] = &BARPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, BARID: id}
+			before.BARs[id] = &barPlan{Op: OpCreate, OID: old.OID, Attrs: old.Attrs, BARID: id}
 		}); err != nil {
 		return nil, errors.Wrap(err, "BAR rollback")
 	}
@@ -185,24 +185,24 @@ func publishRules[K comparable, P any](current map[K]ruleConfig, creates, update
 
 // publish records only operations confirmed by the executor. Transactional
 // failures do not call this method; cleanup may report partial success.
-func (s *sessionDatapath) publish(result *ExecutionResult) {
+func (s *sessionDatapath) publish(result *executionResult) {
 	if result == nil || result.AppliedPlan == nil {
 		return
 	}
 	plan := result.AppliedPlan
 	publishRules(s.applied.pdrs, plan.CreatePDRs, plan.UpdatePDRs, plan.RemovePDRs,
-		func(p *PDRPlan) uint16 { return p.PDRID },
-		func(p *PDRPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeRuleAttrs)
+		func(p *pdrPlan) uint16 { return p.PDRID },
+		func(p *pdrPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeRuleAttrs)
 	publishRules(s.applied.fars, plan.CreateFARs, plan.UpdateFARs, plan.RemoveFARs,
-		func(p *FARPlan) uint32 { return p.FARID },
-		func(p *FARPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeFARRuleAttrs)
+		func(p *farPlan) uint32 { return p.FARID },
+		func(p *farPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeFARRuleAttrs)
 	publishRules(s.applied.qers, plan.CreateQERs, plan.UpdateQERs, plan.RemoveQERs,
-		func(p *QERPlan) uint32 { return p.QERID },
-		func(p *QERPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeRuleAttrs)
+		func(p *qerPlan) uint32 { return p.QERID },
+		func(p *qerPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeRuleAttrs)
 	publishRules(s.applied.urrs, plan.CreateURRs, plan.UpdateURRs, plan.RemoveURRs,
-		func(p *URRPlan) uint32 { return p.URRID },
-		func(p *URRPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeRuleAttrs)
+		func(p *urrPlan) uint32 { return p.URRID },
+		func(p *urrPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeRuleAttrs)
 	publishRules(s.applied.bars, plan.CreateBARs, plan.UpdateBARs, plan.RemoveBARs,
-		func(p *BARPlan) uint8 { return p.BARID },
-		func(p *BARPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeRuleAttrs)
+		func(p *barPlan) uint8 { return p.BARID },
+		func(p *barPlan) ruleConfig { return ruleConfig{OID: p.OID, Attrs: p.Attrs} }, mergeRuleAttrs)
 }

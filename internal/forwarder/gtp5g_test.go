@@ -57,7 +57,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 
 	lSeid := uint64(1)
 	t.Run("create rules", func(t *testing.T) {
-		plan := NewModificationPlan(lSeid)
+		plan := newModificationPlan(lSeid)
 
 		far1 := ie.NewCreateFAR(
 			ie.NewFARID(2),
@@ -67,7 +67,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 				ie.NewNetworkInstance("internet"),
 			),
 		)
-		fp1, err := g.BuildCreateFARPlan(lSeid, far1)
+		fp1, err := g.buildCreateFARPlan(lSeid, far1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +77,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewFARID(4),
 			ie.NewApplyAction(0x2),
 		)
-		fp2, err := g.BuildCreateFARPlan(lSeid, far2)
+		fp2, err := g.buildCreateFARPlan(lSeid, far2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewMBR(200000, 100000),
 			ie.NewQFI(10),
 		)
-		qp, err := g.BuildCreateQERPlan(lSeid, qer)
+		qp, err := g.buildCreateQERPlan(lSeid, qer)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -105,7 +105,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			rptTrig.IE(),
 			ie.NewMeasurementInformation(4),
 		)
-		up1, err := g.BuildCreateURRPlan(lSeid, urr1)
+		up1, err := g.buildCreateURRPlan(lSeid, urr1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +120,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
 			ie.NewVolumeQuota(7, 40000, 50000, 60000),
 		)
-		up2, err := g.BuildCreateURRPlan(lSeid, urr2)
+		up2, err := g.buildCreateURRPlan(lSeid, urr2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,7 +153,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(1),
 			ie.NewURRID(2),
 		)
-		pp1, err := g.BuildCreatePDRPlan(lSeid, pdr1)
+		pp1, err := g.buildCreatePDRPlan(lSeid, pdr1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -177,13 +177,13 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewQERID(1),
 			ie.NewURRID(1),
 		)
-		pp2, err := g.BuildCreatePDRPlan(lSeid, pdr2)
+		pp2, err := g.buildCreatePDRPlan(lSeid, pdr2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		plan.CreatePDRs = append(plan.CreatePDRs, pp2)
 
-		_, err = g.ExecuteEstablishmentPlan(plan)
+		_, err = g.executeEstablishmentPlan(plan)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -196,7 +196,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	})
 
 	t.Run("update rules", func(t *testing.T) {
-		plan := NewModificationPlan(lSeid)
+		plan := newModificationPlan(lSeid)
 
 		rpt := report.ReportingTrigger{
 			Flags: report.RPT_TRIG_PERIO,
@@ -206,7 +206,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewMeasurementPeriod(2*time.Second),
 			rpt.IE(),
 		)
-		up, err := g.BuildUpdateURRPlan(lSeid, urr)
+		up, err := g.buildUpdateURRPlan(lSeid, urr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -229,7 +229,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 				),
 			),
 		)
-		fp, err := g.BuildUpdateFARPlan(lSeid, far)
+		fp, err := g.buildUpdateFARPlan(lSeid, far)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -251,13 +251,13 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			),
 			ie.NewFARID(4),
 		)
-		pp, err := g.BuildUpdatePDRPlan(lSeid, pdr)
+		pp, err := g.buildUpdatePDRPlan(lSeid, pdr)
 		if err != nil {
 			t.Fatal(err)
 		}
 		plan.UpdatePDRs = append(plan.UpdatePDRs, pp)
 
-		result, err := g.ExecuteModificationPlan(plan)
+		result, err := g.executeModificationPlan(plan)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -269,12 +269,12 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	})
 
 	t.Run("remove rules", func(t *testing.T) {
-		plan := NewModificationPlan(lSeid)
+		plan := newModificationPlan(lSeid)
 
 		urr1 := ie.NewRemoveURR(
 			ie.NewURRID(1),
 		)
-		up1, err := g.BuildRemoveURRPlan(lSeid, urr1)
+		up1, err := g.buildRemoveURRPlan(lSeid, urr1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -283,13 +283,13 @@ func TestGtp5g_CreateRules(t *testing.T) {
 		urr2 := ie.NewRemoveURR(
 			ie.NewURRID(2),
 		)
-		up2, err := g.BuildRemoveURRPlan(lSeid, urr2)
+		up2, err := g.buildRemoveURRPlan(lSeid, urr2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		plan.RemoveURRs = append(plan.RemoveURRs, up2)
 
-		result, err := g.ExecuteModificationPlan(plan)
+		result, err := g.executeModificationPlan(plan)
 		if err != nil {
 			t.Fatal(err)
 		}

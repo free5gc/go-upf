@@ -10,10 +10,8 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
-// CompileChanges is the transition from decoded PFCP semantics to the existing
-// public plan used by RuleState and the executor. It performs no datapath I/O.
-// RuleState will consume semantic changes directly in the next migration step.
-func (s *sessionDatapath) CompileChanges(changes *rules.RuleChangeSet) (*ModificationPlan, error) {
+// compileChanges validates ownership and encodes semantics without datapath I/O.
+func (s *sessionDatapath) compileChanges(changes *rules.RuleChangeSet) (*modificationPlan, error) {
 	if changes == nil {
 		return nil, errors.New("nil rule changes")
 	}
@@ -23,8 +21,8 @@ func (s *sessionDatapath) CompileChanges(changes *rules.RuleChangeSet) (*Modific
 	return compileRuleChanges(changes)
 }
 
-func compilePDR(seid uint64, p rules.PDRConfig, op OpType) (*PDRPlan, error) {
-	plan := &PDRPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.PDRID)}, PDRID: p.PDRID}
+func compilePDR(seid uint64, p rules.PDRConfig, op OpType) (*pdrPlan, error) {
+	plan := &pdrPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.PDRID)}, PDRID: p.PDRID}
 	if p.Precedence != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_PRECEDENCE, Value: nl.AttrU32(*p.Precedence)})
 	}
@@ -96,8 +94,8 @@ func compilePDI(p *rules.PDI) (nl.AttrList, error) {
 	}
 	return attrs, nil
 }
-func compileFAR(seid uint64, p rules.FARConfig, op OpType) *FARPlan {
-	plan := &FARPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.FARID)}, FARID: p.FARID}
+func compileFAR(seid uint64, p rules.FARConfig, op OpType) *farPlan {
+	plan := &farPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.FARID)}, FARID: p.FARID}
 	if p.ApplyAction != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.FAR_APPLY_ACTION, Value: nl.AttrU16(*p.ApplyAction)})
 		if op == OpUpdate {
@@ -134,8 +132,8 @@ func compileFAR(seid uint64, p rules.FARConfig, op OpType) *FARPlan {
 	}
 	return plan
 }
-func compileQER(seid uint64, p rules.QERConfig, op OpType) *QERPlan {
-	plan := &QERPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.QERID)}, QERID: p.QERID}
+func compileQER(seid uint64, p rules.QERConfig, op OpType) *qerPlan {
+	plan := &qerPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.QERID)}, QERID: p.QERID}
 	if p.CorrelationID != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.QER_CORR_ID, Value: nl.AttrU32(*p.CorrelationID)})
 	}
@@ -178,8 +176,8 @@ func compileQER(seid uint64, p rules.QERConfig, op OpType) *QERPlan {
 	}
 	return plan
 }
-func compileURR(seid uint64, p rules.URRConfig, op OpType) *URRPlan {
-	plan := &URRPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.URRID)}, URRID: p.URRID}
+func compileURR(seid uint64, p rules.URRConfig, op OpType) *urrPlan {
+	plan := &urrPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.URRID)}, URRID: p.URRID}
 	if p.MeasureMethod != nil {
 		plan.MeasureMethod = *p.MeasureMethod
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.URR_MEASUREMENT_METHOD, Value: nl.AttrU8(*p.MeasureMethod)})
@@ -226,8 +224,8 @@ func compileURR(seid uint64, p rules.URRConfig, op OpType) *URRPlan {
 	plan.ReportingConfig = urrReportingPatch(plan.Attrs)
 	return plan
 }
-func compileBAR(seid uint64, p rules.BARConfig, op OpType) *BARPlan {
-	plan := &BARPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.BARID)}, BARID: p.BARID}
+func compileBAR(seid uint64, p rules.BARConfig, op OpType) *barPlan {
+	plan := &barPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.BARID)}, BARID: p.BARID}
 	if p.DownlinkDataNotificationDelay != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.BAR_DOWNLINK_DATA_NOTIFICATION_DELAY, Value: nl.AttrU8(*p.DownlinkDataNotificationDelay)})
 	}
@@ -237,8 +235,8 @@ func compileBAR(seid uint64, p rules.BARConfig, op OpType) *BARPlan {
 	return plan
 }
 
-func compileRuleChanges(c *rules.RuleChangeSet) (*ModificationPlan, error) {
-	plan := NewModificationPlan(c.SEID)
+func compileRuleChanges(c *rules.RuleChangeSet) (*modificationPlan, error) {
+	plan := newModificationPlan(c.SEID)
 	for _, p := range c.CreateFARs {
 		plan.CreateFARs = append(plan.CreateFARs, compileFAR(c.SEID, rules.FARConfig(p), OpCreate))
 	}
@@ -278,22 +276,22 @@ func compileRuleChanges(c *rules.RuleChangeSet) (*ModificationPlan, error) {
 		plan.UpdatePDRs = append(plan.UpdatePDRs, compiled)
 	}
 	for _, id := range c.RemovePDRs {
-		plan.RemovePDRs = append(plan.RemovePDRs, &PDRPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, PDRID: id})
+		plan.RemovePDRs = append(plan.RemovePDRs, &pdrPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, PDRID: id})
 	}
 	for _, id := range c.RemoveFARs {
-		plan.RemoveFARs = append(plan.RemoveFARs, &FARPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, FARID: id})
+		plan.RemoveFARs = append(plan.RemoveFARs, &farPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, FARID: id})
 	}
 	for _, id := range c.RemoveQERs {
-		plan.RemoveQERs = append(plan.RemoveQERs, &QERPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, QERID: id})
+		plan.RemoveQERs = append(plan.RemoveQERs, &qerPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, QERID: id})
 	}
 	for _, id := range c.RemoveURRs {
-		plan.RemoveURRs = append(plan.RemoveURRs, &URRPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, URRID: id})
+		plan.RemoveURRs = append(plan.RemoveURRs, &urrPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, URRID: id})
 	}
 	for _, id := range c.RemoveBARs {
-		plan.RemoveBARs = append(plan.RemoveBARs, &BARPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, BARID: id})
+		plan.RemoveBARs = append(plan.RemoveBARs, &barPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, BARID: id})
 	}
 	for _, id := range c.QueryURRs {
-		plan.QueryURRs = append(plan.QueryURRs, &URRPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, QueryURRID: id})
+		plan.QueryURRs = append(plan.QueryURRs, &urrPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, QueryURRID: id})
 	}
 	return plan, nil
 }

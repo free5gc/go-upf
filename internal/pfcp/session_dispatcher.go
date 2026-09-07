@@ -77,18 +77,10 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 		return
 	}
 
-	plan, err1 := sess.datapath.CompileChanges(changes)
-	if err1 != nil {
-		sess.log.Errorf("Est plan encoding error: %v", err1)
-		d.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
-		d.node.DeleteSession(sess.LocalID)
-		return
-	}
-
 	// ========================================================================
 	// PHASE 2: Execution - Execute all Create operations (fail-fast)
 	// ========================================================================
-	_, err1 = sess.datapath.ExecuteEstablishmentPlan(plan)
+	_, err1 = sess.datapath.Establish(changes)
 	if err1 != nil {
 		sess.log.Errorf("Est execution error: %v", err1)
 		d.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
@@ -197,18 +189,11 @@ func (d *Dispatcher) handleSessionModificationRequest(
 		return
 	}
 
-	plan, err1 := sess.datapath.CompileChanges(changes)
-	if err1 != nil {
-		sess.log.Errorf("Mod plan encoding error: %v", err1)
-		d.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
-		return
-	}
-
 	// ========================================================================
-	// PHASE 2: Execution - Execute all operations via gtp5gnl.
-	// The result records only operations that reached the kernel successfully.
+	// PHASE 2: Execution - The datapath compiles and executes semantic changes.
+	// Failed transactions are not published to Session.
 	// ========================================================================
-	execResult, err1 := sess.datapath.ExecuteModificationPlan(plan)
+	execResult, err1 := sess.datapath.Modify(changes)
 	if err1 != nil {
 		// The executor has already rolled back every successful operation. Session
 		// still represents the pre-request kernel state, so nothing is committed.
@@ -227,15 +212,15 @@ func (d *Dispatcher) handleSessionModificationRequest(
 		for i := range execResult.USAReports {
 			r := &execResult.USAReports[i]
 
-			for _, p := range plan.RemoveURRs {
-				if p.URRID == r.URRID {
+			for _, id := range changes.RemoveURRs {
+				if id == r.URRID {
 					r.USARTrigger.Flags |= report.USAR_TRIG_TERMR
 					break
 				}
 			}
 
-			for _, p := range plan.QueryURRs {
-				if p.QueryURRID == r.URRID {
+			for _, id := range changes.QueryURRs {
+				if id == r.URRID {
 					r.USARTrigger.Flags |= report.USAR_TRIG_IMMER
 					break
 				}

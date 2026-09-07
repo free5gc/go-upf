@@ -20,74 +20,74 @@ func (Empty) HandleReport(report.Handler) {
 
 // Plan-based methods for two-phase commit
 
-func (Empty) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
-	return &PDRPlan{}, nil
+func (Empty) buildCreatePDRPlan(lSeid uint64, req *ie.IE) (*pdrPlan, error) {
+	return &pdrPlan{}, nil
 }
 
-func (Empty) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
-	return &PDRPlan{}, nil
+func (Empty) buildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*pdrPlan, error) {
+	return &pdrPlan{}, nil
 }
 
-func (Empty) BuildRemovePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
-	return &PDRPlan{}, nil
+func (Empty) buildRemovePDRPlan(lSeid uint64, req *ie.IE) (*pdrPlan, error) {
+	return &pdrPlan{}, nil
 }
 
-func (Empty) BuildCreateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
-	return &FARPlan{}, nil
+func (Empty) buildCreateFARPlan(lSeid uint64, req *ie.IE) (*farPlan, error) {
+	return &farPlan{}, nil
 }
 
-func (Empty) BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
-	return &FARPlan{}, nil
+func (Empty) buildUpdateFARPlan(lSeid uint64, req *ie.IE) (*farPlan, error) {
+	return &farPlan{}, nil
 }
 
-func (Empty) BuildRemoveFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
-	return &FARPlan{}, nil
+func (Empty) buildRemoveFARPlan(lSeid uint64, req *ie.IE) (*farPlan, error) {
+	return &farPlan{}, nil
 }
 
-func (Empty) BuildCreateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
-	return &QERPlan{}, nil
+func (Empty) buildCreateQERPlan(lSeid uint64, req *ie.IE) (*qerPlan, error) {
+	return &qerPlan{}, nil
 }
 
-func (Empty) BuildUpdateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
-	return &QERPlan{}, nil
+func (Empty) buildUpdateQERPlan(lSeid uint64, req *ie.IE) (*qerPlan, error) {
+	return &qerPlan{}, nil
 }
 
-func (Empty) BuildRemoveQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
-	return &QERPlan{}, nil
+func (Empty) buildRemoveQERPlan(lSeid uint64, req *ie.IE) (*qerPlan, error) {
+	return &qerPlan{}, nil
 }
 
-func (Empty) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
-	return &URRPlan{}, nil
+func (Empty) buildCreateURRPlan(lSeid uint64, req *ie.IE) (*urrPlan, error) {
+	return &urrPlan{}, nil
 }
 
-func (Empty) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
-	return &URRPlan{}, nil
+func (Empty) buildUpdateURRPlan(lSeid uint64, req *ie.IE) (*urrPlan, error) {
+	return &urrPlan{}, nil
 }
 
-func (Empty) BuildRemoveURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
-	return &URRPlan{}, nil
+func (Empty) buildRemoveURRPlan(lSeid uint64, req *ie.IE) (*urrPlan, error) {
+	return &urrPlan{}, nil
 }
 
-func (Empty) BuildQueryURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
-	return &URRPlan{}, nil
+func (Empty) buildQueryURRPlan(lSeid uint64, req *ie.IE) (*urrPlan, error) {
+	return &urrPlan{}, nil
 }
 
-func (Empty) BuildCreateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
-	return &BARPlan{}, nil
+func (Empty) buildCreateBARPlan(lSeid uint64, req *ie.IE) (*barPlan, error) {
+	return &barPlan{}, nil
 }
 
-func (Empty) BuildUpdateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
-	return &BARPlan{}, nil
+func (Empty) buildUpdateBARPlan(lSeid uint64, req *ie.IE) (*barPlan, error) {
+	return &barPlan{}, nil
 }
 
-func (Empty) BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
-	return &BARPlan{}, nil
+func (Empty) buildRemoveBARPlan(lSeid uint64, req *ie.IE) (*barPlan, error) {
+	return &barPlan{}, nil
 }
 
-func (Empty) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error) {
-	return NewSuccessfulExecutionResult(plan), nil
+func (Empty) executeModificationPlan(plan *modificationPlan) (*executionResult, error) {
+	return newSuccessfulExecutionResult(plan), nil
 }
 
-func (Empty) ExecuteEstablishmentPlan(plan *ModificationPlan) (*ExecutionResult, error) {
-	return NewSuccessfulExecutionResult(plan), nil
+func (Empty) executeEstablishmentPlan(plan *modificationPlan) (*executionResult, error) {
+	return newSuccessfulExecutionResult(plan), nil
 }

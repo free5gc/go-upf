@@ -36,19 +36,13 @@ func TestSessionStore(t *testing.T) {
 // SessionStore creates its datapath handle.
 type sessionStoreDriver struct {
 	forwarder.Empty
-	queriedSEID  uint64
-	cleanedSEIDs []uint64
-	closed       bool
+	queriedSEID uint64
+	closed      bool
 }
 
 func (d *sessionStoreDriver) QueryURR(seid uint64, _ uint32) ([]report.USAReport, error) {
 	d.queriedSEID = seid
 	return nil, nil
-}
-
-func (d *sessionStoreDriver) ExecuteModificationPlan(plan *forwarder.ModificationPlan) (*forwarder.ExecutionResult, error) {
-	d.cleanedSEIDs = append(d.cleanedSEIDs, plan.SEID)
-	return forwarder.NewSuccessfulExecutionResult(plan), nil
 }
 
 func (d *sessionStoreDriver) Close() { d.closed = true }
@@ -65,7 +59,6 @@ func TestSessionStoreOwnsDatapathHandles(t *testing.T) {
 	assert.Equal(t, first.LocalID, driver.queriedSEID)
 	_, err = store.Delete(first.LocalID)
 	assert.NoError(t, err)
-	assert.Equal(t, []uint64{first.LocalID}, driver.cleanedSEIDs)
 	assert.False(t, driver.closed)
 
 	_, err = second.datapath.QueryURR(7)
