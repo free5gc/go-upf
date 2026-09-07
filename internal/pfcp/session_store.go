@@ -91,6 +91,7 @@ func (s *SessionStore) Create(
 		s.sessions = append(s.sessions, sess)
 		sess.LocalID = uint64(len(s.sessions))
 	}
+	sess.datapath = forwarder.NewSessionDatapath(driver, sess.LocalID)
 	return sess
 }
 

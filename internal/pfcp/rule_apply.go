@@ -431,7 +431,7 @@ func (s *Session) dissociateURR(urrid uint32) []report.USAReport {
 	if urrInfo.refPdrNum > 0 {
 		urrInfo.refPdrNum--
 		if urrInfo.refPdrNum == 0 {
-			usars, err := s.driver.QueryURR(s.LocalID, urrid)
+			usars, err := s.datapath.QueryURR(urrid)
 			if err != nil {
 				return nil
 			}

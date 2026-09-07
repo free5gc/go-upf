@@ -60,7 +60,7 @@ func (s *Session) Close() []report.USAReport {
 	}
 
 	// Execute all Remove operations (best-effort)
-	execResult, err := s.driver.ExecuteModificationPlan(plan)
+	execResult, err := s.datapath.ExecuteModificationPlan(plan)
 	if err != nil {
 		s.log.Errorf("Execute Deletion Plan err: %v", err)
 	}

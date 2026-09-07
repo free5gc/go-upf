@@ -79,7 +79,7 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	// ========================================================================
 	// PHASE 2: Execution - Execute all Create operations (fail-fast)
 	// ========================================================================
-	execResult, err1 := sess.driver.ExecuteEstablishmentPlan(plan)
+	execResult, err1 := sess.datapath.ExecuteEstablishmentPlan(plan)
 	if err1 != nil {
 		sess.log.Errorf("Est execution error: %v", err1)
 		d.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
@@ -204,7 +204,7 @@ func (d *Dispatcher) handleSessionModificationRequest(
 	// PHASE 2: Execution - Execute all operations via gtp5gnl.
 	// The result records only operations that reached the kernel successfully.
 	// ========================================================================
-	execResult, err1 := sess.driver.ExecuteModificationPlan(plan)
+	execResult, err1 := sess.datapath.ExecuteModificationPlan(plan)
 	if err1 != nil {
 		// The executor has already rolled back every successful operation. Session
 		// still represents the pre-request kernel state, so nothing is committed.

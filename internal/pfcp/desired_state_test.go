@@ -85,7 +85,7 @@ func TestPDRDesiredStateCreateAndPartialUpdate(t *testing.T) {
 			20: {},
 			21: {},
 		},
-		driver: forwarder.Empty{},
+		datapath: forwarder.NewSessionDatapath(forwarder.Empty{}, 0),
 	}
 	sess.ApplyCreatePDR(createPlan)
 

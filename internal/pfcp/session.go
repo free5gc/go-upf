@@ -77,8 +77,9 @@ type BARInfo struct {
 }
 
 type Session struct {
-	association *PFCPAssociation // remote PFCP association that owns this session
-	driver      forwarder.Driver // local UPF datapath dependency
+	association *PFCPAssociation          // remote PFCP association that owns this session
+	driver      forwarder.Driver          // legacy plan builders; shared driver is owned by LocalNode
+	datapath    forwarder.SessionDatapath // execution handle owned by this session
 	LocalID     uint64
 	RemoteID    uint64
 	PDRIDs      map[uint16]*PDRInfo // key: PDR_ID
