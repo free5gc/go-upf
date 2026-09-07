@@ -3,10 +3,8 @@ package pfcp
 import (
 	"time"
 
-	"github.com/khirono/go-nl"
 	"github.com/sirupsen/logrus"
 
-	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 )
@@ -15,16 +13,7 @@ const (
 	BUFFQ_LEN = 512
 )
 
-// ruleConfig is the complete rule configuration last confirmed by the datapath.
-// It is embedded in each rule Info so Session has one canonical state per rule.
-type ruleConfig struct {
-	OID   gtp5gnl.OID
-	Attrs []nl.Attr
-}
-
 type PDRInfo struct {
-	ruleConfig
-
 	FARID              uint32
 	HasFARID           bool
 	RelatedURRIDs      map[uint32]struct{}
@@ -34,14 +23,11 @@ type PDRInfo struct {
 }
 
 type FARInfo struct {
-	ruleConfig
 }
 
 // QERInfo is the last kernel-applied PFCP state used by the FlowQoS resolver.
 // Rate values are stored in bits per second, not PFCP's wire-level kbps.
 type QERInfo struct {
-	ruleConfig
-
 	QFI    uint8
 	HasQFI bool
 
@@ -58,7 +44,6 @@ type QERInfo struct {
 }
 
 type URRInfo struct {
-	ruleConfig
 
 	// Applied reporting configuration.
 	report.MeasureMethod
@@ -73,7 +58,6 @@ type URRInfo struct {
 }
 
 type BARInfo struct {
-	ruleConfig
 }
 
 type Session struct {

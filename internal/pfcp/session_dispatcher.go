@@ -66,7 +66,7 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 		return
 	}
 
-	// 1B: Validate the complete post-request rule state and prepare rollback.
+	// 1B: Validate the complete post-request rule state. The datapath prepares rollback.
 	ruleState, err1 := sess.ValidateRuleState(plan)
 	if err1 != nil {
 		sess.log.Errorf("Est rule-state validation error: %v", err1)
@@ -191,7 +191,7 @@ func (d *Dispatcher) handleSessionModificationRequest(
 		return
 	}
 
-	// 1B: Validate the complete post-request rule state and prepare rollback.
+	// 1B: Validate the complete post-request rule state. The datapath prepares rollback.
 	ruleState, err1 := sess.ValidateRuleState(plan)
 	if err1 != nil {
 		sess.log.Errorf("Mod rule-state validation error: %v", err1)

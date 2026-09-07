@@ -67,7 +67,8 @@ func TestSessionDatapathPreservesExecutionResultsAndErrors(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			result, err := execute(plan)
-			require.Same(t, plan, d.lastPlan)
+			require.Equal(t, plan.SEID, d.lastPlan.SEID)
+			require.NotSame(t, plan, d.lastPlan)
 			require.Same(t, d.result, result)
 			require.ErrorIs(t, err, d.err)
 			require.NotNil(t, plan.Rollback)
@@ -88,9 +89,9 @@ func TestSessionDatapathCleanupKeepsSharedDriverAvailable(t *testing.T) {
 
 	cleanup := NewModificationPlan(41)
 	cleanup.RemoveURRs = []*URRPlan{{URRID: 7}}
-	_, err = first.ExecuteModificationPlan(cleanup)
+	_, err = first.ExecuteDeletionPlan(cleanup)
 	require.NoError(t, err)
-	require.Same(t, cleanup, d.lastPlan)
+	require.Equal(t, cleanup, d.lastPlan)
 	require.Nil(t, d.lastPlan.Rollback, "cleanup must keep its existing best-effort semantics")
 	require.False(t, d.closed)
 
@@ -108,10 +109,14 @@ func TestEmptySessionDatapath(t *testing.T) {
 	plan := NewModificationPlan(42)
 	result, err := s.ExecuteEstablishmentPlan(plan)
 	require.NoError(t, err)
-	require.Same(t, plan, result.AppliedPlan)
+	require.Equal(t, plan.SEID, result.AppliedPlan.SEID)
+	require.NotNil(t, result.AppliedPlan.Rollback)
+	require.Nil(t, plan.Rollback)
 	result, err = s.ExecuteModificationPlan(plan)
 	require.NoError(t, err)
-	require.Same(t, plan, result.AppliedPlan)
+	require.Equal(t, plan.SEID, result.AppliedPlan.SEID)
+	require.NotNil(t, result.AppliedPlan.Rollback)
+	require.Nil(t, plan.Rollback)
 	_, err = s.QueryURR(7)
 	require.NoError(t, err)
 }

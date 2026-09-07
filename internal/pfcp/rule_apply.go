@@ -1,13 +1,8 @@
 package pfcp
 
 import (
-	"sort"
-	"time"
-
-	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
 
-	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 )
@@ -20,82 +15,6 @@ var (
 	ErrMutualExclusionConflict        = errors.New("conflicting operations on same rule")
 )
 
-func cloneRuleAttrs(attrs []nl.Attr) []nl.Attr {
-	cloned := make([]nl.Attr, 0, len(attrs))
-	for _, attr := range attrs {
-		var value nl.Encoder
-		switch v := attr.Value.(type) {
-		case nl.AttrList:
-			value = nl.AttrList(cloneRuleAttrs(v))
-		case nl.AttrBytes:
-			value = nl.AttrBytes(append([]byte(nil), v...))
-		default:
-			value = v
-		}
-		cloned = append(cloned, nl.Attr{Type: attr.Type, Value: value})
-	}
-	return cloned
-}
-
-func mergeRuleAttrs(current, patch []nl.Attr) []nl.Attr {
-	replaced := make(map[uint16]struct{}, len(patch))
-	for _, attr := range patch {
-		replaced[attr.Type] = struct{}{}
-	}
-
-	merged := make([]nl.Attr, 0, len(current)+len(patch))
-	for _, attr := range current {
-		if _, replace := replaced[attr.Type]; !replace {
-			merged = append(merged, cloneRuleAttrs([]nl.Attr{attr})[0])
-		}
-	}
-	merged = append(merged, cloneRuleAttrs(patch)...)
-	return merged
-}
-
-func mergeFARRuleAttrs(current, patch []nl.Attr) []nl.Attr {
-	merged := mergeRuleAttrs(current, patch)
-	for i := range merged {
-		if merged[i].Type != gtp5gnl.FAR_FORWARDING_PARAMETER {
-			continue
-		}
-		patchNested, patchOK := merged[i].Value.(nl.AttrList)
-		if !patchOK {
-			continue
-		}
-		for _, old := range current {
-			oldNested, oldOK := old.Value.(nl.AttrList)
-			if old.Type == merged[i].Type && oldOK {
-				// Update Forwarding Parameters is a partial nested update.
-				merged[i].Value = nl.AttrList(mergeRuleAttrs(oldNested, patchNested))
-				break
-			}
-		}
-	}
-	return merged
-}
-
-func newRuleConfig(oid gtp5gnl.OID, attrs []nl.Attr) ruleConfig {
-	return ruleConfig{
-		OID:   oid,
-		Attrs: cloneRuleAttrs(attrs),
-	}
-}
-
-func (current ruleConfig) merge(attrs []nl.Attr) ruleConfig {
-	return ruleConfig{
-		OID:   current.OID,
-		Attrs: mergeRuleAttrs(current.Attrs, attrs),
-	}
-}
-
-func (current ruleConfig) mergeFAR(attrs []nl.Attr) ruleConfig {
-	return ruleConfig{
-		OID:   current.OID,
-		Attrs: mergeFARRuleAttrs(current.Attrs, attrs),
-	}
-}
-
 func uint32Set(ids []uint32) map[uint32]struct{} {
 	set := make(map[uint32]struct{}, len(ids))
 	for _, id := range ids {
@@ -104,18 +23,8 @@ func uint32Set(ids []uint32) map[uint32]struct{} {
 	return set
 }
 
-func sortedUint32Set(set map[uint32]struct{}) []uint32 {
-	ids := make([]uint32, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids
-}
-
 func newPDRInfo(plan *forwarder.PDRPlan) *PDRInfo {
 	info := &PDRInfo{
-		ruleConfig:    newRuleConfig(plan.OID, plan.Attrs),
 		FARID:         plan.FARID,
 		HasFARID:      plan.FARIDPresent,
 		RelatedURRIDs: uint32Set(plan.URRIDs),
@@ -134,7 +43,6 @@ func mergePDRInfo(current *PDRInfo, patch *forwarder.PDRPlan) *PDRInfo {
 	}
 
 	next := *current
-	next.ruleConfig = current.ruleConfig.merge(patch.Attrs)
 	if patch.FARIDPresent {
 		next.FARID = patch.FARID
 		next.HasFARID = true
@@ -152,43 +60,8 @@ func mergePDRInfo(current *PDRInfo, patch *forwarder.PDRPlan) *PDRInfo {
 	return &next
 }
 
-func (info *PDRInfo) rollbackPlan(id uint16) *forwarder.PDRPlan {
-	if info == nil {
-		return nil
-	}
-	plan := &forwarder.PDRPlan{
-		Op:            forwarder.OpCreate,
-		OID:           info.OID,
-		Attrs:         cloneRuleAttrs(info.Attrs),
-		PDRID:         id,
-		FARID:         info.FARID,
-		FARIDPresent:  info.HasFARID,
-		URRIDs:        sortedUint32Set(info.RelatedURRIDs),
-		URRIDsPresent: true,
-		QERIDs:        sortedUint32Set(info.RelatedQERIDs),
-		QERIDsPresent: true,
-	}
-	if info.HasSourceInterface {
-		sourceInterface := info.SourceInterface
-		plan.SourceInterface = &sourceInterface
-	}
-	return plan
-}
-
 func newFARInfo(plan *forwarder.FARPlan) *FARInfo {
-	return &FARInfo{ruleConfig: newRuleConfig(plan.OID, plan.Attrs)}
-}
-
-func (info *FARInfo) rollbackPlan(id uint32) *forwarder.FARPlan {
-	if info == nil {
-		return nil
-	}
-	return &forwarder.FARPlan{
-		Op:    forwarder.OpCreate,
-		OID:   info.OID,
-		Attrs: cloneRuleAttrs(info.Attrs),
-		FARID: id,
-	}
+	return &FARInfo{}
 }
 
 func newQERInfo(plan *forwarder.QERPlan) *QERInfo {
@@ -199,9 +72,6 @@ func mergeQERInfo(current *QERInfo, plan *forwarder.QERPlan) *QERInfo {
 	next := &QERInfo{}
 	if current != nil {
 		*next = *current
-		next.ruleConfig = current.ruleConfig.merge(plan.Attrs)
-	} else {
-		next.ruleConfig = newRuleConfig(plan.OID, plan.Attrs)
 	}
 	next.applyDesiredStatePatch(plan.DesiredState)
 	return next
@@ -229,62 +99,12 @@ func (q *QERInfo) applyDesiredStatePatch(patch forwarder.QERDesiredStatePatch) {
 	}
 }
 
-func (info *QERInfo) rollbackPlan(id uint32) *forwarder.QERPlan {
-	if info == nil {
-		return nil
-	}
-	desired := forwarder.QERDesiredStatePatch{}
-	if info.HasQFI {
-		qfi := info.QFI
-		desired.QFI = &qfi
-	}
-	if info.HasGate {
-		desired.GateStatus = &forwarder.QERGateStatus{
-			Uplink:   info.GateUL,
-			Downlink: info.GateDL,
-		}
-	}
-	if info.HasGBR {
-		desired.GBR = &forwarder.DirectionalBitRate{
-			UplinkBps:   info.GBRULBps,
-			DownlinkBps: info.GBRDLBps,
-		}
-	}
-	if info.HasMBR {
-		desired.MBR = &forwarder.DirectionalBitRate{
-			UplinkBps:   info.MBRULBps,
-			DownlinkBps: info.MBRDLBps,
-		}
-	}
-	return &forwarder.QERPlan{
-		Op:           forwarder.OpCreate,
-		OID:          info.OID,
-		Attrs:        cloneRuleAttrs(info.Attrs),
-		QERID:        id,
-		DesiredState: desired,
-	}
-}
-
 func measurementMethodFromBits(value uint8) report.MeasureMethod {
 	return report.MeasureMethod{
 		DURAT: value&0x01 != 0,
 		VOLUM: value&0x02 != 0,
 		EVENT: value&0x04 != 0,
 	}
-}
-
-func measurementMethodBits(method report.MeasureMethod) uint8 {
-	var value uint8
-	if method.DURAT {
-		value |= 0x01
-	}
-	if method.VOLUM {
-		value |= 0x02
-	}
-	if method.EVENT {
-		value |= 0x04
-	}
-	return value
 }
 
 func measurementInformationFromBits(value uint64) report.MeasureInformation {
@@ -298,77 +118,30 @@ func measurementInformationFromBits(value uint64) report.MeasureInformation {
 }
 
 func newURRInfo(plan *forwarder.URRPlan) *URRInfo {
-	info := &URRInfo{
-		ruleConfig: newRuleConfig(plan.OID, plan.Attrs),
-	}
-	info.syncReportingConfig()
+	info := &URRInfo{}
+	info.applyPatch(plan)
 	return info
 }
 
-// syncReportingConfig projects the complete applied netlink configuration into the
-// PFCP reporting fields while leaving SEQN/refPdrNum/removed untouched.
-func (info *URRInfo) syncReportingConfig() {
-	info.MeasureMethod = report.MeasureMethod{}
-	info.MeasureInformation = report.MeasureInformation{}
-	info.ReportingTrigger = report.ReportingTrigger{}
-	info.MeasurePeriod = 0
-
-	for _, attr := range info.Attrs {
-		switch attr.Type {
-		case gtp5gnl.URR_MEASUREMENT_METHOD:
-			if value, ok := attr.Value.(nl.AttrU8); ok {
-				info.MeasureMethod = measurementMethodFromBits(uint8(value))
-			}
-		case gtp5gnl.URR_MEASUREMENT_INFO:
-			if value, ok := attr.Value.(nl.AttrU64); ok {
-				info.MeasureInformation = measurementInformationFromBits(uint64(value))
-			}
-		case gtp5gnl.URR_REPORTING_TRIGGER:
-			if value, ok := attr.Value.(nl.AttrU32); ok {
-				info.ReportingTrigger.Flags = uint32(value)
-			}
-		case gtp5gnl.URR_MEASUREMENT_PERIOD:
-			if value, ok := attr.Value.(nl.AttrU32); ok {
-				info.MeasurePeriod = time.Duration(value)
-			}
-		}
-	}
-}
-
+// applyPatch updates only signalled reporting fields and preserves PFCP runtime.
 func (info *URRInfo) applyPatch(plan *forwarder.URRPlan) {
-	info.ruleConfig = info.ruleConfig.merge(plan.Attrs)
-	info.syncReportingConfig()
-}
-
-func (info *URRInfo) rollbackPlan(id uint32) *forwarder.URRPlan {
-	if info == nil {
-		return nil
+	patch := plan.ReportingConfig
+	if patch.MeasureMethod != nil {
+		info.MeasureMethod = measurementMethodFromBits(*patch.MeasureMethod)
 	}
-	return &forwarder.URRPlan{
-		Op:               forwarder.OpCreate,
-		OID:              info.OID,
-		Attrs:            cloneRuleAttrs(info.Attrs),
-		URRID:            id,
-		MeasureMethod:    measurementMethodBits(info.MeasureMethod),
-		ReportingTrigger: info.ReportingTrigger,
-		MeasurePeriod:    info.MeasurePeriod,
+	if patch.MeasureInformation != nil {
+		info.MeasureInformation = measurementInformationFromBits(*patch.MeasureInformation)
+	}
+	if patch.ReportingTrigger != nil {
+		info.ReportingTrigger = *patch.ReportingTrigger
+	}
+	if patch.MeasurePeriod != nil {
+		info.MeasurePeriod = *patch.MeasurePeriod
 	}
 }
 
 func newBARInfo(plan *forwarder.BARPlan) *BARInfo {
-	return &BARInfo{ruleConfig: newRuleConfig(plan.OID, plan.Attrs)}
-}
-
-func (info *BARInfo) rollbackPlan(id uint8) *forwarder.BARPlan {
-	if info == nil {
-		return nil
-	}
-	return &forwarder.BARPlan{
-		Op:    forwarder.OpCreate,
-		OID:   info.OID,
-		Attrs: cloneRuleAttrs(info.Attrs),
-		BARID: id,
-	}
+	return &BARInfo{}
 }
 
 // ApplyCreatePDR publishes a successfully created PDR into Session state.
@@ -450,11 +223,8 @@ func (s *Session) ApplyCreateFAR(plan *forwarder.FARPlan) {
 	s.FARIDs[plan.FARID] = newFARInfo(plan)
 }
 
-func (s *Session) ApplyUpdateFAR(plan *forwarder.FARPlan) {
-	if current := s.FARIDs[plan.FARID]; current != nil {
-		current.ruleConfig = current.ruleConfig.mergeFAR(plan.Attrs)
-	}
-}
+// ApplyUpdateFAR has no PFCP metadata to publish yet; configuration is owned by the datapath.
+func (s *Session) ApplyUpdateFAR(plan *forwarder.FARPlan) {}
 
 func (s *Session) ApplyRemoveFAR(plan *forwarder.FARPlan) {
 	delete(s.FARIDs, plan.FARID)
@@ -493,11 +263,8 @@ func (s *Session) ApplyCreateBAR(plan *forwarder.BARPlan) {
 	s.BARIDs[plan.BARID] = newBARInfo(plan)
 }
 
-func (s *Session) ApplyUpdateBAR(plan *forwarder.BARPlan) {
-	if current := s.BARIDs[plan.BARID]; current != nil {
-		current.ruleConfig = current.ruleConfig.merge(plan.Attrs)
-	}
-}
+// ApplyUpdateBAR has no PFCP metadata to publish yet; configuration is owned by the datapath.
+func (s *Session) ApplyUpdateBAR(plan *forwarder.BARPlan) {}
 
 func (s *Session) ApplyRemoveBAR(plan *forwarder.BARPlan) {
 	delete(s.BARIDs, plan.BARID)

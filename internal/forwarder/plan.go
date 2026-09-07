@@ -149,6 +149,15 @@ type QERPlan struct {
 	DesiredState QERDesiredStatePatch
 }
 
+// URRReportingPatch records field presence independently of zero values.
+// PFCP applies this semantic metadata without inspecting netlink attributes.
+type URRReportingPatch struct {
+	MeasureMethod      *uint8
+	MeasureInformation *uint64
+	ReportingTrigger   *report.ReportingTrigger
+	MeasurePeriod      *time.Duration
+}
+
 // URRPlan contains validated URR operation parameters
 type URRPlan struct {
 	Op         OpType
@@ -160,6 +169,7 @@ type URRPlan struct {
 	MeasureMethod    uint8
 	ReportingTrigger report.ReportingTrigger
 	MeasurePeriod    time.Duration
+	ReportingConfig  URRReportingPatch
 	// For QueryURR
 	QueryURRID uint32
 }
@@ -201,7 +211,8 @@ func NewRollbackPlan() *RollbackPlan {
 type ModificationPlan struct {
 	SEID uint64
 
-	// Rollback is non-nil for transactional PFCP requests. It holds the
+	// Rollback is populated by SessionDatapath on its execution copy; PFCP
+	// callers do not construct it. It is non-nil for transactions and holds the
 	// prior configurations needed to undo successful Update and Remove operations.
 	// A nil value keeps the legacy best-effort behaviour used by session cleanup.
 	Rollback *RollbackPlan

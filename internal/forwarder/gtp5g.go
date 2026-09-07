@@ -1499,6 +1499,7 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	}
 
 	return &URRPlan{
+		ReportingConfig:  urrReportingPatch(attrs),
 		Op:               OpCreate,
 		OID:              gtp5gnl.OID{lSeid, uint64(urrid)},
 		Attrs:            attrs,
@@ -1604,12 +1605,13 @@ func (g *Gtp5g) BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 	}
 
 	return &URRPlan{
-		Op:            OpUpdate,
-		OID:           gtp5gnl.OID{lSeid, urrid},
-		Attrs:         attrs,
-		OriginalIE:    req,
-		URRID:         uint32(urrid),
-		MeasureMethod: measureMethod,
+		ReportingConfig: urrReportingPatch(attrs),
+		Op:              OpUpdate,
+		OID:             gtp5gnl.OID{lSeid, urrid},
+		Attrs:           attrs,
+		OriginalIE:      req,
+		URRID:           uint32(urrid),
+		MeasureMethod:   measureMethod,
 	}, nil
 }
 
@@ -1768,6 +1770,9 @@ func (g *Gtp5g) BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error) {
 
 // rollbackApplied reverses successful state-changing operations in the exact
 // reverse of ExecuteModificationPlan's dependency order.
+//
+// TODO: URR rollback restores configuration only. Remove-and-recreate does not
+// preserve kernel accounting runtime; full restoration requires gtp5g support.
 //
 // TODO: Return and reconcile rollback failures. For now they are logged and the
 // caller assumes the pre-request kernel state was restored.

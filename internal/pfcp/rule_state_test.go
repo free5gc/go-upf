@@ -5,9 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/khirono/go-nl"
-
-	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/forwarder"
 )
 
@@ -375,198 +372,42 @@ func TestRuleStateCommitAppliesOnlyExecutorResult(t *testing.T) {
 	}
 }
 
-func TestRuleStateBuildsRollbackFromCanonicalInfo(t *testing.T) {
-	sess := &Session{
-		PDRIDs: make(map[uint16]*PDRInfo),
-		FARIDs: make(map[uint32]*FARInfo),
-		QERIDs: make(map[uint32]*QERInfo),
-		URRIDs: make(map[uint32]*URRInfo),
-		BARIDs: make(map[uint8]*BARInfo),
-	}
-
-	create := &forwarder.QERPlan{
-		QERID: 7,
-		Attrs: []nl.Attr{{
-			Type:  gtp5gnl.QER_GATE,
-			Value: nl.AttrU8(1),
-		}},
-	}
-	sess.ApplyCreateQER(create)
-
-	update := &forwarder.QERPlan{
-		QERID: 7,
-		Attrs: []nl.Attr{{
-			Type:  gtp5gnl.QER_QFI,
-			Value: nl.AttrU8(9),
-		}},
-	}
-	first := &forwarder.ModificationPlan{UpdateQERs: []*forwarder.QERPlan{update}}
-	state, err := sess.ValidateRuleState(first)
-	if err != nil {
-		t.Fatalf("ValidateRuleState first update: %v", err)
-	}
-	before := first.Rollback.QERs[7]
-	if before == nil || len(before.Attrs) != 1 || before.Attrs[0].Type != gtp5gnl.QER_GATE {
-		t.Fatalf("first rollback configuration does not contain original QER: %+v", before)
-	}
-
-	state.Commit(first)
-
-	second := &forwarder.ModificationPlan{
-		UpdateQERs: []*forwarder.QERPlan{{
-			QERID: 7,
-			Attrs: []nl.Attr{{
-				Type:  gtp5gnl.QER_MBR,
-				Value: nl.AttrList{},
-			}},
-		}},
-	}
-	if _, err := sess.ValidateRuleState(second); err != nil {
-		t.Fatalf("ValidateRuleState second update: %v", err)
-	}
-	before = second.Rollback.QERs[7]
-	if before == nil || len(before.Attrs) != 2 {
-		t.Fatalf("second rollback configuration is not the complete applied QER: %+v", before)
-	}
-	if before.Attrs[0].Type != gtp5gnl.QER_GATE ||
-		before.Attrs[1].Type != gtp5gnl.QER_QFI {
-		t.Fatalf("unexpected merged rollback attrs: %+v", before.Attrs)
-	}
-}
-
-func TestURRCanonicalInfoPatchPreservesRuntime(t *testing.T) {
-	sess := &Session{
-		PDRIDs: make(map[uint16]*PDRInfo),
-		FARIDs: make(map[uint32]*FARInfo),
-		QERIDs: make(map[uint32]*QERInfo),
-		URRIDs: make(map[uint32]*URRInfo),
-		BARIDs: make(map[uint8]*BARInfo),
-	}
-	create := &forwarder.URRPlan{
-		OID:   gtp5gnl.OID{10, 20},
-		URRID: 20,
-		Attrs: []nl.Attr{
-			{Type: gtp5gnl.URR_MEASUREMENT_METHOD, Value: nl.AttrU8(0x03)},
-			{Type: gtp5gnl.URR_REPORTING_TRIGGER, Value: nl.AttrU32(0x01)},
-			{Type: gtp5gnl.URR_MEASUREMENT_PERIOD, Value: nl.AttrU32(10)},
-		},
-	}
-	sess.ApplyCreateURR(create)
+func TestURRReportingPatchPreservesRuntime(t *testing.T) {
+	method, information := uint8(3), uint64(0x1f)
+	period := time.Second
+	sess := &Session{URRIDs: make(map[uint32]*URRInfo)}
+	sess.ApplyCreateURR(&forwarder.URRPlan{URRID: 20, ReportingConfig: forwarder.URRReportingPatch{
+		MeasureMethod: &method, MeasurePeriod: &period,
+	}})
 	info := sess.URRIDs[20]
-	info.SEQN = 7
-	info.refPdrNum = 2
-
-	update := &forwarder.URRPlan{
-		OID:   create.OID,
-		URRID: 20,
-		Attrs: []nl.Attr{
-			{Type: gtp5gnl.URR_MEASUREMENT_PERIOD, Value: nl.AttrU32(20)},
-			{Type: gtp5gnl.URR_MEASUREMENT_INFO, Value: nl.AttrU64(0x1f)},
-		},
+	info.SEQN, info.refPdrNum, info.removed = 7, 2, true
+	nextPeriod := 2 * time.Second
+	sess.ApplyUpdateURR(&forwarder.URRPlan{URRID: 20, ReportingConfig: forwarder.URRReportingPatch{
+		MeasurePeriod: &nextPeriod, MeasureInformation: &information,
+	}})
+	if sess.URRIDs[20] != info || info.SEQN != 7 || info.refPdrNum != 2 || !info.removed {
+		t.Fatal("reporting patch changed PFCP runtime")
 	}
-	request := &forwarder.ModificationPlan{
-		SEID:       10,
-		UpdateURRs: []*forwarder.URRPlan{update},
+	if info.MeasurePeriod != nextPeriod || !info.DURAT || !info.VOLUM || info.EVENT {
+		t.Fatalf("omitted fields were not preserved: %+v", info)
 	}
-	state, err := sess.ValidateRuleState(request)
-	if err != nil {
-		t.Fatalf("ValidateRuleState: %v", err)
+	if !info.MBQE || !info.INAM || !info.RADI || !info.ISTM || !info.MNOP {
+		t.Fatalf("measurement information was not applied: %+v", info)
 	}
-	before := request.Rollback.URRs[20]
-	if before == nil || before.MeasurePeriod != 10 {
-		t.Fatalf("rollback did not capture the pre-update URR: %+v", before)
-	}
-
-	state.Commit(request)
-	got := sess.URRIDs[20]
-	if got != info {
-		t.Fatal("UpdateURR replaced the canonical URRInfo instead of patching it")
-	}
-	if got.SEQN != 7 || got.refPdrNum != 2 {
-		t.Fatalf(
-			"UpdateURR changed runtime state: SEQN=%d refPdrNum=%d",
-			got.SEQN,
-			got.refPdrNum,
-		)
-	}
-	if got.MeasurePeriod != 20*time.Nanosecond {
-		t.Fatalf("measurement period was not patched: %s", got.MeasurePeriod)
-	}
-	if !got.DURAT || !got.VOLUM || got.EVENT {
-		t.Fatalf("omitted measurement method was not preserved: %+v", got.MeasureMethod)
-	}
-	if !got.MBQE || !got.INAM || !got.RADI || !got.ISTM || !got.MNOP {
-		t.Fatalf("measurement information was not projected from the applied configuration: %+v", got.MeasureInformation)
-	}
-
-	next := &forwarder.ModificationPlan{
-		SEID: 10,
-		UpdateURRs: []*forwarder.URRPlan{{
-			OID:   create.OID,
-			URRID: 20,
-			Attrs: []nl.Attr{{
-				Type:  gtp5gnl.URR_MEASUREMENT_METHOD,
-				Value: nl.AttrU8(0),
-			}},
-		}},
-	}
-	if _, err := sess.ValidateRuleState(next); err != nil {
-		t.Fatalf("ValidateRuleState next update: %v", err)
-	}
-	current := next.Rollback.URRs[20]
-	if current == nil || current.MeasurePeriod != 20*time.Nanosecond ||
-		len(current.Attrs) != 4 {
-		t.Fatalf("next rollback configuration is not the complete patched URR: %+v", current)
+	zero := uint8(0)
+	sess.ApplyUpdateURR(&forwarder.URRPlan{URRID: 20, ReportingConfig: forwarder.URRReportingPatch{MeasureMethod: &zero}})
+	if info.DURAT || info.VOLUM || info.EVENT || info.MeasurePeriod != nextPeriod {
+		t.Fatalf("explicit zero was not distinguished from omitted: %+v", info)
 	}
 }
 
-func TestAppliedRuleAttrMergeKeepsRuleNamespacesSeparate(t *testing.T) {
-	t.Run("PDR PDI is replaced as a complete field", func(t *testing.T) {
-		current := &forwarder.PDRPlan{Attrs: []nl.Attr{{
-			Type: gtp5gnl.PDR_PDI,
-			Value: nl.AttrList{
-				{Type: gtp5gnl.PDI_SRC_INTF, Value: nl.AttrU8(1)},
-				{Type: gtp5gnl.PDI_UE_ADDR_IPV4, Value: nl.AttrBytes{10, 0, 0, 1}},
-			},
-		}}}
-		patch := &forwarder.PDRPlan{Attrs: []nl.Attr{{
-			Type: gtp5gnl.PDR_PDI,
-			Value: nl.AttrList{
-				{Type: gtp5gnl.PDI_SRC_INTF, Value: nl.AttrU8(2)},
-			},
-		}}}
-
-		merged := mergePDRInfo(newPDRInfo(current), patch)
-		pdi, ok := merged.Attrs[0].Value.(nl.AttrList)
-		if !ok || len(pdi) != 1 || pdi[0].Type != gtp5gnl.PDI_SRC_INTF {
-			t.Fatalf("PDI was recursively merged across rule namespaces: %+v", merged.Attrs)
-		}
-	})
-
-	t.Run("FAR forwarding parameters preserve omitted nested fields", func(t *testing.T) {
-		current := &forwarder.FARPlan{Attrs: []nl.Attr{{
-			Type: gtp5gnl.FAR_FORWARDING_PARAMETER,
-			Value: nl.AttrList{
-				{Type: gtp5gnl.FORWARDING_PARAMETER_OUTER_HEADER_CREATION, Value: nl.AttrList{}},
-				{Type: gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY, Value: nl.AttrString("1")},
-			},
-		}}}
-		patch := &forwarder.FARPlan{Attrs: []nl.Attr{{
-			Type: gtp5gnl.FAR_FORWARDING_PARAMETER,
-			Value: nl.AttrList{
-				{Type: gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY, Value: nl.AttrString("2")},
-			},
-		}}}
-
-		info := newFARInfo(current)
-		info.ruleConfig = info.ruleConfig.mergeFAR(patch.Attrs)
-		params, ok := info.Attrs[0].Value.(nl.AttrList)
-		if !ok || len(params) != 2 {
-			t.Fatalf("FAR nested state was not preserved: %+v", info.Attrs)
-		}
-		if params[0].Type != gtp5gnl.FORWARDING_PARAMETER_OUTER_HEADER_CREATION ||
-			params[1].Type != gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY {
-			t.Fatalf("unexpected FAR nested merge: %+v", params)
-		}
-	})
+func TestRuleStateValidationDoesNotPrepareRollback(t *testing.T) {
+	sess := newRuleStateTestSession()
+	plan := &forwarder.ModificationPlan{UpdateQERs: []*forwarder.QERPlan{{QERID: 7}}}
+	if _, err := sess.ValidateRuleState(plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.Rollback != nil {
+		t.Fatal("PFCP validation populated datapath rollback metadata")
+	}
 }
