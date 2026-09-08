@@ -144,28 +144,35 @@ func (n *LocalNode) CreateSession(
 	return sess
 }
 
-// DeleteSession removes a session from both its association and the Local SEID store.
+// DeleteSession attempts cleanup; failure retains the session for event-loop retries.
 // Deleting an unknown Local SEID is an idempotent no-op.
 func (n *LocalNode) DeleteSession(localSEID uint64) []report.USAReport {
+	reports, err := n.deleteSession(localSEID)
+	if err != nil {
+		n.log.Warnf("Session %#x cleanup pending: %v", localSEID, err)
+	}
+	return reports
+}
+
+// deleteSession releases membership and SEID only after confirmed cleanup.
+func (n *LocalNode) deleteSession(localSEID uint64) ([]report.USAReport, error) {
 	sess, err := n.sessions.Get(localSEID)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 
 	reports, err := n.sessions.Delete(localSEID)
 	if err != nil {
-		n.log.Warnln(err)
-		return nil
+		return nil, err
 	}
 	if sess.association != nil {
 		delete(sess.association.sessionIDs, localSEID)
 	}
-	return reports
+	return reports, nil
 }
 
 func (n *LocalNode) deleteAssociationSessions(association *PFCPAssociation) {
 	for localSEID := range association.sessionIDs {
 		n.DeleteSession(localSEID)
 	}
-	association.sessionIDs = make(map[uint64]struct{})
 }

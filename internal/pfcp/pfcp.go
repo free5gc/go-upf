@@ -107,12 +107,16 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	wg.Add(1)
 	go s.receiver(wg)
 
+	cleanupTicker := time.NewTicker(time.Second)
+	defer cleanupTicker.Stop()
 	// This event loop owns PFCP rule state and URR reporting runtime. Handlers
 	// run to completion, including response assembly, before the next event.
 	// Keeping dispatch synchronous serializes session transactions with reports,
 	// association cleanup and timeouts without another lock or worker lifecycle.
 	for {
 		select {
+		case now := <-cleanupTicker.C:
+			s.dispatcher.retrySessionCleanup(now)
 		case sr := <-s.srCh:
 			s.log.Tracef("receive SessReport from srCh")
 			s.dispatcher.ServeReport(&sr)
@@ -376,6 +380,8 @@ func setReqSeq(msgtmp message.Message, seq uint32) {
 	case *message.SessionModificationRequest:
 		msg.SetSequenceNumber(seq)
 	case *message.SessionDeletionRequest:
+		msg.SetSequenceNumber(seq)
+	case *sessionReportRequest:
 		msg.SetSequenceNumber(seq)
 	case *message.SessionReportRequest:
 		msg.SetSequenceNumber(seq)

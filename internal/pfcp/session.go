@@ -1,9 +1,12 @@
 package pfcp
 
 import (
+	"time"
+
 	"github.com/sirupsen/logrus"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/internal/rules"
 )
 
@@ -20,6 +23,12 @@ type URRInfo struct {
 }
 
 type Session struct {
+	// Cleanup state is owned by this Session and the PFCP event loop.
+	closing           bool
+	cleanupRetryAt    time.Time
+	cleanupRetryDelay time.Duration
+	cleanupReports    []report.USAReport
+
 	association *PFCPAssociation // remote PFCP association that owns this session
 
 	datapath forwarder.SessionDatapath // execution handle owned by this session
@@ -36,6 +45,9 @@ type Session struct {
 }
 
 func (s *Session) Push(pdrid uint16, p []byte) {
+	if s.closing {
+		return
+	}
 	pkt := make([]byte, len(p))
 	copy(pkt, p)
 	q, ok := s.q[pdrid]
@@ -61,6 +73,9 @@ func (s *Session) Len(pdrid uint16) int {
 }
 
 func (s *Session) Pop(pdrid uint16) ([]byte, bool) {
+	if s.closing {
+		return nil, false
+	}
 	q, ok := s.q[pdrid]
 	if !ok {
 		return nil, ok

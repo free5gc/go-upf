@@ -123,6 +123,11 @@ func (d *Dispatcher) handleSessionModificationRequest(
 		return
 	}
 
+	if sess.closing {
+		d.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
+		return
+	}
+
 	if req.NodeID != nil {
 		// TS 29.244 7.5.4:
 		// This IE shall be present if a new SMF in an SMF Set,
@@ -184,7 +189,6 @@ func (d *Dispatcher) handleSessionDeletionRequest(
 	req *message.SessionDeletionRequest,
 	addr net.Addr,
 ) {
-	// TODO: error response
 	d.log.Infoln("handleSessionDeletionRequest")
 
 	lSeid := req.SEID()
@@ -209,7 +213,12 @@ func (d *Dispatcher) handleSessionDeletionRequest(
 		return
 	}
 
-	usars := d.node.DeleteSession(lSeid)
+	usars, cleanupErr := d.node.deleteSession(lSeid)
+	cause := uint8(ie.CauseRequestAccepted)
+	if cleanupErr != nil {
+		cause = ie.CauseSystemFailure
+		sess.log.Errorf("Session cleanup pending: %v", cleanupErr)
+	}
 
 	rsp := message.NewSessionDeletionResponse(
 		0,             // mp
@@ -217,7 +226,7 @@ func (d *Dispatcher) handleSessionDeletionRequest(
 		sess.RemoteID, // seid
 		req.Header.SequenceNumber,
 		0, // pri
-		ie.NewCause(ie.CauseRequestAccepted),
+		ie.NewCause(cause),
 	)
 	for _, r := range usars {
 		urrInfo, ok := sess.URRIDs[r.URRID]
@@ -253,6 +262,15 @@ func (d *Dispatcher) handleSessionReportResponse(
 ) {
 	d.log.Infoln("handleSessionReportResponse")
 
+	var reportingSession *Session
+	if bound, ok := req.(*sessionReportRequest); ok {
+		current, err := d.node.Session(bound.session.LocalID)
+		if err != nil || current != bound.session {
+			return // The reporting Session has already been cleaned up.
+		}
+		reportingSession = current
+	}
+
 	d.log.Debugf("seid: %#x\n", rsp.SEID())
 	if rsp.Header.SEID == 0 {
 		if rsp.Cause == nil {
@@ -270,12 +288,15 @@ func (d *Dispatcher) handleSessionReportResponse(
 		}
 
 		d.log.Warnf("rsp SEID is 0 and cause is Session context not found; delete local session")
-		sess, err := d.node.FindSessionByRemoteSEID(req.SEID(), addr)
-		if err != nil {
-			d.log.Errorln(err)
-			return
+		if reportingSession == nil {
+			var err error
+			reportingSession, err = d.node.FindSessionByRemoteSEID(req.SEID(), addr)
+			if err != nil {
+				d.log.Errorln(err)
+				return
+			}
 		}
-		d.node.DeleteSession(sess.LocalID)
+		d.node.DeleteSession(reportingSession.LocalID)
 		return
 	}
 

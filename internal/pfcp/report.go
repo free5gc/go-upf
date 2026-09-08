@@ -12,6 +12,14 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
+// The existing TX transaction retains this context until response or timeout.
+// Binding the request to its Session prevents a late response from deleting a
+// new Session that happens to reuse the same SEIDs.
+type sessionReportRequest struct {
+	*message.SessionReportRequest
+	session *Session
+}
+
 func (d *Dispatcher) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
 	sess, err := d.node.Session(seid)
 	if err != nil {
@@ -29,6 +37,13 @@ func (d *Dispatcher) ServeReport(sr *report.SessReport) {
 		return
 	}
 
+	if sess.closing {
+		active, ok := d.node.Association(sess.association.PeerNodeID)
+		if !ok || active != sess.association {
+			return
+		}
+	}
+
 	addr := fmt.Sprintf("%s:%d", sess.association.PeerNodeID, factory.UpfPfcpDefaultPort)
 	laddr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
@@ -39,6 +54,9 @@ func (d *Dispatcher) ServeReport(sr *report.SessReport) {
 	for _, rpt := range sr.Reports {
 		switch r := rpt.(type) {
 		case report.DLDReport:
+			if sess.closing {
+				continue
+			}
 			d.log.Debugf("ServeReport: SEID(%#x), type(%s)", sr.SEID, r.Type())
 			if r.Action&report.APPLY_ACT_BUFF != 0 && len(r.BufPkt) > 0 {
 				sess.Push(r.PDRID, r.BufPkt)
@@ -94,7 +112,7 @@ func (d *Dispatcher) serveDLDReport(addr net.Addr, lSeid uint64, pdrid uint16) e
 		),
 	)
 
-	err = d.transport.sendReqTo(req, addr)
+	err = d.transport.sendReqTo(&sessionReportRequest{SessionReportRequest: req, session: sess}, addr)
 	return errors.Wrap(err, "serveDLDReport")
 }
 
@@ -106,6 +124,11 @@ func (d *Dispatcher) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 		return errors.Wrap(err, "serveUSAReport")
 	}
 
+	return d.sendUSAReport(addr, sess, usars)
+}
+
+// sendUSAReport also accepts a just-cleaned Session retained by the retry caller.
+func (d *Dispatcher) sendUSAReport(addr net.Addr, sess *Session, usars []report.USAReport) error {
 	req := message.NewSessionReportRequest(
 		0,
 		0,
@@ -128,7 +151,7 @@ func (d *Dispatcher) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 			))
 	}
 
-	err = d.transport.sendReqTo(req, addr)
+	err := d.transport.sendReqTo(&sessionReportRequest{SessionReportRequest: req, session: sess}, addr)
 	return errors.Wrap(err, "serveUSAReport")
 }
 

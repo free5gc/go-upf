@@ -72,6 +72,8 @@ func (d *Dispatcher) HandleResponse(
 
 func (d *Dispatcher) HandleRequestTimeout(msg message.Message, addr net.Addr) error {
 	switch req := msg.(type) {
+	case *sessionReportRequest:
+		d.handleSessionReportRequestTimeout(req.SessionReportRequest, addr)
 	case *message.SessionReportRequest:
 		d.handleSessionReportRequestTimeout(req, addr)
 	default:

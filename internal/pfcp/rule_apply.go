@@ -13,6 +13,9 @@ import (
 // assembly run synchronously before the next request/report/timeout is handled.
 // Do not invoke this method concurrently with Session reads or writes.
 func (s *Session) applyRuleChanges(changes *rules.RuleChangeSet, establish bool) ([]report.USAReport, error) {
+	if s.closing {
+		return nil, fmt.Errorf("%w: session cleanup pending", ErrRuleCreationModificationFailed)
+	}
 	state, err := s.ValidateRuleState(changes)
 	if err != nil {
 		return nil, err

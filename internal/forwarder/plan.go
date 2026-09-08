@@ -1,6 +1,7 @@
 package forwarder
 
 import (
+	"syscall"
 	"time"
 
 	"github.com/khirono/go-nl"
@@ -500,7 +501,7 @@ func (g *Gtp5g) executeModificationPlan(
 	}
 
 	for _, p := range plan.RemovePDRs {
-		if err := gtp5gnl.RemovePDROID(g.client, g.link.link, p.OID); err != nil {
+		if err := cleanupRemovalError(gtp5gnl.RemovePDROID(g.client, g.link.link, p.OID), transactional); err != nil {
 			wrapped := errors.Wrapf(err, "executeModificationPlan: RemovePDR[%#x] failed", p.PDRID)
 			if handleFailure(wrapped) {
 				return result, wrapped
@@ -510,7 +511,7 @@ func (g *Gtp5g) executeModificationPlan(
 		applied.RemovePDRs = append(applied.RemovePDRs, p)
 	}
 	for _, p := range plan.RemoveBARs {
-		if err := gtp5gnl.RemoveBAROID(g.client, g.link.link, p.OID); err != nil {
+		if err := cleanupRemovalError(gtp5gnl.RemoveBAROID(g.client, g.link.link, p.OID), transactional); err != nil {
 			wrapped := errors.Wrapf(err, "executeModificationPlan: RemoveBAR[%#x] failed", p.BARID)
 			if handleFailure(wrapped) {
 				return result, wrapped
@@ -521,6 +522,7 @@ func (g *Gtp5g) executeModificationPlan(
 	}
 	for _, p := range plan.RemoveURRs {
 		rs, err := gtp5gnl.RemoveURROID(g.client, g.link.link, p.OID)
+		err = cleanupRemovalError(err, transactional)
 		if err != nil {
 			wrapped := errors.Wrapf(err, "executeModificationPlan: RemoveURR[%#x] failed", p.URRID)
 			if handleFailure(wrapped) {
@@ -535,7 +537,7 @@ func (g *Gtp5g) executeModificationPlan(
 		}
 	}
 	for _, p := range plan.RemoveQERs {
-		if err := gtp5gnl.RemoveQEROID(g.client, g.link.link, p.OID); err != nil {
+		if err := cleanupRemovalError(gtp5gnl.RemoveQEROID(g.client, g.link.link, p.OID), transactional); err != nil {
 			wrapped := errors.Wrapf(err, "executeModificationPlan: RemoveQER[%#x] failed", p.QERID)
 			if handleFailure(wrapped) {
 				return result, wrapped
@@ -545,7 +547,7 @@ func (g *Gtp5g) executeModificationPlan(
 		applied.RemoveQERs = append(applied.RemoveQERs, p)
 	}
 	for _, p := range plan.RemoveFARs {
-		if err := gtp5gnl.RemoveFAROID(g.client, g.link.link, p.OID); err != nil {
+		if err := cleanupRemovalError(gtp5gnl.RemoveFAROID(g.client, g.link.link, p.OID), transactional); err != nil {
 			wrapped := errors.Wrapf(err, "executeModificationPlan: RemoveFAR[%#x] failed", p.FARID)
 			if handleFailure(wrapped) {
 				return result, wrapped
@@ -616,4 +618,12 @@ func (g *Gtp5g) executeEstablishmentPlan(
 	}
 
 	return result, nil
+}
+
+// An already-absent rule satisfies cleanup, but remains an error in a transaction.
+func cleanupRemovalError(err error, transactional bool) error {
+	if !transactional && errors.Is(err, syscall.ENOENT) {
+		return nil
+	}
+	return err
 }

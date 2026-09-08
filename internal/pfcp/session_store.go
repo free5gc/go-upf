@@ -119,8 +119,11 @@ func (s *SessionStore) Delete(localSEID uint64) ([]report.USAReport, error) {
 		)
 	}
 
+	reports, err := s.sessions[index].Close()
+	if err != nil {
+		return nil, err
+	}
 	s.sessions[index].log.Infoln("session deleted")
-	reports := s.sessions[index].Close()
 	s.sessions[index] = nil
 	s.freeSEIDs = append(s.freeSEIDs, localSEID)
 

@@ -2,6 +2,8 @@ package forwarder
 
 import (
 	"errors"
+	"fmt"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -217,4 +219,11 @@ func TestSemanticCompilationDoesNotMutateFlowDescription(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, first, second)
 	require.Equal(t, original, changes.CreatePDRs[0])
+}
+
+func TestCleanupTreatsOnlyMissingRuleAsAlreadyRemoved(t *testing.T) {
+	require.NoError(t, cleanupRemovalError(fmt.Errorf("remove: %w", syscall.ENOENT), false))
+	require.ErrorIs(t, cleanupRemovalError(syscall.ENOENT, true), syscall.ENOENT)
+	require.ErrorIs(t, cleanupRemovalError(syscall.EPERM, false), syscall.EPERM)
+	require.ErrorIs(t, cleanupRemovalError(syscall.ENODEV, false), syscall.ENODEV)
 }
