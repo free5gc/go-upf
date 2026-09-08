@@ -214,7 +214,7 @@ func (d *Dispatcher) handleSessionDeletionRequest(
 	}
 
 	usars, cleanupErr := d.node.deleteSession(lSeid)
-	cause := uint8(ie.CauseRequestAccepted)
+	cause := ie.CauseRequestAccepted
 	if cleanupErr != nil {
 		cause = ie.CauseSystemFailure
 		sess.log.Errorf("Session cleanup pending: %v", cleanupErr)

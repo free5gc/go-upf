@@ -30,11 +30,13 @@ func (d *sessionDatapathTestDriver) QueryURR(seid uint64, id uint32) ([]report.U
 	d.queriedSEID, d.queriedURRID = seid, id
 	return d.reports, d.err
 }
+
 func (d *sessionDatapathTestDriver) executeEstablishmentPlan(plan *modificationPlan) (*executionResult, error) {
 	d.calls++
 	d.lastPlan = plan
 	return d.result, d.err
 }
+
 func (d *sessionDatapathTestDriver) executeModificationPlan(plan *modificationPlan) (*executionResult, error) {
 	d.calls++
 	d.lastPlan = plan
@@ -134,6 +136,7 @@ type semanticExecutionDriver struct {
 func (d *semanticExecutionDriver) executeEstablishmentPlan(p *modificationPlan) (*executionResult, error) {
 	return d.executeModificationPlan(p)
 }
+
 func (d *semanticExecutionDriver) executeModificationPlan(p *modificationPlan) (*executionResult, error) {
 	d.plans = append(d.plans, p)
 	result := newSuccessfulExecutionResult(p)

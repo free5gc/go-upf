@@ -1,10 +1,12 @@
 package forwarder
 
 import (
-	"github.com/free5gc/go-gtp5gnl"
+	"time"
+
 	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
-	"time"
+
+	"github.com/free5gc/go-gtp5gnl"
 )
 
 // ruleConfig is a private, owned copy of the last confirmed datapath configuration.
@@ -96,7 +98,8 @@ func newAppliedRules() appliedRules {
 }
 
 func snapshotBefore[K comparable, P any](current map[K]ruleConfig, creates, updates, removes []P,
-	idOf func(P) K, save func(K, ruleConfig)) error {
+	idOf func(P) K, save func(K, ruleConfig),
+) error {
 	created := make(map[K]bool, len(creates))
 	for _, p := range creates {
 		created[idOf(p)] = true
@@ -156,7 +159,8 @@ func (s *sessionDatapath) buildRollbackPlan(plan *modificationPlan) (*rollbackPl
 }
 
 func publishRules[K comparable, P any](current map[K]ruleConfig, creates, updates, removes []P,
-	idOf func(P) K, configOf func(P) ruleConfig, merge func([]nl.Attr, []nl.Attr) []nl.Attr) {
+	idOf func(P) K, configOf func(P) ruleConfig, merge func([]nl.Attr, []nl.Attr) []nl.Attr,
+) {
 	for _, p := range creates {
 		cfg := configOf(p)
 		current[idOf(p)] = newRuleConfig(cfg.OID, cfg.Attrs)

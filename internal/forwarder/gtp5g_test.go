@@ -1,9 +1,6 @@
 package forwarder_test
 
 import (
-	"github.com/free5gc/go-upf/internal/forwarder"
-	"github.com/free5gc/go-upf/internal/pfcp"
-	"github.com/wmnsk/go-pfcp/message"
 	"net"
 	"strconv"
 	"sync"
@@ -12,7 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/wmnsk/go-pfcp/ie"
+	"github.com/wmnsk/go-pfcp/message"
 
+	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/pfcp"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 )

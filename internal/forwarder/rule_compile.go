@@ -2,11 +2,12 @@ package forwarder
 
 import (
 	"fmt"
-	"github.com/free5gc/go-gtp5gnl"
-	"github.com/khirono/go-nl"
-	"github.com/pkg/errors"
 	"unsafe"
 
+	"github.com/khirono/go-nl"
+	"github.com/pkg/errors"
+
+	"github.com/free5gc/go-gtp5gnl"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/internal/rules"
 	"github.com/free5gc/go-upf/pkg/factory"
@@ -36,7 +37,10 @@ func compilePDR(seid uint64, p rules.PDRConfig, op OpType) (*pdrPlan, error) {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_PDI, Value: attrs})
 	}
 	if p.OuterHeaderRemoval != nil {
-		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_OUTER_HEADER_REMOVAL, Value: nl.AttrU8(*p.OuterHeaderRemoval)})
+		plan.Attrs = append(plan.Attrs, nl.Attr{
+			Type:  gtp5gnl.PDR_OUTER_HEADER_REMOVAL,
+			Value: nl.AttrU8(*p.OuterHeaderRemoval),
+		})
 	}
 	if p.FARID != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_FAR_ID, Value: nl.AttrU32(*p.FARID)})
@@ -48,10 +52,14 @@ func compilePDR(seid uint64, p rules.PDRConfig, op OpType) (*pdrPlan, error) {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_URR_ID, Value: nl.AttrU32(id)})
 	}
 	if op == OpCreate {
-		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_UNIX_SOCKET_PATH, Value: nl.AttrString(gtp5gnl.PdrAddrForNetlink)})
+		plan.Attrs = append(plan.Attrs, nl.Attr{
+			Type:  gtp5gnl.PDR_UNIX_SOCKET_PATH,
+			Value: nl.AttrString(gtp5gnl.PdrAddrForNetlink),
+		})
 	}
 	return plan, nil
 }
+
 func compilePDI(p *rules.PDI) (nl.AttrList, error) {
 	attrs := nl.AttrList{{Type: gtp5gnl.PDI_SRC_INTF, Value: nl.AttrU8(p.SourceInterface)}}
 	if p.FTEID != nil {
@@ -61,7 +69,10 @@ func compilePDI(p *rules.PDI) (nl.AttrList, error) {
 		}})
 	}
 	if p.UEIPAddress != nil {
-		attrs = append(attrs, nl.Attr{Type: gtp5gnl.PDI_UE_ADDR_IPV4, Value: nl.AttrBytes(append([]byte(nil), p.UEIPAddress.IPv4Address...))})
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.PDI_UE_ADDR_IPV4,
+			Value: nl.AttrBytes(append([]byte(nil), p.UEIPAddress.IPv4Address...)),
+		})
 	}
 	for _, sdf := range p.SDFFilters {
 		var fields nl.AttrList
@@ -91,6 +102,7 @@ func compilePDI(p *rules.PDI) (nl.AttrList, error) {
 	}
 	return attrs, nil
 }
+
 func compileFAR(seid uint64, p rules.FARConfig, op OpType) *farPlan {
 	plan := &farPlan{OID: gtp5gnl.OID{seid, uint64(p.FARID)}, FARID: p.FARID}
 	if p.ApplyAction != nil {
@@ -110,15 +122,24 @@ func compileFAR(seid uint64, p rules.FARConfig, op OpType) *farPlan {
 			}
 			fields = append(fields, nl.Attr{Type: gtp5gnl.OUTER_HEADER_CREATION_PORT, Value: nl.AttrU16(port)})
 			if hc.IPv4Address != nil {
-				fields = append(fields, nl.Attr{Type: gtp5gnl.OUTER_HEADER_CREATION_PEER_ADDR_IPV4, Value: nl.AttrBytes(append([]byte(nil), hc.IPv4Address...))})
+				fields = append(fields, nl.Attr{
+					Type:  gtp5gnl.OUTER_HEADER_CREATION_PEER_ADDR_IPV4,
+					Value: nl.AttrBytes(append([]byte(nil), hc.IPv4Address...)),
+				})
 			}
 			attrs = append(attrs, nl.Attr{Type: gtp5gnl.FORWARDING_PARAMETER_OUTER_HEADER_CREATION, Value: fields})
 		}
 		if fp.ForwardingPolicy != nil {
-			attrs = append(attrs, nl.Attr{Type: gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY, Value: nl.AttrString(*fp.ForwardingPolicy)})
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.FORWARDING_PARAMETER_FORWARDING_POLICY,
+				Value: nl.AttrString(*fp.ForwardingPolicy),
+			})
 		}
 		if fp.SMRequestFlags != nil {
-			attrs = append(attrs, nl.Attr{Type: gtp5gnl.FORWARDING_PARAMETER_PFCPSM_REQ_FLAGS, Value: nl.AttrU8(*fp.SMRequestFlags)})
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.FORWARDING_PARAMETER_PFCPSM_REQ_FLAGS,
+				Value: nl.AttrU8(*fp.SMRequestFlags),
+			})
 		}
 		if attrs != nil {
 			plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.FAR_FORWARDING_PARAMETER, Value: attrs})
@@ -129,30 +150,49 @@ func compileFAR(seid uint64, p rules.FARConfig, op OpType) *farPlan {
 	}
 	return plan
 }
+
 func compileQER(seid uint64, p rules.QERConfig, op OpType) *qerPlan {
 	plan := &qerPlan{OID: gtp5gnl.OID{seid, uint64(p.QERID)}, QERID: p.QERID}
 	if p.CorrelationID != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.QER_CORR_ID, Value: nl.AttrU32(*p.CorrelationID)})
 	}
 	if p.GateStatus != nil {
-		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.QER_GATE, Value: nl.AttrU8(p.GateStatus.Uplink<<2 | p.GateStatus.Downlink)})
+		plan.Attrs = append(plan.Attrs, nl.Attr{
+			Type:  gtp5gnl.QER_GATE,
+			Value: nl.AttrU8(p.GateStatus.Uplink<<2 | p.GateStatus.Downlink),
+		})
 	}
 	for _, rate := range []struct {
 		value                             *rules.DirectionalBitRate
 		typ, ulHigh, ulLow, dlHigh, dlLow uint16
 	}{
-		{p.MBR, gtp5gnl.QER_MBR, gtp5gnl.QER_MBR_UL_HIGH32, gtp5gnl.QER_MBR_UL_LOW8, gtp5gnl.QER_MBR_DL_HIGH32, gtp5gnl.QER_MBR_DL_LOW8},
-		{p.GBR, gtp5gnl.QER_GBR, gtp5gnl.QER_GBR_UL_HIGH32, gtp5gnl.QER_GBR_UL_LOW8, gtp5gnl.QER_GBR_DL_HIGH32, gtp5gnl.QER_GBR_DL_LOW8},
+		{
+			p.MBR,
+			gtp5gnl.QER_MBR,
+			gtp5gnl.QER_MBR_UL_HIGH32,
+			gtp5gnl.QER_MBR_UL_LOW8,
+			gtp5gnl.QER_MBR_DL_HIGH32,
+			gtp5gnl.QER_MBR_DL_LOW8,
+		},
+		{
+			p.GBR,
+			gtp5gnl.QER_GBR,
+			gtp5gnl.QER_GBR_UL_HIGH32,
+			gtp5gnl.QER_GBR_UL_LOW8,
+			gtp5gnl.QER_GBR_DL_HIGH32,
+			gtp5gnl.QER_GBR_DL_LOW8,
+		},
 	} {
 		if rate.value == nil {
 			continue
 		}
 		ul, dl := rate.value.UplinkBps/1000, rate.value.DownlinkBps/1000
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: rate.typ, Value: nl.AttrList{
-			{Type: rate.ulHigh, Value: nl.AttrU32(ul >> 8)}, {Type: rate.ulLow, Value: nl.AttrU8(ul)},
-			{Type: rate.dlHigh, Value: nl.AttrU32(dl >> 8)}, {Type: rate.dlLow, Value: nl.AttrU8(dl)},
+			{Type: rate.ulHigh, Value: nl.AttrU32(ul >> 8)},
+			{Type: rate.ulLow, Value: nl.AttrU8(ul)},
+			{Type: rate.dlHigh, Value: nl.AttrU32(dl >> 8)},
+			{Type: rate.dlLow, Value: nl.AttrU8(dl)},
 		}})
-
 	}
 	if p.QFI != nil {
 		v := *p.QFI
@@ -166,6 +206,7 @@ func compileQER(seid uint64, p rules.QERConfig, op OpType) *qerPlan {
 	}
 	return plan
 }
+
 func compileURR(seid uint64, p rules.URRConfig, op OpType) *urrPlan {
 	plan := &urrPlan{OID: gtp5gnl.OID{seid, uint64(p.URRID)}, URRID: p.URRID}
 	if p.MeasureMethod != nil {
@@ -191,8 +232,22 @@ func compileURR(seid uint64, p rules.URRConfig, op OpType) *urrPlan {
 		value                    *rules.Volume
 		typ, flag, total, ul, dl uint16
 	}{
-		{p.VolumeThreshold, gtp5gnl.URR_VOLUME_THRESHOLD, gtp5gnl.URR_VOLUME_THRESHOLD_FLAG, gtp5gnl.URR_VOLUME_THRESHOLD_TOVOL, gtp5gnl.URR_VOLUME_THRESHOLD_UVOL, gtp5gnl.URR_VOLUME_THRESHOLD_DVOL},
-		{p.VolumeQuota, gtp5gnl.URR_VOLUME_QUOTA, gtp5gnl.URR_VOLUME_QUOTA_FLAG, gtp5gnl.URR_VOLUME_QUOTA_TOVOL, gtp5gnl.URR_VOLUME_QUOTA_UVOL, gtp5gnl.URR_VOLUME_QUOTA_DVOL},
+		{
+			p.VolumeThreshold,
+			gtp5gnl.URR_VOLUME_THRESHOLD,
+			gtp5gnl.URR_VOLUME_THRESHOLD_FLAG,
+			gtp5gnl.URR_VOLUME_THRESHOLD_TOVOL,
+			gtp5gnl.URR_VOLUME_THRESHOLD_UVOL,
+			gtp5gnl.URR_VOLUME_THRESHOLD_DVOL,
+		},
+		{
+			p.VolumeQuota,
+			gtp5gnl.URR_VOLUME_QUOTA,
+			gtp5gnl.URR_VOLUME_QUOTA_FLAG,
+			gtp5gnl.URR_VOLUME_QUOTA_TOVOL,
+			gtp5gnl.URR_VOLUME_QUOTA_UVOL,
+			gtp5gnl.URR_VOLUME_QUOTA_DVOL,
+		},
 	} {
 		v := volume.value
 		if v == nil {
@@ -212,13 +267,20 @@ func compileURR(seid uint64, p rules.URRConfig, op OpType) *urrPlan {
 	}
 	return plan
 }
+
 func compileBAR(seid uint64, p rules.BARConfig, op OpType) *barPlan {
 	plan := &barPlan{OID: gtp5gnl.OID{seid, uint64(p.BARID)}, BARID: p.BARID}
 	if p.DownlinkDataNotificationDelay != nil {
-		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.BAR_DOWNLINK_DATA_NOTIFICATION_DELAY, Value: nl.AttrU8(*p.DownlinkDataNotificationDelay)})
+		plan.Attrs = append(plan.Attrs, nl.Attr{
+			Type:  gtp5gnl.BAR_DOWNLINK_DATA_NOTIFICATION_DELAY,
+			Value: nl.AttrU8(*p.DownlinkDataNotificationDelay),
+		})
 	}
 	if p.SuggestedBufferingPacketsCount != nil {
-		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.BAR_BUFFERING_PACKETS_COUNT, Value: nl.AttrU16(*p.SuggestedBufferingPacketsCount)})
+		plan.Attrs = append(plan.Attrs, nl.Attr{
+			Type:  gtp5gnl.BAR_BUFFERING_PACKETS_COUNT,
+			Value: nl.AttrU16(*p.SuggestedBufferingPacketsCount),
+		})
 	}
 	return plan
 }
@@ -226,19 +288,19 @@ func compileBAR(seid uint64, p rules.BARConfig, op OpType) *barPlan {
 func compileRuleChanges(c *rules.RuleChangeSet) (*modificationPlan, error) {
 	plan := newModificationPlan(c.SEID)
 	for _, p := range c.CreateFARs {
-		plan.CreateFARs = append(plan.CreateFARs, compileFAR(c.SEID, rules.FARConfig(p), OpCreate))
+		plan.CreateFARs = append(plan.CreateFARs, compileFAR(c.SEID, p, OpCreate))
 	}
 	for _, p := range c.CreateQERs {
-		plan.CreateQERs = append(plan.CreateQERs, compileQER(c.SEID, rules.QERConfig(p), OpCreate))
+		plan.CreateQERs = append(plan.CreateQERs, compileQER(c.SEID, p, OpCreate))
 	}
 	for _, p := range c.CreateURRs {
-		plan.CreateURRs = append(plan.CreateURRs, compileURR(c.SEID, rules.URRConfig(p), OpCreate))
+		plan.CreateURRs = append(plan.CreateURRs, compileURR(c.SEID, p, OpCreate))
 	}
 	for _, p := range c.CreateBARs {
-		plan.CreateBARs = append(plan.CreateBARs, compileBAR(c.SEID, rules.BARConfig(p), OpCreate))
+		plan.CreateBARs = append(plan.CreateBARs, compileBAR(c.SEID, p, OpCreate))
 	}
 	for _, p := range c.CreatePDRs {
-		compiled, err := compilePDR(c.SEID, rules.PDRConfig(p), OpCreate)
+		compiled, err := compilePDR(c.SEID, p, OpCreate)
 		if err != nil {
 			return nil, err
 		}

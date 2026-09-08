@@ -15,7 +15,6 @@ import (
 type RuleState struct {
 	sess         *Session
 	urrRefDeltas map[uint32]int
-	affectedPDRs map[uint16]struct{}
 	pdrOverrides map[uint16]*rules.PDRConfig
 	removedPDRs  map[uint16]struct{}
 	farOverrides map[uint32]*rules.FARConfig
@@ -37,7 +36,7 @@ func (s *Session) ValidateRuleState(changes *rules.RuleChangeSet) (*RuleState, e
 	if changes.SEID != s.LocalID {
 		return nil, errors.Wrap(ErrRuleCreationModificationFailed, "session ID mismatch")
 	}
-	state := &RuleState{sess: s, affectedPDRs: make(map[uint16]struct{})}
+	state := &RuleState{sess: s}
 	if err := state.validateOperations(changes); err != nil {
 		return nil, err
 	}
@@ -45,7 +44,6 @@ func (s *Session) ValidateRuleState(changes *rules.RuleChangeSet) (*RuleState, e
 	if err := state.validateReferences(); err != nil {
 		return nil, err
 	}
-	state.findAffectedPDRs()
 	state.buildURRReferenceDeltas()
 	return state, nil
 }
@@ -174,30 +172,6 @@ func (state *RuleState) buildOverlays(changes *rules.RuleChangeSet) {
 	}
 }
 
-func (state *RuleState) findAffectedPDRs() {
-	for id := range state.pdrOverrides {
-		state.affectedPDRs[id] = struct{}{}
-	}
-	for id := range state.removedPDRs {
-		state.affectedPDRs[id] = struct{}{}
-	}
-	changedQERs := make(map[uint32]struct{})
-	for id := range state.qerOverrides {
-		changedQERs[id] = struct{}{}
-	}
-	for id := range state.removedQERs {
-		changedQERs[id] = struct{}{}
-	}
-	for id, pdr := range state.sess.PDRIDs {
-		for _, qid := range pdr.QERIDs {
-			if _, changed := changedQERs[qid]; changed {
-				state.affectedPDRs[id] = struct{}{}
-				break
-			}
-		}
-	}
-}
-
 // PDR returns a read-only effective configuration.
 func (state *RuleState) PDR(id uint16) (*rules.PDRConfig, bool) {
 	if _, removed := state.removedPDRs[id]; removed {
@@ -286,17 +260,6 @@ func (state *RuleState) RangePDR(
 		}
 	}
 	return nil
-}
-
-// AffectedPDRIDs returns a deterministic list for future FlowQoS resolution.
-// It includes directly changed PDRs and PDRs that reference a changed QER.
-func (state *RuleState) AffectedPDRIDs() []uint16 {
-	ids := make([]uint16, 0, len(state.affectedPDRs))
-	for id := range state.affectedPDRs {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids
 }
 
 type ruleOperations[K comparable] struct {
@@ -434,7 +397,7 @@ func (state *RuleState) validateReferences() error {
 // PDR. Repeated URR IDs count as one reference; transfers have a net zero delta.
 func (state *RuleState) buildURRReferenceDeltas() {
 	state.urrRefDeltas = make(map[uint32]int)
-	for id := range state.affectedPDRs {
+	accumulate := func(id uint16) {
 		if old := state.sess.PDRIDs[id]; old != nil {
 			for uid := range uint32Set(old.URRIDs) {
 				state.urrRefDeltas[uid]--
@@ -444,6 +407,14 @@ func (state *RuleState) buildURRReferenceDeltas() {
 			for uid := range uint32Set(next.URRIDs) {
 				state.urrRefDeltas[uid]++
 			}
+		}
+	}
+	for id := range state.pdrOverrides {
+		accumulate(id)
+	}
+	for id := range state.removedPDRs {
+		if _, changed := state.pdrOverrides[id]; !changed {
+			accumulate(id)
 		}
 	}
 }

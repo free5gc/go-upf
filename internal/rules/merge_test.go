@@ -68,9 +68,15 @@ func TestPDRMergePresenceAndOwnership(t *testing.T) {
 
 func TestFARNestedMergeAndReplacement(t *testing.T) {
 	base := FARConfig{FARID: 1, ForwardingParameters: &ForwardingParameters{
-		NetworkInstance: rulePtr("internet"), OuterHeaderCreation: &OuterHeaderCreation{TEID: rulePtr(uint32(42)), IPv4Address: net.IP{10, 0, 0, 1}},
+		NetworkInstance: rulePtr("internet"), OuterHeaderCreation: &OuterHeaderCreation{
+			TEID:        rulePtr(uint32(42)),
+			IPv4Address: net.IP{10, 0, 0, 1},
+		},
 	}}
-	merged := base.Merge(FARPatch{FARID: 1, ForwardingParameters: &ForwardingParameters{SMRequestFlags: rulePtr(uint8(0))}})
+	merged := base.Merge(FARPatch{
+		FARID:                1,
+		ForwardingParameters: &ForwardingParameters{SMRequestFlags: rulePtr(uint8(0))},
+	})
 	if *merged.ForwardingParameters.NetworkInstance != "internet" ||
 		*merged.ForwardingParameters.OuterHeaderCreation.TEID != 42 ||
 		*merged.ForwardingParameters.SMRequestFlags != 0 {
@@ -82,7 +88,10 @@ func TestFARNestedMergeAndReplacement(t *testing.T) {
 		*base.ForwardingParameters.OuterHeaderCreation.TEID != 42 {
 		t.Fatal("FAR aliases base data")
 	}
-	merged = base.Merge(FARPatch{FARID: 1, ForwardingParameters: &ForwardingParameters{OuterHeaderCreation: &OuterHeaderCreation{Description: 1}}})
+	merged = base.Merge(FARPatch{
+		FARID:                1,
+		ForwardingParameters: &ForwardingParameters{OuterHeaderCreation: &OuterHeaderCreation{Description: 1}},
+	})
 	if merged.ForwardingParameters.OuterHeaderCreation.TEID != nil ||
 		merged.ForwardingParameters.OuterHeaderCreation.IPv4Address != nil ||
 		*merged.ForwardingParameters.NetworkInstance != "internet" {

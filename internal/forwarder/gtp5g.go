@@ -142,22 +142,13 @@ func (g *Gtp5g) Close() {
 }
 
 func (g *Gtp5g) checkVersion() error {
-	info, err := gtp5gnl.GetVersionInfo(g.client)
+	// get gtp5g version
+	gtp5gVer, err := gtp5gnl.GetVersion(g.client)
 	if err != nil {
 		return err
 	}
 
-	return validateGtp5gVersionInfo(info)
-}
-
-func validateGtp5gVersionInfo(info *gtp5gnl.VersionInfo) error {
-	if info == nil {
-		return errors.New("gtp5g returned no version information")
-	}
-	if info.DriverVersion == "" {
-		return errors.New("gtp5g returned an empty driver version")
-	}
-
+	// compare version
 	expMinVer, err := version.NewVersion(expectedMinGtp5gVersion)
 	if err != nil {
 		return errors.Wrapf(err, "parse expectedMinGtp5gVersion err")
@@ -166,28 +157,14 @@ func validateGtp5gVersionInfo(info *gtp5gnl.VersionInfo) error {
 	if err != nil {
 		return errors.Wrapf(err, "parse expectedMaxGtp5gVersion err")
 	}
-	nowVer, err := version.NewVersion(info.DriverVersion)
+	nowVer, err := version.NewVersion(gtp5gVer)
 	if err != nil {
-		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", info.DriverVersion)
+		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", gtp5gVer)
 	}
 	if nowVer.LessThan(expMinVer) || nowVer.GreaterThanOrEqual(expMaxVer) {
 		return errors.Errorf(
 			"gtp5g version(%v) should be %s <= version < %s , please update it",
 			nowVer, expectedMinGtp5gVersion, expectedMaxGtp5gVersion)
-	}
-
-	if info.SharedMarkABI == nil {
-		return errors.Errorf(
-			"gtp5g version(%v) does not advertise shared mark ABI support",
-			nowVer,
-		)
-	}
-	if *info.SharedMarkABI != gtp5gnl.SHARED_MARK_ABI_VERSION {
-		return errors.Errorf(
-			"gtp5g shared mark ABI(%d) should be %d",
-			*info.SharedMarkABI,
-			gtp5gnl.SHARED_MARK_ABI_VERSION,
-		)
 	}
 
 	return nil
@@ -418,8 +395,6 @@ func (g *Gtp5g) WritePacket(far *gtp5gnl.FAR, qer *gtp5gnl.QER, pkt []byte) erro
 	_, err = g.link.WriteTo(b, addr)
 	return err
 }
-
-const bitsPerKilobit uint64 = 1000
 
 func (g *Gtp5g) convertUSAReport(r gtp5gnl.USAReport) report.USAReport {
 	usar := report.USAReport{

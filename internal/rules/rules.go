@@ -78,17 +78,19 @@ type DirectionalBitRate struct {
 	UplinkBps   uint64
 	DownlinkBps uint64
 }
-type GateStatus struct{ Uplink, Downlink uint8 }
-type QERConfig struct {
-	QERID                 uint32
-	CorrelationID         *uint32
-	GateStatus            *GateStatus
-	MBR                   *DirectionalBitRate
-	GBR                   *DirectionalBitRate
-	QFI                   *uint8
-	RQI                   *uint8
-	PagingPolicyIndicator *uint8
-}
+type (
+	GateStatus struct{ Uplink, Downlink uint8 }
+	QERConfig  struct {
+		QERID                 uint32
+		CorrelationID         *uint32
+		GateStatus            *GateStatus
+		MBR                   *DirectionalBitRate
+		GBR                   *DirectionalBitRate
+		QFI                   *uint8
+		RQI                   *uint8
+		PagingPolicyIndicator *uint8
+	}
+)
 type QERPatch QERConfig
 
 type Volume struct {

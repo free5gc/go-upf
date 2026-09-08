@@ -9,6 +9,7 @@ func copyValue[T any](p *T) *T {
 	v := *p
 	return &v
 }
+
 func copySlice[T any](s []T) []T {
 	if s == nil {
 		return nil
@@ -192,6 +193,7 @@ func clonePDI(p *PDI) *PDI {
 	}
 	return n
 }
+
 func clonePorts(p [][]uint16) [][]uint16 {
 	n := copySlice(p)
 	for i := range n {
@@ -199,6 +201,7 @@ func clonePorts(p [][]uint16) [][]uint16 {
 	}
 	return n
 }
+
 func cloneForwardingParameters(p *ForwardingParameters) *ForwardingParameters {
 	n := copyValue(p)
 	if n == nil {
@@ -216,6 +219,7 @@ func cloneForwardingParameters(p *ForwardingParameters) *ForwardingParameters {
 	}
 	return n
 }
+
 func mergeForwardingParameters(c, p *ForwardingParameters) *ForwardingParameters {
 	n := ForwardingParameters{}
 	if c != nil {

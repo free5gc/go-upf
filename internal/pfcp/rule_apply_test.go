@@ -22,10 +22,12 @@ func (d *transactionDatapath) Establish(c *rules.RuleChangeSet) (*forwarder.Appl
 	d.calls++
 	return d.apply(c)
 }
+
 func (d *transactionDatapath) Modify(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
 	d.calls++
 	return d.apply(c)
 }
+
 func (d *transactionDatapath) QueryURR(uint32) ([]report.USAReport, error) {
 	panic("query outside transaction")
 }
@@ -40,7 +42,9 @@ func TestRuleTransactionPublishesOnlyAfterCompleteSuccess(t *testing.T) {
 		return &forwarder.ApplyResult{}, failed
 	}}
 	s.datapath = d
-	changes := &rules.RuleChangeSet{UpdateQERs: []rules.QERPatch{{QERID: 7, MBR: &rules.DirectionalBitRate{UplinkBps: 1000}}}}
+	changes := &rules.RuleChangeSet{
+		UpdateQERs: []rules.QERPatch{{QERID: 7, MBR: &rules.DirectionalBitRate{UplinkBps: 1000}}},
+	}
 	reports, err := s.applyRuleChanges(changes, false)
 	require.ErrorIs(t, err, failed)
 	require.Nil(t, reports)

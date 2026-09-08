@@ -11,6 +11,7 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/internal/rules"
 )
@@ -28,7 +29,7 @@ func (d *cleanupDatapath) Cleanup(c *rules.RuleChangeSet) (*forwarder.ApplyResul
 
 func cleanupSession(t *testing.T) (*LocalNode, *Session, *cleanupDatapath) {
 	t.Helper()
-	node := newLocalNodeForTest(t)
+	node := NewLocalNode("upf.example.com", time.Time{}, forwarder.Empty{}, logger.PfcpLog.WithField("test", t.Name()))
 	a := node.EstablishAssociation("127.0.0.1", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8805})
 	s := node.CreateSession(a, 100)
 	s.PDRIDs[11] = &rules.PDRConfig{PDRID: 11, URRIDs: []uint32{3}}

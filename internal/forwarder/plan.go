@@ -33,59 +33,11 @@ func (op OpType) String() string {
 	}
 }
 
-// FlowQoSBinding is the user-space representation published on a PDR.
-// PolicyID is a UPF-local, globally unique 24-bit ID. TCClassID is the full
-// Linux traffic-control classid.
-type FlowQoSBinding struct {
-	PolicyID   uint32
-	TCClassID  uint32
-	Generation uint32
-}
-
 // pdrPlan contains validated PDR operation parameters
 type pdrPlan struct {
 	OID   gtp5gnl.OID
 	Attrs []nl.Attr
 	PDRID uint16
-}
-
-// SetFlowQoSBinding adds or replaces the nested PDR FlowQoS attribute. The
-// CreatePDROID and UpdatePDROID execution paths already publish every
-// attribute in pdrPlan.Attrs, so no separate netlink command is required.
-func (p *pdrPlan) SetFlowQoSBinding(binding FlowQoSBinding) error {
-	return p.setFlowQoS(gtp5gnl.FlowQoS{
-		Version:    gtp5gnl.SHARED_MARK_ABI_VERSION,
-		PolicyID:   binding.PolicyID,
-		TCClassID:  binding.TCClassID,
-		Flags:      gtp5gnl.FLOW_QOS_VALID,
-		Generation: binding.Generation,
-	})
-}
-
-// ClearFlowQoSBinding publishes an explicit clear operation for an existing
-// PDR binding.
-func (p *pdrPlan) ClearFlowQoSBinding(generation uint32) error {
-	return p.setFlowQoS(gtp5gnl.FlowQoS{
-		Version:    gtp5gnl.SHARED_MARK_ABI_VERSION,
-		Generation: generation,
-	})
-}
-
-func (p *pdrPlan) setFlowQoS(flowQoS gtp5gnl.FlowQoS) error {
-	attr, err := gtp5gnl.NewFlowQoSAttr(flowQoS)
-	if err != nil {
-		return err
-	}
-
-	for i := range p.Attrs {
-		if p.Attrs[i].Type == gtp5gnl.PDR_FLOW_QOS {
-			p.Attrs[i] = attr
-			return nil
-		}
-	}
-
-	p.Attrs = append(p.Attrs, attr)
-	return nil
 }
 
 // farPlan contains validated FAR operation parameters

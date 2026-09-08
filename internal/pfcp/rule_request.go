@@ -17,7 +17,8 @@ var (
 )
 
 func appendRuleChanges[P any](destination *[]P, operation string, ies []*ie.IE,
-	parse func(*ie.IE) (P, error), failure error) error {
+	parse func(*ie.IE) (P, error), failure error,
+) error {
 	for _, i := range ies {
 		p, err := parse(i)
 		if err != nil {

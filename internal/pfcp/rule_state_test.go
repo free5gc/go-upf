@@ -14,7 +14,9 @@ import (
 func statePtr[T any](v T) *T { return &v }
 func newRuleStateTestSession() *Session {
 	return &Session{
-		PDRIDs:   map[uint16]*rules.PDRConfig{11: {PDRID: 11, FARID: statePtr(uint32(1)), QERIDs: []uint32{7}, URRIDs: []uint32{3}}},
+		PDRIDs: map[uint16]*rules.PDRConfig{
+			11: {PDRID: 11, FARID: statePtr(uint32(1)), QERIDs: []uint32{7}, URRIDs: []uint32{3}},
+		},
 		FARIDs:   map[uint32]*rules.FARConfig{1: {FARID: 1}},
 		QERIDs:   map[uint32]*rules.QERConfig{7: {QERID: 7}},
 		URRIDs:   map[uint32]*URRInfo{3: {Config: rules.URRConfig{URRID: 3}, refPdrNum: 1}},
@@ -22,6 +24,7 @@ func newRuleStateTestSession() *Session {
 		datapath: forwarder.NewSessionDatapath(forwarder.Empty{}, 0),
 	}
 }
+
 func commitChanges(t *testing.T, s *Session, c *rules.RuleChangeSet) {
 	t.Helper()
 	state, err := s.ValidateRuleState(c)
@@ -66,9 +69,6 @@ func TestRuleStateAllowsAtomicPDRRewire(t *testing.T) {
 	}
 	if _, exists := uint32Set(effective.URRIDs)[4]; !exists {
 		t.Fatalf("effective PDR is missing URR 4: %+v", effective.URRIDs)
-	}
-	if got := ruleState.AffectedPDRIDs(); len(got) != 1 || got[0] != 11 {
-		t.Fatalf("unexpected affected PDRs: %v", got)
 	}
 
 	// Preparing must be side-effect free.
@@ -278,8 +278,15 @@ func TestRuleStateUsesChangedRuleOverlays(t *testing.T) {
 
 func TestRuleStateMergesQERPatchAndCommits(t *testing.T) {
 	sess := newRuleStateTestSession()
-	sess.QERIDs[7] = &rules.QERConfig{QERID: 7, QFI: statePtr(uint8(9)), GateStatus: &rules.GateStatus{Uplink: 1}, GBR: &rules.DirectionalBitRate{UplinkBps: 1000000, DownlinkBps: 500000}}
-	patch := &rules.RuleChangeSet{UpdateQERs: []rules.QERPatch{{QERID: 7, MBR: &rules.DirectionalBitRate{UplinkBps: 2000000, DownlinkBps: 1000000}}}}
+	sess.QERIDs[7] = &rules.QERConfig{
+		QERID:      7,
+		QFI:        statePtr(uint8(9)),
+		GateStatus: &rules.GateStatus{Uplink: 1},
+		GBR:        &rules.DirectionalBitRate{UplinkBps: 1000000, DownlinkBps: 500000},
+	}
+	patch := &rules.RuleChangeSet{
+		UpdateQERs: []rules.QERPatch{{QERID: 7, MBR: &rules.DirectionalBitRate{UplinkBps: 2000000, DownlinkBps: 1000000}}},
+	}
 	state, err := sess.ValidateRuleState(patch)
 	if err != nil {
 		t.Fatal(err)
@@ -291,8 +298,8 @@ func TestRuleStateMergesQERPatchAndCommits(t *testing.T) {
 	if sess.QERIDs[7].MBR != nil {
 		t.Fatal("validation mutated session")
 	}
-	if !reflect.DeepEqual(state.AffectedPDRIDs(), []uint16{11}) {
-		t.Fatal("missing affected PDR")
+	if len(state.urrRefDeltas) != 0 {
+		t.Fatal("QER-only update must not change URR references")
 	}
 	// Candidate owns patch values, and commit publishes that candidate, not a
 	// second interpretation of the request or the executor's backend plan.
@@ -309,10 +316,16 @@ func TestRuleStateMergesQERPatchAndCommits(t *testing.T) {
 
 func TestURRReportingPatchPreservesRuntime(t *testing.T) {
 	sess := newRuleStateTestSession()
-	commitChanges(t, sess, &rules.RuleChangeSet{CreateURRs: []rules.URRConfig{{URRID: 20, MeasureMethod: statePtr(uint8(3)), MeasurePeriod: statePtr(time.Second)}}})
+	commitChanges(t, sess, &rules.RuleChangeSet{
+		CreateURRs: []rules.URRConfig{{URRID: 20, MeasureMethod: statePtr(uint8(3)), MeasurePeriod: statePtr(time.Second)}},
+	})
 	info := sess.URRIDs[20]
 	info.SEQN, info.refPdrNum, info.removed = 7, 2, true
-	commitChanges(t, sess, &rules.RuleChangeSet{UpdateURRs: []rules.URRPatch{{URRID: 20, MeasurePeriod: statePtr(2 * time.Second), MeasureInformation: statePtr(uint64(0x1f))}}})
+	commitChanges(t, sess, &rules.RuleChangeSet{
+		UpdateURRs: []rules.URRPatch{
+			{URRID: 20, MeasurePeriod: statePtr(2 * time.Second), MeasureInformation: statePtr(uint64(0x1f))},
+		},
+	})
 	if sess.URRIDs[20] != info || info.SEQN != 7 || info.refPdrNum != 2 || !info.removed {
 		t.Fatal("config update changed runtime")
 	}
@@ -323,7 +336,9 @@ func TestURRReportingPatchPreservesRuntime(t *testing.T) {
 	if !information.MBQE || !information.INAM || !information.RADI || !information.ISTM || !information.MNOP {
 		t.Fatal("measurement information not applied")
 	}
-	commitChanges(t, sess, &rules.RuleChangeSet{UpdateURRs: []rules.URRPatch{{URRID: 20, MeasureMethod: statePtr(uint8(0))}}})
+	commitChanges(t, sess, &rules.RuleChangeSet{
+		UpdateURRs: []rules.URRPatch{{URRID: 20, MeasureMethod: statePtr(uint8(0))}},
+	})
 	method = info.measurementMethod()
 	if method.DURAT || method.VOLUM || method.EVENT || *info.Config.MeasurePeriod != 2*time.Second {
 		t.Fatal("zero confused with absence")
@@ -332,10 +347,15 @@ func TestURRReportingPatchPreservesRuntime(t *testing.T) {
 
 func TestRuleStateAllConfigurationsAndOwnership(t *testing.T) {
 	sess := newRuleStateTestSession()
-	sess.FARIDs[1].ForwardingParameters = &rules.ForwardingParameters{NetworkInstance: statePtr("internet"), OuterHeaderCreation: &rules.OuterHeaderCreation{TEID: statePtr(uint32(42))}}
+	sess.FARIDs[1].ForwardingParameters = &rules.ForwardingParameters{
+		NetworkInstance:     statePtr("internet"),
+		OuterHeaderCreation: &rules.OuterHeaderCreation{TEID: statePtr(uint32(42))},
+	}
 	sess.BARIDs[1] = &rules.BARConfig{BARID: 1, DownlinkDataNotificationDelay: statePtr(time.Second)}
 	changes := &rules.RuleChangeSet{
-		UpdateFARs: []rules.FARPatch{{FARID: 1, ForwardingParameters: &rules.ForwardingParameters{SMRequestFlags: statePtr(uint8(0))}}},
+		UpdateFARs: []rules.FARPatch{
+			{FARID: 1, ForwardingParameters: &rules.ForwardingParameters{SMRequestFlags: statePtr(uint8(0))}},
+		},
 		UpdateBARs: []rules.BARPatch{{BARID: 1, SuggestedBufferingPacketsCount: statePtr(uint16(0))}},
 		UpdatePDRs: []rules.PDRPatch{{PDRID: 11, Precedence: statePtr(uint32(0))}},
 	}
@@ -413,14 +433,16 @@ func TestRuleStateURRReferenceTransfer(t *testing.T) {
 	if !reflect.DeepEqual(terminal, []uint32{3}) || sess.URRIDs[3].refPdrNum != 0 || len(datapath.queries) != 0 {
 		t.Fatal("publication must update references without querying the datapath")
 	}
-
 }
 
 func TestRuleStateSequentialUpdatesAndCreateRemove(t *testing.T) {
 	sess := newRuleStateTestSession()
 	changes := &rules.RuleChangeSet{
 		CreateQERs: []rules.QERConfig{{QERID: 8, QFI: statePtr(uint8(9))}, {QERID: 9}},
-		UpdateQERs: []rules.QERPatch{{QERID: 8, MBR: &rules.DirectionalBitRate{UplinkBps: 1000}}, {QERID: 8, RQI: statePtr(uint8(0))}},
+		UpdateQERs: []rules.QERPatch{
+			{QERID: 8, MBR: &rules.DirectionalBitRate{UplinkBps: 1000}},
+			{QERID: 8, RQI: statePtr(uint8(0))},
+		},
 		RemoveQERs: []uint32{9},
 	}
 	state, err := sess.ValidateRuleState(changes)

@@ -179,6 +179,7 @@ func (info *URRInfo) measurementMethod() report.MeasureMethod {
 	}
 	return measurementMethodFromBits(*info.Config.MeasureMethod)
 }
+
 func (info *URRInfo) measurementInformation() report.MeasureInformation {
 	if info.Config.MeasureInformation == nil {
 		return report.MeasureInformation{}

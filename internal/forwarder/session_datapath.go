@@ -106,7 +106,8 @@ func (s *sessionDatapath) executeDeletionPlan(plan *modificationPlan) (*executio
 		return nil, err
 	}
 	if len(plan.CreatePDRs)+len(plan.CreateFARs)+len(plan.CreateQERs)+len(plan.CreateURRs)+len(plan.CreateBARs)+
-		len(plan.UpdatePDRs)+len(plan.UpdateFARs)+len(plan.UpdateQERs)+len(plan.UpdateURRs)+len(plan.UpdateBARs)+len(plan.QueryURRs) != 0 {
+		len(plan.UpdatePDRs)+len(plan.UpdateFARs)+len(plan.UpdateQERs)+len(plan.UpdateURRs)+len(plan.UpdateBARs)+
+		len(plan.QueryURRs) != 0 {
 		return nil, errors.New("datapath cleanup: expected a removal-only plan")
 	}
 	execution := *plan
@@ -122,7 +123,8 @@ func (s *sessionDatapath) Establish(changes *rules.RuleChangeSet) (*ApplyResult,
 		return nil, err
 	}
 	if len(plan.UpdatePDRs)+len(plan.UpdateFARs)+len(plan.UpdateQERs)+len(plan.UpdateURRs)+len(plan.UpdateBARs)+
-		len(plan.RemovePDRs)+len(plan.RemoveFARs)+len(plan.RemoveQERs)+len(plan.RemoveURRs)+len(plan.RemoveBARs)+len(plan.QueryURRs) != 0 {
+		len(plan.RemovePDRs)+len(plan.RemoveFARs)+len(plan.RemoveQERs)+len(plan.RemoveURRs)+len(plan.RemoveBARs)+
+		len(plan.QueryURRs) != 0 {
 		return nil, errors.New("datapath establishment: expected create-only changes")
 	}
 	result, err := s.executeEstablishmentPlan(plan)
@@ -131,6 +133,7 @@ func (s *sessionDatapath) Establish(changes *rules.RuleChangeSet) (*ApplyResult,
 	}
 	return publicResult(result), nil
 }
+
 func (s *sessionDatapath) Modify(changes *rules.RuleChangeSet) (*ApplyResult, error) {
 	plan, err := s.compileChanges(changes)
 	if err != nil {
@@ -142,6 +145,7 @@ func (s *sessionDatapath) Modify(changes *rules.RuleChangeSet) (*ApplyResult, er
 	}
 	return publicResult(result), nil
 }
+
 func (s *sessionDatapath) Cleanup(changes *rules.RuleChangeSet) (*ApplyResult, error) {
 	plan, err := s.compileChanges(changes)
 	if err != nil {
@@ -150,6 +154,7 @@ func (s *sessionDatapath) Cleanup(changes *rules.RuleChangeSet) (*ApplyResult, e
 	result, err := s.executeDeletionPlan(plan)
 	return publicResult(result), err
 }
+
 func publicResult(result *executionResult) *ApplyResult {
 	if result == nil {
 		return nil

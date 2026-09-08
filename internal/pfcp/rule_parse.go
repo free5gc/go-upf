@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"net"
 
-	utilpfcp "github.com/free5gc/util/pfcp"
 	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/internal/rules"
+	utilpfcp "github.com/free5gc/util/pfcp"
 )
 
 func valueOf[T any](value T, err error) (*T, error) {
@@ -19,12 +19,14 @@ func valueOf[T any](value T, err error) (*T, error) {
 	}
 	return &value, nil
 }
+
 func requireRuleField(name string, present bool) error {
 	if !present {
 		return errors.Wrap(ErrMissingMandatoryIE, name)
 	}
 	return nil
 }
+
 func ruleChildren(i *ie.IE, kind uint16) ([]*ie.IE, error) {
 	if i == nil {
 		return nil, errors.Wrap(ErrMissingMandatoryIE, "nil rule IE")
@@ -72,7 +74,7 @@ func cloneIP(ip net.IP) net.IP { return append(net.IP(nil), ip...) }
 
 func parsePDR(i *ie.IE, create bool) (rules.PDRConfig, error) {
 	var p rules.PDRConfig
-	kind := uint16(ie.UpdatePDR)
+	kind := ie.UpdatePDR
 	if create {
 		kind = ie.CreatePDR
 	}
@@ -120,6 +122,7 @@ func parsePDR(i *ie.IE, create bool) (rules.PDRConfig, error) {
 	}
 	return p, nil
 }
+
 func parsePDI(i *ie.IE) (*rules.PDI, error) {
 	children, err := i.PDI()
 	if err != nil {
@@ -139,13 +142,25 @@ func parsePDI(i *ie.IE) (*rules.PDI, error) {
 			var v *ie.FTEIDFields
 			v, err = x.FTEID()
 			if err == nil {
-				p.FTEID = &rules.FTEID{Flags: v.Flags, TEID: v.TEID, IPv4Address: cloneIP(v.IPv4Address), IPv6Address: cloneIP(v.IPv6Address), ChooseID: v.ChooseID}
+				p.FTEID = &rules.FTEID{
+					Flags:       v.Flags,
+					TEID:        v.TEID,
+					IPv4Address: cloneIP(v.IPv4Address),
+					IPv6Address: cloneIP(v.IPv6Address),
+					ChooseID:    v.ChooseID,
+				}
 			}
 		case ie.UEIPAddress:
 			var v *ie.UEIPAddressFields
 			v, err = x.UEIPAddress()
 			if err == nil {
-				p.UEIPAddress = &rules.UEIPAddress{Flags: v.Flags, IPv4Address: cloneIP(v.IPv4Address), IPv6Address: cloneIP(v.IPv6Address), IPv6PrefixDelegationBits: v.IPv6PrefixDelegationBits, IPv6PrefixLength: v.IPv6PrefixLength}
+				p.UEIPAddress = &rules.UEIPAddress{
+					Flags:                    v.Flags,
+					IPv4Address:              cloneIP(v.IPv4Address),
+					IPv6Address:              cloneIP(v.IPv6Address),
+					IPv6PrefixDelegationBits: v.IPv6PrefixDelegationBits,
+					IPv6PrefixLength:         v.IPv6PrefixLength,
+				}
 			}
 		case ie.SDFFilter:
 			var v rules.SDFFilter
@@ -164,6 +179,7 @@ func parsePDI(i *ie.IE) (*rules.PDI, error) {
 	}
 	return p, nil
 }
+
 func parseSDFFilter(i *ie.IE) (rules.SDFFilter, error) {
 	var result rules.SDFFilter
 	if len(i.Payload) < 3 {
@@ -199,7 +215,7 @@ func parseSDFFilter(i *ie.IE) (rules.SDFFilter, error) {
 
 func parseFAR(i *ie.IE, create bool) (rules.FARConfig, error) {
 	var p rules.FARConfig
-	kind := uint16(ie.UpdateFAR)
+	kind := ie.UpdateFAR
 	if create {
 		kind = ie.CreateFAR
 	}
@@ -244,6 +260,7 @@ func parseFAR(i *ie.IE, create bool) (rules.FARConfig, error) {
 	}
 	return p, err
 }
+
 func parseForwardingParameters(i *ie.IE, create bool) (*rules.ForwardingParameters, error) {
 	var children []*ie.IE
 	var err error
@@ -273,7 +290,14 @@ func parseForwardingParameters(i *ie.IE, create bool) (*rules.ForwardingParamete
 			var v *utilpfcp.OuterHeaderCreationFields
 			v, err = utilpfcp.ParseOuterHeaderCreation(x.Payload)
 			if err == nil {
-				p.OuterHeaderCreation = &rules.OuterHeaderCreation{Description: v.OuterHeaderCreationDescription, IPv4Address: cloneIP(v.IPv4Address), IPv6Address: cloneIP(v.IPv6Address), PortNumber: v.PortNumber, CTag: v.CTag, STag: v.STag}
+				p.OuterHeaderCreation = &rules.OuterHeaderCreation{
+					Description: v.OuterHeaderCreationDescription,
+					IPv4Address: cloneIP(v.IPv4Address),
+					IPv6Address: cloneIP(v.IPv6Address),
+					PortNumber:  v.PortNumber,
+					CTag:        v.CTag,
+					STag:        v.STag,
+				}
 				if v.HasTEID() {
 					p.OuterHeaderCreation.TEID = &v.TEID
 				}
@@ -291,7 +315,7 @@ func parseForwardingParameters(i *ie.IE, create bool) (*rules.ForwardingParamete
 
 func parseQER(i *ie.IE, create bool) (rules.QERConfig, error) {
 	var p rules.QERConfig
-	kind := uint16(ie.UpdateQER)
+	kind := ie.UpdateQER
 	if create {
 		kind = ie.CreateQER
 	}
@@ -342,6 +366,7 @@ func parseQER(i *ie.IE, create bool) (rules.QERConfig, error) {
 	}
 	return p, err
 }
+
 func parseBitRates(i *ie.IE) (*rules.DirectionalBitRate, error) {
 	var b []byte
 	var err error
@@ -362,7 +387,7 @@ func parseBitRates(i *ie.IE) (*rules.DirectionalBitRate, error) {
 
 func parseURR(i *ie.IE, create bool) (rules.URRConfig, error) {
 	var p rules.URRConfig
-	kind := uint16(ie.UpdateURR)
+	kind := ie.UpdateURR
 	if create {
 		kind = ie.CreateURR
 	}
@@ -400,13 +425,23 @@ func parseURR(i *ie.IE, create bool) (rules.URRConfig, error) {
 			v, e := x.VolumeThreshold()
 			err = e
 			if e == nil {
-				p.VolumeThreshold = &rules.Volume{Flags: v.Flags, Total: v.TotalVolume, Uplink: v.UplinkVolume, Downlink: v.DownlinkVolume}
+				p.VolumeThreshold = &rules.Volume{
+					Flags:    v.Flags,
+					Total:    v.TotalVolume,
+					Uplink:   v.UplinkVolume,
+					Downlink: v.DownlinkVolume,
+				}
 			}
 		case ie.VolumeQuota:
 			v, e := x.VolumeQuota()
 			err = e
 			if e == nil {
-				p.VolumeQuota = &rules.Volume{Flags: v.Flags, Total: v.TotalVolume, Uplink: v.UplinkVolume, Downlink: v.DownlinkVolume}
+				p.VolumeQuota = &rules.Volume{
+					Flags:    v.Flags,
+					Total:    v.TotalVolume,
+					Uplink:   v.UplinkVolume,
+					Downlink: v.DownlinkVolume,
+				}
 			}
 		}
 		if err != nil {
@@ -429,9 +464,10 @@ func parseURR(i *ie.IE, create bool) (rules.URRConfig, error) {
 	}
 	return p, nil
 }
+
 func parseBAR(i *ie.IE, create bool) (rules.BARConfig, error) {
 	var p rules.BARConfig
-	kind := uint16(ie.UpdateBARWithinSessionModificationRequest)
+	kind := ie.UpdateBARWithinSessionModificationRequest
 	if create {
 		kind = ie.CreateBAR
 	}
