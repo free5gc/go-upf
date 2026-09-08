@@ -46,7 +46,7 @@ func fullRuleRequest() *message.SessionModificationRequest {
 func TestTypedEstablishmentAndResponseMetadata(t *testing.T) {
 	req := fullRuleRequest()
 	sess := &Session{LocalID: 42}
-	changes, err := sess.BuildEstablishmentPlan(&message.SessionEstablishmentRequest{
+	changes, err := sess.ParseEstablishmentChanges(&message.SessionEstablishmentRequest{
 		CreatePDR: req.CreatePDR, CreateFAR: req.CreateFAR, CreateQER: req.CreateQER, CreateURR: req.CreateURR, CreateBAR: req.CreateBAR,
 	})
 	require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestTypedEstablishmentAndResponseMetadata(t *testing.T) {
 }
 
 func TestTypedPatchesPreservePresence(t *testing.T) {
-	changes, err := (&Session{}).BuildModificationPlan(fullRuleRequest())
+	changes, err := (&Session{}).ParseModificationChanges(fullRuleRequest())
 	require.NoError(t, err)
 	require.Nil(t, changes.UpdateQERs[0].GateStatus)
 	require.Nil(t, changes.UpdateQERs[0].GBR)
@@ -116,11 +116,11 @@ func TestTypedParserRejectsMissingAndMalformedFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := (&Session{}).BuildModificationPlan(tt.req)
+			result, err := (&Session{}).ParseModificationChanges(tt.req)
 			require.ErrorIs(t, err, tt.cause)
 			require.Nil(t, result, "a parse failure must discard the whole change set")
 		})
 	}
-	_, err := (&Session{}).BuildEstablishmentPlan(nil)
+	_, err := (&Session{}).ParseEstablishmentChanges(nil)
 	require.ErrorIs(t, err, ErrMissingMandatoryIE)
 }

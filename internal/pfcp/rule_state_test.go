@@ -408,13 +408,12 @@ func TestRuleStateURRReferenceTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reports := state.Commit()
-	if !reflect.DeepEqual(datapath.queries, []uint32{3}) ||
-		sess.URRIDs[3].refPdrNum != 0 ||
-		len(reports) != 1 ||
-		reports[0].USARTrigger.Flags&report.USAR_TRIG_TERMR == 0 {
-		t.Fatal("last reference did not produce termination report")
+	terminal := state.terminalURRIDs()
+	state.Commit()
+	if !reflect.DeepEqual(terminal, []uint32{3}) || sess.URRIDs[3].refPdrNum != 0 || len(datapath.queries) != 0 {
+		t.Fatal("publication must update references without querying the datapath")
 	}
+
 }
 
 func TestRuleStateSequentialUpdatesAndCreateRemove(t *testing.T) {

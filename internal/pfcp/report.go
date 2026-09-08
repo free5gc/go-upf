@@ -131,3 +131,34 @@ func (d *Dispatcher) serveUSAReport(addr net.Addr, lSeid uint64, usars []report.
 	err = d.transport.sendReqTo(req, addr)
 	return errors.Wrap(err, "serveUSAReport")
 }
+
+func measurementMethodFromBits(value uint8) report.MeasureMethod {
+	return report.MeasureMethod{
+		DURAT: value&0x01 != 0,
+		VOLUM: value&0x02 != 0,
+		EVENT: value&0x04 != 0,
+	}
+}
+
+func measurementInformationFromBits(value uint64) report.MeasureInformation {
+	return report.MeasureInformation{
+		MBQE: value&0x01 != 0,
+		INAM: value&0x02 != 0,
+		RADI: value&0x04 != 0,
+		ISTM: value&0x08 != 0,
+		MNOP: value&0x10 != 0,
+	}
+}
+
+func (info *URRInfo) measurementMethod() report.MeasureMethod {
+	if info.Config.MeasureMethod == nil {
+		return report.MeasureMethod{}
+	}
+	return measurementMethodFromBits(*info.Config.MeasureMethod)
+}
+func (info *URRInfo) measurementInformation() report.MeasureInformation {
+	if info.Config.MeasureInformation == nil {
+		return report.MeasureInformation{}
+	}
+	return measurementInformationFromBits(*info.Config.MeasureInformation)
+}

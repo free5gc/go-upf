@@ -107,6 +107,10 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	wg.Add(1)
 	go s.receiver(wg)
 
+	// This event loop owns PFCP rule state and URR reporting runtime. Handlers
+	// run to completion, including response assembly, before the next event.
+	// Keeping dispatch synchronous serializes session transactions with reports,
+	// association cleanup and timeouts without another lock or worker lifecycle.
 	for {
 		select {
 		case sr := <-s.srCh:

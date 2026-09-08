@@ -14,6 +14,8 @@ type messageTransport interface {
 }
 
 // Dispatcher routes decoded PFCP messages to local UPF service operations.
+// Request, response and report handlers are called synchronously by PfcpServer's
+// event loop; they are not a concurrent Session API.
 type Dispatcher struct {
 	node      *LocalNode
 	transport messageTransport

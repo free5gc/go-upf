@@ -14,6 +14,7 @@ import (
 // against other changes to the same session.
 type RuleState struct {
 	sess         *Session
+	urrRefDeltas map[uint32]int
 	affectedPDRs map[uint16]struct{}
 	pdrOverrides map[uint16]*rules.PDRConfig
 	removedPDRs  map[uint16]struct{}
@@ -45,6 +46,7 @@ func (s *Session) ValidateRuleState(changes *rules.RuleChangeSet) (*RuleState, e
 		return nil, err
 	}
 	state.findAffectedPDRs()
+	state.buildURRReferenceDeltas()
 	return state, nil
 }
 
@@ -426,4 +428,42 @@ func (state *RuleState) validateReferences() error {
 		}
 	}
 	return nil
+}
+
+// buildURRReferenceDeltas compares old and final relationships once per changed
+// PDR. Repeated URR IDs count as one reference; transfers have a net zero delta.
+func (state *RuleState) buildURRReferenceDeltas() {
+	state.urrRefDeltas = make(map[uint32]int)
+	for id := range state.affectedPDRs {
+		if old := state.sess.PDRIDs[id]; old != nil {
+			for uid := range uint32Set(old.URRIDs) {
+				state.urrRefDeltas[uid]--
+			}
+		}
+		if next, exists := state.PDR(id); exists {
+			for uid := range uint32Set(next.URRIDs) {
+				state.urrRefDeltas[uid]++
+			}
+		}
+	}
+}
+
+func (state *RuleState) terminalURRIDs() []uint32 {
+	var ids []uint32
+	for id, delta := range state.urrRefDeltas {
+		current := state.sess.URRIDs[id]
+		if current != nil && current.refPdrNum > 0 && int(current.refPdrNum)+delta == 0 {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+func uint32Set(ids []uint32) map[uint32]struct{} {
+	set := make(map[uint32]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set
 }

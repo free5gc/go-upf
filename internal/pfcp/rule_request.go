@@ -1,10 +1,19 @@
 package pfcp
 
 import (
-	"github.com/free5gc/go-upf/internal/rules"
 	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
+
+	"github.com/free5gc/go-upf/internal/rules"
+)
+
+var (
+	ErrMissingMandatoryIE             = errors.New("mandatory IE missing or incorrect")
+	ErrMissingConditionalIE           = errors.New("conditional IE missing or incorrect")
+	ErrRuleNotFound                   = errors.New("rule not found")
+	ErrRuleCreationModificationFailed = errors.New("rule creation/modification failed")
+	ErrMutualExclusionConflict        = errors.New("conflicting operations on same rule")
 )
 
 func appendRuleChanges[P any](destination *[]P, operation string, ies []*ie.IE,
@@ -33,9 +42,9 @@ func parseRuleID[T any](i *ie.IE, kind uint16, get func(*ie.IE) (T, error)) (T, 
 	return get(i)
 }
 
-// BuildEstablishmentPlan decodes all supported rule operations without a driver,
+// ParseEstablishmentChanges decodes all supported rule operations without a driver,
 // netlink encoding, or mutation of Session. The result owns its decoded values.
-func (s *Session) BuildEstablishmentPlan(req *message.SessionEstablishmentRequest) (*rules.RuleChangeSet, error) {
+func (s *Session) ParseEstablishmentChanges(req *message.SessionEstablishmentRequest) (*rules.RuleChangeSet, error) {
 	if req == nil {
 		return nil, errors.Wrap(ErrMissingMandatoryIE, "nil SessionEstablishmentRequest")
 	}
@@ -90,9 +99,9 @@ func (s *Session) BuildEstablishmentPlan(req *message.SessionEstablishmentReques
 	return changes, nil
 }
 
-// BuildModificationPlan decodes all supported rule operations without a driver,
+// ParseModificationChanges decodes all supported rule operations without a driver,
 // netlink encoding, or mutation of Session. The result owns its decoded values.
-func (s *Session) BuildModificationPlan(req *message.SessionModificationRequest) (*rules.RuleChangeSet, error) {
+func (s *Session) ParseModificationChanges(req *message.SessionModificationRequest) (*rules.RuleChangeSet, error) {
 	if req == nil {
 		return nil, errors.Wrap(ErrMissingMandatoryIE, "nil SessionModificationRequest")
 	}

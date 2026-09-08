@@ -53,45 +53,16 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	// allocate a session
 	sess := d.node.CreateSession(association, fseid.SEID)
 
-	// ========================================================================
-	// PHASE 1: Planning and prospective-state validation.
-	// No Session rule state or kernel state is mutated in this phase.
-	// ========================================================================
-	// 1A: Parse the request and build one request-level plan.
-	changes, err1 := sess.BuildEstablishmentPlan(req)
+	changes, err1 := sess.ParseEstablishmentChanges(req)
+	if err1 == nil {
+		_, err1 = sess.applyRuleChanges(changes, true)
+	}
 	if err1 != nil {
-		sess.log.Errorf("Est plan build error: %v", err1)
-		cause := pfcpCauseFromError(err1)
-		d.sendSessEstFailRsp(req, addr, cause)
+		sess.log.Errorf("Establishment rules: %v", err1)
+		d.sendSessEstFailRsp(req, addr, pfcpCauseFromError(err1))
 		d.node.DeleteSession(sess.LocalID)
 		return
 	}
-
-	// 1B: Validate the complete post-request rule state. The datapath prepares rollback.
-	ruleState, err1 := sess.ValidateRuleState(changes)
-	if err1 != nil {
-		sess.log.Errorf("Est rule-state validation error: %v", err1)
-		cause := pfcpCauseFromError(err1)
-		d.sendSessEstFailRsp(req, addr, cause)
-		d.node.DeleteSession(sess.LocalID)
-		return
-	}
-
-	// ========================================================================
-	// PHASE 2: Execution - Execute all Create operations (fail-fast)
-	// ========================================================================
-	_, err1 = sess.datapath.Establish(changes)
-	if err1 != nil {
-		sess.log.Errorf("Est execution error: %v", err1)
-		d.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
-		d.node.DeleteSession(sess.LocalID)
-		return
-	}
-
-	// ========================================================================
-	// PHASE 3: Commit - Publish only kernel-applied state
-	// ========================================================================
-	ruleState.Commit()
 
 	CreatedPDRList := createdPDRResponseIEs(changes)
 
@@ -167,66 +138,15 @@ func (d *Dispatcher) handleSessionModificationRequest(
 		d.node.UpdateAssociationPeerNodeID(sess.association, peerNodeID)
 	}
 
-	// ========================================================================
-	// PHASE 1: Planning and prospective-state validation.
-	// No Session rule state or kernel state is mutated in this phase.
-	// ========================================================================
-	// 1A: Parse the request and build one request-level plan.
-	changes, err1 := sess.BuildModificationPlan(req)
-	if err1 != nil {
-		sess.log.Errorf("Mod plan build error: %v", err1)
-		cause := pfcpCauseFromError(err1)
-		d.sendSessModFailRsp(req, sess, addr, cause)
-		return
+	changes, err1 := sess.ParseModificationChanges(req)
+	var usars []report.USAReport
+	if err1 == nil {
+		usars, err1 = sess.applyRuleChanges(changes, false)
 	}
-
-	// 1B: Validate the complete post-request rule state. The datapath prepares rollback.
-	ruleState, err1 := sess.ValidateRuleState(changes)
 	if err1 != nil {
-		sess.log.Errorf("Mod rule-state validation error: %v", err1)
-		cause := pfcpCauseFromError(err1)
-		d.sendSessModFailRsp(req, sess, addr, cause)
+		sess.log.Errorf("Modification rules: %v", err1)
+		d.sendSessModFailRsp(req, sess, addr, pfcpCauseFromError(err1))
 		return
-	}
-
-	// ========================================================================
-	// PHASE 2: Execution - The datapath compiles and executes semantic changes.
-	// Failed transactions are not published to Session.
-	// ========================================================================
-	execResult, err1 := sess.datapath.Modify(changes)
-	if err1 != nil {
-		// The executor has already rolled back every successful operation. Session
-		// still represents the pre-request kernel state, so nothing is committed.
-		sess.log.Errorf("Mod execution error: %v", err1)
-		d.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
-		return
-	}
-
-	// ========================================================================
-	// PHASE 3: Commit - Publish the fully applied request.
-	// ========================================================================
-	usars := ruleState.Commit()
-
-	// Collect USAReports from execution result (RemoveURR, UpdateURR, QueryURR)
-	if execResult != nil && len(execResult.USAReports) > 0 {
-		for i := range execResult.USAReports {
-			r := &execResult.USAReports[i]
-
-			for _, id := range changes.RemoveURRs {
-				if id == r.URRID {
-					r.USARTrigger.Flags |= report.USAR_TRIG_TERMR
-					break
-				}
-			}
-
-			for _, id := range changes.QueryURRs {
-				if id == r.URRID {
-					r.USARTrigger.Flags |= report.USAR_TRIG_IMMER
-					break
-				}
-			}
-		}
-		usars = append(usars, execResult.USAReports...)
 	}
 
 	rsp := message.NewSessionModificationResponse(

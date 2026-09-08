@@ -34,10 +34,7 @@ func (s *Session) Close() []report.USAReport {
 	var usars []report.USAReport
 
 	for _, p := range changes.RemovePDRs {
-		rs := s.ApplyRemovePDR(p)
-		if len(rs) > 0 {
-			usars = append(usars, rs...)
-		}
+		s.ApplyRemovePDR(p)
 	}
 	for _, p := range changes.RemoveBARs {
 		s.ApplyRemoveBAR(p)

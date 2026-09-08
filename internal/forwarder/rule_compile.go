@@ -1,9 +1,11 @@
 package forwarder
 
 import (
+	"fmt"
 	"github.com/free5gc/go-gtp5gnl"
 	"github.com/khirono/go-nl"
 	"github.com/pkg/errors"
+	"unsafe"
 
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/internal/rules"
@@ -22,7 +24,7 @@ func (s *sessionDatapath) compileChanges(changes *rules.RuleChangeSet) (*modific
 }
 
 func compilePDR(seid uint64, p rules.PDRConfig, op OpType) (*pdrPlan, error) {
-	plan := &pdrPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.PDRID)}, PDRID: p.PDRID}
+	plan := &pdrPlan{OID: gtp5gnl.OID{seid, uint64(p.PDRID)}, PDRID: p.PDRID}
 	if p.Precedence != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_PRECEDENCE, Value: nl.AttrU32(*p.Precedence)})
 	}
@@ -32,18 +34,13 @@ func compilePDR(seid uint64, p rules.PDRConfig, op OpType) (*pdrPlan, error) {
 			return nil, err
 		}
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_PDI, Value: attrs})
-		source := p.PDI.SourceInterface
-		plan.SourceInterface = &source
 	}
 	if p.OuterHeaderRemoval != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_OUTER_HEADER_REMOVAL, Value: nl.AttrU8(*p.OuterHeaderRemoval)})
 	}
 	if p.FARID != nil {
-		plan.FARID, plan.FARIDPresent = *p.FARID, true
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_FAR_ID, Value: nl.AttrU32(*p.FARID)})
 	}
-	plan.QERIDsPresent, plan.URRIDsPresent = p.QERIDs != nil, p.URRIDs != nil
-	plan.QERIDs, plan.URRIDs = append([]uint32(nil), p.QERIDs...), append([]uint32(nil), p.URRIDs...)
 	for _, id := range p.QERIDs {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.PDR_QER_ID, Value: nl.AttrU32(id)})
 	}
@@ -95,7 +92,7 @@ func compilePDI(p *rules.PDI) (nl.AttrList, error) {
 	return attrs, nil
 }
 func compileFAR(seid uint64, p rules.FARConfig, op OpType) *farPlan {
-	plan := &farPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.FARID)}, FARID: p.FARID}
+	plan := &farPlan{OID: gtp5gnl.OID{seid, uint64(p.FARID)}, FARID: p.FARID}
 	if p.ApplyAction != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.FAR_APPLY_ACTION, Value: nl.AttrU16(*p.ApplyAction)})
 		if op == OpUpdate {
@@ -133,12 +130,11 @@ func compileFAR(seid uint64, p rules.FARConfig, op OpType) *farPlan {
 	return plan
 }
 func compileQER(seid uint64, p rules.QERConfig, op OpType) *qerPlan {
-	plan := &qerPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.QERID)}, QERID: p.QERID}
+	plan := &qerPlan{OID: gtp5gnl.OID{seid, uint64(p.QERID)}, QERID: p.QERID}
 	if p.CorrelationID != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.QER_CORR_ID, Value: nl.AttrU32(*p.CorrelationID)})
 	}
 	if p.GateStatus != nil {
-		plan.DesiredState.GateStatus = &QERGateStatus{Uplink: p.GateStatus.Uplink, Downlink: p.GateStatus.Downlink}
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.QER_GATE, Value: nl.AttrU8(p.GateStatus.Uplink<<2 | p.GateStatus.Downlink)})
 	}
 	for _, rate := range []struct {
@@ -156,16 +152,10 @@ func compileQER(seid uint64, p rules.QERConfig, op OpType) *qerPlan {
 			{Type: rate.ulHigh, Value: nl.AttrU32(ul >> 8)}, {Type: rate.ulLow, Value: nl.AttrU8(ul)},
 			{Type: rate.dlHigh, Value: nl.AttrU32(dl >> 8)}, {Type: rate.dlLow, Value: nl.AttrU8(dl)},
 		}})
-		desired := &DirectionalBitRate{UplinkBps: rate.value.UplinkBps, DownlinkBps: rate.value.DownlinkBps}
-		if rate.typ == gtp5gnl.QER_MBR {
-			plan.DesiredState.MBR = desired
-		} else {
-			plan.DesiredState.GBR = desired
-		}
+
 	}
 	if p.QFI != nil {
 		v := *p.QFI
-		plan.DesiredState.QFI = &v
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.QER_QFI, Value: nl.AttrU8(v)})
 	}
 	if p.RQI != nil {
@@ -177,9 +167,8 @@ func compileQER(seid uint64, p rules.QERConfig, op OpType) *qerPlan {
 	return plan
 }
 func compileURR(seid uint64, p rules.URRConfig, op OpType) *urrPlan {
-	plan := &urrPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.URRID)}, URRID: p.URRID}
+	plan := &urrPlan{OID: gtp5gnl.OID{seid, uint64(p.URRID)}, URRID: p.URRID}
 	if p.MeasureMethod != nil {
-		plan.MeasureMethod = *p.MeasureMethod
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.URR_MEASUREMENT_METHOD, Value: nl.AttrU8(*p.MeasureMethod)})
 	}
 	if p.ReportingTriggers != nil {
@@ -221,11 +210,10 @@ func compileURR(seid uint64, p rules.URRConfig, op OpType) *urrPlan {
 		}
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: volume.typ, Value: attrs})
 	}
-	plan.ReportingConfig = urrReportingPatch(plan.Attrs)
 	return plan
 }
 func compileBAR(seid uint64, p rules.BARConfig, op OpType) *barPlan {
-	plan := &barPlan{Op: op, OID: gtp5gnl.OID{seid, uint64(p.BARID)}, BARID: p.BARID}
+	plan := &barPlan{OID: gtp5gnl.OID{seid, uint64(p.BARID)}, BARID: p.BARID}
 	if p.DownlinkDataNotificationDelay != nil {
 		plan.Attrs = append(plan.Attrs, nl.Attr{Type: gtp5gnl.BAR_DOWNLINK_DATA_NOTIFICATION_DELAY, Value: nl.AttrU8(*p.DownlinkDataNotificationDelay)})
 	}
@@ -276,22 +264,98 @@ func compileRuleChanges(c *rules.RuleChangeSet) (*modificationPlan, error) {
 		plan.UpdatePDRs = append(plan.UpdatePDRs, compiled)
 	}
 	for _, id := range c.RemovePDRs {
-		plan.RemovePDRs = append(plan.RemovePDRs, &pdrPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, PDRID: id})
+		plan.RemovePDRs = append(plan.RemovePDRs, &pdrPlan{OID: gtp5gnl.OID{c.SEID, uint64(id)}, PDRID: id})
 	}
 	for _, id := range c.RemoveFARs {
-		plan.RemoveFARs = append(plan.RemoveFARs, &farPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, FARID: id})
+		plan.RemoveFARs = append(plan.RemoveFARs, &farPlan{OID: gtp5gnl.OID{c.SEID, uint64(id)}, FARID: id})
 	}
 	for _, id := range c.RemoveQERs {
-		plan.RemoveQERs = append(plan.RemoveQERs, &qerPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, QERID: id})
+		plan.RemoveQERs = append(plan.RemoveQERs, &qerPlan{OID: gtp5gnl.OID{c.SEID, uint64(id)}, QERID: id})
 	}
 	for _, id := range c.RemoveURRs {
-		plan.RemoveURRs = append(plan.RemoveURRs, &urrPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, URRID: id})
+		plan.RemoveURRs = append(plan.RemoveURRs, &urrPlan{OID: gtp5gnl.OID{c.SEID, uint64(id)}, URRID: id})
 	}
 	for _, id := range c.RemoveBARs {
-		plan.RemoveBARs = append(plan.RemoveBARs, &barPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, BARID: id})
+		plan.RemoveBARs = append(plan.RemoveBARs, &barPlan{OID: gtp5gnl.OID{c.SEID, uint64(id)}, BARID: id})
 	}
 	for _, id := range c.QueryURRs {
-		plan.QueryURRs = append(plan.QueryURRs, &urrPlan{Op: OpRemove, OID: gtp5gnl.OID{c.SEID, uint64(id)}, QueryURRID: id})
+		plan.QueryURRs = append(plan.QueryURRs, &urrPlan{OID: gtp5gnl.OID{c.SEID, uint64(id)}, URRID: id})
 	}
 	return plan, nil
+}
+
+func encodeFlowDesc(fd rules.FlowDesc, swapSrcDst bool) (nl.AttrList, error) {
+	var attrs nl.AttrList
+	if swapSrcDst {
+		fd.Src, fd.Dst = fd.Dst, fd.Src
+		fd.SrcPorts, fd.DstPorts = fd.DstPorts, fd.SrcPorts
+	}
+	switch fd.Action {
+	case "permit":
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.FLOW_DESCRIPTION_ACTION,
+			Value: nl.AttrU8(gtp5gnl.SDF_FILTER_PERMIT),
+		})
+	default:
+		return nil, fmt.Errorf("not support action %v", fd.Action)
+	}
+	switch fd.Dir {
+	case "in":
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.FLOW_DESCRIPTION_DIRECTION,
+			Value: nl.AttrU8(gtp5gnl.SDF_FILTER_IN),
+		})
+	case "out":
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.FLOW_DESCRIPTION_DIRECTION,
+			Value: nl.AttrU8(gtp5gnl.SDF_FILTER_OUT),
+		})
+	default:
+		return nil, fmt.Errorf("not support dir %v", fd.Dir)
+	}
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.FLOW_DESCRIPTION_PROTOCOL,
+		Value: nl.AttrU8(fd.Proto),
+	})
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.FLOW_DESCRIPTION_SRC_IPV4,
+		Value: nl.AttrBytes(fd.Src.IP),
+	})
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.FLOW_DESCRIPTION_SRC_MASK,
+		Value: nl.AttrBytes(fd.Src.Mask),
+	})
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_IPV4,
+		Value: nl.AttrBytes(fd.Dst.IP),
+	})
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_MASK,
+		Value: nl.AttrBytes(fd.Dst.Mask),
+	})
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.FLOW_DESCRIPTION_SRC_PORT,
+		Value: nl.AttrBytes(convertSlice(fd.SrcPorts)),
+	})
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_PORT,
+		Value: nl.AttrBytes(convertSlice(fd.DstPorts)),
+	})
+	return attrs, nil
+}
+
+func convertSlice(ports [][]uint16) []byte {
+	b := make([]byte, len(ports)*4)
+	off := 0
+	for _, p := range ports {
+		x := (*uint32)(unsafe.Pointer(&b[off]))
+		switch len(p) {
+		case 1:
+			*x = uint32(p[0])<<16 | uint32(p[0])
+		case 2:
+			*x = uint32(p[0])<<16 | uint32(p[1])
+		}
+		off += 4
+	}
+	return b
 }

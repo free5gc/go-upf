@@ -1,4 +1,4 @@
-package forwarder
+package pfcp
 
 import (
 	"errors"
@@ -7,8 +7,7 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 )
 
-func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
-	g := new(Gtp5g)
+func TestRuleParsersRejectMissingMandatoryIEs(t *testing.T) {
 	reportingTriggers := func() *ie.IE {
 		return ie.NewReportingTriggers(0, 0)
 	}
@@ -23,7 +22,7 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "CreatePDR/PDR ID",
 			build: func() error {
-				_, err := g.buildCreatePDRPlan(1, ie.NewCreatePDR(
+				_, err := parseCreatePDR(ie.NewCreatePDR(
 					ie.NewPrecedence(100),
 					ie.NewPDI(ie.NewSourceInterface(ie.SrcInterfaceAccess)),
 				))
@@ -33,7 +32,7 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "CreatePDR/Precedence",
 			build: func() error {
-				_, err := g.buildCreatePDRPlan(1, ie.NewCreatePDR(
+				_, err := parseCreatePDR(ie.NewCreatePDR(
 					ie.NewPDRID(1),
 					ie.NewPDI(ie.NewSourceInterface(ie.SrcInterfaceAccess)),
 				))
@@ -43,7 +42,7 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "CreatePDR/PDI",
 			build: func() error {
-				_, err := g.buildCreatePDRPlan(1, ie.NewCreatePDR(
+				_, err := parseCreatePDR(ie.NewCreatePDR(
 					ie.NewPDRID(1),
 					ie.NewPrecedence(100),
 				))
@@ -53,7 +52,7 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "PDI/Source Interface",
 			build: func() error {
-				_, err := g.buildCreatePDRPlan(1, ie.NewCreatePDR(
+				_, err := parseCreatePDR(ie.NewCreatePDR(
 					ie.NewPDRID(1),
 					ie.NewPrecedence(100),
 					ie.NewPDI(),
@@ -64,28 +63,28 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "UpdatePDR/PDR ID",
 			build: func() error {
-				_, err := g.buildUpdatePDRPlan(1, ie.NewUpdatePDR(ie.NewPrecedence(100)))
+				_, err := parseUpdatePDR(ie.NewUpdatePDR(ie.NewPrecedence(100)))
 				return err
 			},
 		},
 		{
 			name: "CreateFAR/FAR ID",
 			build: func() error {
-				_, err := g.buildCreateFARPlan(1, ie.NewCreateFAR(ie.NewApplyAction(0x01)))
+				_, err := parseCreateFAR(ie.NewCreateFAR(ie.NewApplyAction(0x01)))
 				return err
 			},
 		},
 		{
 			name: "CreateFAR/Apply Action",
 			build: func() error {
-				_, err := g.buildCreateFARPlan(1, ie.NewCreateFAR(ie.NewFARID(1)))
+				_, err := parseCreateFAR(ie.NewCreateFAR(ie.NewFARID(1)))
 				return err
 			},
 		},
 		{
 			name: "ForwardingParameters/Destination Interface",
 			build: func() error {
-				_, err := g.buildCreateFARPlan(1, ie.NewCreateFAR(
+				_, err := parseCreateFAR(ie.NewCreateFAR(
 					ie.NewFARID(1),
 					ie.NewApplyAction(0x02),
 					ie.NewForwardingParameters(ie.NewNetworkInstance("internet")),
@@ -96,14 +95,14 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "UpdateFAR/FAR ID",
 			build: func() error {
-				_, err := g.buildUpdateFARPlan(1, ie.NewUpdateFAR(ie.NewApplyAction(0x01)))
+				_, err := parseUpdateFAR(ie.NewUpdateFAR(ie.NewApplyAction(0x01)))
 				return err
 			},
 		},
 		{
 			name: "CreateQER/QER ID",
 			build: func() error {
-				_, err := g.buildCreateQERPlan(1, ie.NewCreateQER(
+				_, err := parseCreateQER(ie.NewCreateQER(
 					ie.NewGateStatus(ie.GateStatusOpen, ie.GateStatusOpen),
 				))
 				return err
@@ -112,21 +111,21 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "CreateQER/Gate Status",
 			build: func() error {
-				_, err := g.buildCreateQERPlan(1, ie.NewCreateQER(ie.NewQERID(1)))
+				_, err := parseCreateQER(ie.NewCreateQER(ie.NewQERID(1)))
 				return err
 			},
 		},
 		{
 			name: "UpdateQER/QER ID",
 			build: func() error {
-				_, err := g.buildUpdateQERPlan(1, ie.NewUpdateQER(ie.NewQFI(9)))
+				_, err := parseUpdateQER(ie.NewUpdateQER(ie.NewQFI(9)))
 				return err
 			},
 		},
 		{
 			name: "CreateURR/URR ID",
 			build: func() error {
-				_, err := g.buildCreateURRPlan(1, ie.NewCreateURR(
+				_, err := parseCreateURR(ie.NewCreateURR(
 					measurementMethod(),
 					reportingTriggers(),
 				))
@@ -136,7 +135,7 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "CreateURR/Measurement Method",
 			build: func() error {
-				_, err := g.buildCreateURRPlan(1, ie.NewCreateURR(
+				_, err := parseCreateURR(ie.NewCreateURR(
 					ie.NewURRID(1),
 					reportingTriggers(),
 				))
@@ -146,7 +145,7 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "CreateURR/Reporting Triggers",
 			build: func() error {
-				_, err := g.buildCreateURRPlan(1, ie.NewCreateURR(
+				_, err := parseCreateURR(ie.NewCreateURR(
 					ie.NewURRID(1),
 					measurementMethod(),
 				))
@@ -156,24 +155,21 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 		{
 			name: "UpdateURR/URR ID",
 			build: func() error {
-				_, err := g.buildUpdateURRPlan(1, ie.NewUpdateURR(measurementMethod()))
+				_, err := parseUpdateURR(ie.NewUpdateURR(measurementMethod()))
 				return err
 			},
 		},
 		{
 			name: "CreateBAR/BAR ID",
 			build: func() error {
-				_, err := g.buildCreateBARPlan(1, ie.NewCreateBAR())
+				_, err := parseCreateBAR(ie.NewCreateBAR())
 				return err
 			},
 		},
 		{
 			name: "UpdateBAR/BAR ID",
 			build: func() error {
-				_, err := g.buildUpdateBARPlan(
-					1,
-					ie.NewUpdateBARWithinSessionModificationRequest(),
-				)
+				_, err := parseUpdateBAR(ie.NewUpdateBARWithinSessionModificationRequest())
 				return err
 			},
 		},
@@ -182,7 +178,7 @@ func TestRulePlanBuildersRejectMissingMandatoryIEs(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := test.build()
-			if !errors.Is(err, ErrMissingMandatoryRuleIE) {
+			if !errors.Is(err, ErrMissingMandatoryIE) {
 				t.Fatalf("expected mandatory-rule-IE error, got %v", err)
 			}
 		})

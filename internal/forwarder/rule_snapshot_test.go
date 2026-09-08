@@ -2,10 +2,14 @@ package forwarder
 
 import (
 	"errors"
-	"github.com/free5gc/go-gtp5gnl"
+	"testing"
+	"time"
+
 	"github.com/khirono/go-nl"
 	"github.com/stretchr/testify/require"
-	"testing"
+
+	"github.com/free5gc/go-gtp5gnl"
+	"github.com/free5gc/go-upf/internal/rules"
 )
 
 func TestAppliedRuleAttrMergeKeepsRuleNamespacesSeparate(t *testing.T) {
@@ -206,4 +210,39 @@ func TestCleanupRejectsNonRemovalOperations(t *testing.T) {
 	_, err := s.executeDeletionPlan(&modificationPlan{SEID: 10, UpdateQERs: []*qerPlan{{QERID: 1}}})
 	require.ErrorContains(t, err, "removal-only")
 	require.Nil(t, d.seen)
+}
+
+func TestURRCompilerRetainsTimerSettings(t *testing.T) {
+	period := time.Second
+	triggers := uint32(1)
+	p := compileURR(10, rules.URRConfig{URRID: 20, ReportingTriggers: &triggers, MeasurePeriod: &period}, OpCreate)
+	require.True(t, p.ReportingTrigger.PERIO())
+	require.Equal(t, time.Second, p.MeasurePeriod)
+	require.Contains(t, p.Attrs, nl.Attr{Type: gtp5gnl.URR_MEASUREMENT_PERIOD, Value: nl.AttrU32(time.Second)})
+}
+
+func TestURRSnapshotPreservesOmittedReportingFields(t *testing.T) {
+	d := &snapshotDriver{}
+	s := NewSessionDatapath(d, 10).(*sessionDatapath)
+	attrs := []nl.Attr{
+		{Type: gtp5gnl.URR_MEASUREMENT_METHOD, Value: nl.AttrU8(3)},
+		{Type: gtp5gnl.URR_REPORTING_TRIGGER, Value: nl.AttrU32(1)},
+		{Type: gtp5gnl.URR_MEASUREMENT_PERIOD, Value: nl.AttrU32(time.Second)},
+	}
+	_, err := s.executeEstablishmentPlan(&modificationPlan{SEID: 10,
+		CreateURRs: []*urrPlan{{URRID: 20, OID: gtp5gnl.OID{10, 20}, Attrs: attrs}},
+	})
+	require.NoError(t, err)
+	_, err = s.executeModificationPlan(&modificationPlan{SEID: 10, UpdateURRs: []*urrPlan{{URRID: 20,
+		Attrs: []nl.Attr{{Type: gtp5gnl.URR_MEASUREMENT_PERIOD, Value: nl.AttrU32(2 * time.Second)}},
+	}}})
+	require.NoError(t, err)
+	require.Equal(t, time.Second, d.seen.Rollback.URRs[20].MeasurePeriod)
+	_, err = s.executeModificationPlan(&modificationPlan{SEID: 10, RemoveURRs: []*urrPlan{{URRID: 20}}})
+	require.NoError(t, err)
+	old := d.seen.Rollback.URRs[20]
+	require.Equal(t, 2*time.Second, old.MeasurePeriod)
+	require.Contains(t, old.Attrs, nl.Attr{Type: gtp5gnl.URR_MEASUREMENT_METHOD, Value: nl.AttrU8(3)})
+	require.True(t, old.ReportingTrigger.PERIO())
+	require.Len(t, old.Attrs, 3)
 }
