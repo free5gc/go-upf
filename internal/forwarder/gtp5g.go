@@ -343,12 +343,28 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 	}
 
 	var srcIf uint8
+	var hasSourceInterface bool
 	var sdfIEs []*ie.IE
+
+	// parseErr holds the first malformed-IE error. Parsing continues after one so
+	// that a missing mandatory IE, which can only be confirmed once every IE has
+	// been seen, is reported ahead of it.
+	var parseErr error
+	recordErr := func(err error) {
+		if parseErr == nil {
+			parseErr = err
+		}
+	}
+
 	for _, x := range ies {
 		switch x.Type {
 		case ie.SourceInterface:
+			// Presence is tracked independently of parse success: an IE that is
+			// present but malformed is not the same as an absent one.
+			hasSourceInterface = true
 			v, err := x.SourceInterface()
 			if err != nil {
+				recordErr(errors.Wrap(err, "newPdi: failed to parse SourceInterface"))
 				break
 			}
 			attrs = append(attrs, nl.Attr{
@@ -388,17 +404,27 @@ func (g *Gtp5g) newPdi(i *ie.IE) (nl.AttrList, error) {
 			// Validate SDF Filter IE payload length early (TS 29.244 Section 8.2.5)
 			// Minimum: 1 byte (flags) + 1 byte (spare) + at least 1 byte for content
 			if len(x.Payload) < 3 {
-				return nil, errors.Errorf("SDF Filter IE payload too short: %d bytes (minimum 3)", len(x.Payload))
+				recordErr(errors.Errorf("SDF Filter IE payload too short: %d bytes (minimum 3)",
+					len(x.Payload)))
+				break
 			}
 			sdfIEs = append(sdfIEs, x)
 		case ie.ApplicationID:
 		}
 	}
 
+	if !hasSourceInterface {
+		return nil, errors.Wrap(ErrMandatoryIEMissing, "newPdi: SourceInterface")
+	}
+	if parseErr != nil {
+		return nil, parseErr
+	}
+
+	// srcIf is only trustworthy once the checks above have passed.
 	for _, x := range sdfIEs {
 		v, err := g.newSdfFilter(x, srcIf)
 		if err != nil {
-			return nil, errors.Wrap(err, "newSdfFilter failed")
+			return nil, errors.Wrap(err, "newPdi: failed to parse SDF Filter")
 		}
 		attrs = append(attrs, nl.Attr{
 			Type:  gtp5gnl.PDI_SDF_FILTER,
@@ -772,8 +798,18 @@ func (g *Gtp5g) WritePacket(far *gtp5gnl.FAR, qer *gtp5gnl.QER, pkt []byte) erro
 // Plan-based methods for two-phase commit (validation + execution)
 // ============================================================================
 
+// collectIEs groups the members of a grouped IE by IE type, so that presence can
+// be checked before anything is parsed. QER ID and URR ID may legitimately appear
+// more than once, so every type maps to a slice.
+func collectIEs(ies []*ie.IE) map[uint16][]*ie.IE {
+	collected := make(map[uint16][]*ie.IE, len(ies))
+	for _, i := range ies {
+		collected[i.Type] = append(collected[i.Type], i)
+	}
+	return collected
+}
+
 func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
-	var pdrid uint64
 	var attrs []nl.Attr
 	var urrids []uint32
 
@@ -781,78 +817,104 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	collected := collectIEs(ies)
 
-	for _, i := range ies {
-		switch i.Type {
-		case ie.PDRID:
-			v, err := i.PDRID()
-			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse PDRID")
-			}
-			pdrid = uint64(v)
-		case ie.Precedence:
-			v, err := i.Precedence()
-			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse Precedence")
-			}
-			attrs = append(attrs, nl.Attr{
-				Type:  gtp5gnl.PDR_PRECEDENCE,
-				Value: nl.AttrU32(v),
-			})
-		case ie.PDI:
-			v, err := g.newPdi(i)
-			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse PDI")
-			}
-			if v != nil {
-				attrs = append(attrs, nl.Attr{
-					Type:  gtp5gnl.PDR_PDI,
-					Value: v,
-				})
-			}
-		case ie.OuterHeaderRemoval:
-			v, err := i.OuterHeaderRemovalDescription()
-			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse OuterHeaderRemoval")
-			}
-			attrs = append(attrs, nl.Attr{
-				Type:  gtp5gnl.PDR_OUTER_HEADER_REMOVAL,
-				Value: nl.AttrU8(v),
-			})
-			// ignore GTPUExternsionHeaderDeletion
-		case ie.FARID:
-			v, err := i.FARID()
-			if err != nil {
-				return nil, errors.Wrap(err, "CreatePDR: failed to parse FARID")
-			}
-			attrs = append(attrs, nl.Attr{
-				Type:  gtp5gnl.PDR_FAR_ID,
-				Value: nl.AttrU32(v),
-			})
-		case ie.QERID:
-			v, err := i.QERID()
-			if err != nil {
-				// QER is optional, log but continue
-				logger.FwderLog.Warnf("CreatePDR: Failed to parse QERID: %v", err)
-				break
-			}
-			attrs = append(attrs, nl.Attr{
-				Type:  gtp5gnl.PDR_QER_ID,
-				Value: nl.AttrU32(v),
-			})
-		case ie.URRID:
-			v, err := i.URRID()
-			if err != nil {
-				// URR is optional, log but continue
-				logger.FwderLog.Warnf("CreatePDR: Failed to parse URRID: %v", err)
-				break
-			}
-			attrs = append(attrs, nl.Attr{
-				Type:  gtp5gnl.PDR_URR_ID,
-				Value: nl.AttrU32(v),
-			})
-			urrids = append(urrids, v)
+	// Mandatory IEs of Create PDR (TS 29.244 Table 7.5.2.2-1).
+	if len(collected[ie.PDRID]) == 0 {
+		return nil, errors.Wrap(ErrMandatoryIEMissing, "CreatePDR: PDR ID")
+	}
+	pdridVal, err := collected[ie.PDRID][0].PDRID()
+	if err != nil {
+		return nil, errors.Wrap(err, "CreatePDR: failed to parse PDRID")
+	}
+	pdrid := uint64(pdridVal)
+
+	if len(collected[ie.Precedence]) == 0 {
+		return nil, errors.Wrapf(ErrMandatoryIEMissing, "CreatePDR: PDR(%#x) Precedence", pdrid)
+	}
+	if len(collected[ie.PDI]) == 0 {
+		return nil, errors.Wrapf(ErrMandatoryIEMissing, "CreatePDR: PDR(%#x) PDI", pdrid)
+	}
+
+	// TS 29.244 Table 7.5.2.2-1: FAR ID shall be present unless Activate Predefined
+	// Rules activates a predefined FAR, or MAR ID is included. This UPF implements
+	// no predefined rules, so only MAR ID can waive FAR ID. MAR ID itself is not
+	// acted on: there is no ATSSS support here.
+	if len(collected[ie.FARID]) == 0 && len(collected[ie.MARID]) == 0 {
+		return nil, errors.Wrapf(ErrConditionalIEMissing,
+			"CreatePDR: PDR(%#x) has no FAR ID and no MAR ID", pdrid)
+	}
+
+	precedence, err := collected[ie.Precedence][0].Precedence()
+	if err != nil {
+		return nil, errors.Wrap(err, "CreatePDR: failed to parse Precedence")
+	}
+	attrs = append(attrs, nl.Attr{
+		Type:  gtp5gnl.PDR_PRECEDENCE,
+		Value: nl.AttrU32(precedence),
+	})
+
+	pdi, err := g.newPdi(collected[ie.PDI][0])
+	if err != nil {
+		return nil, errors.Wrap(err, "CreatePDR: failed to parse PDI")
+	}
+	if pdi != nil {
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.PDR_PDI,
+			Value: pdi,
+		})
+	}
+
+	// Optional, but dropping a malformed one would silently change encapsulation.
+	if xs := collected[ie.OuterHeaderRemoval]; len(xs) > 0 {
+		v, err := xs[0].OuterHeaderRemovalDescription()
+		if err != nil {
+			return nil, errors.Wrap(err, "CreatePDR: failed to parse OuterHeaderRemoval")
 		}
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.PDR_OUTER_HEADER_REMOVAL,
+			Value: nl.AttrU8(v),
+		})
+		// ignore GTPUExternsionHeaderDeletion
+	}
+
+	// Conditional IE: legitimately absent, but never legitimately malformed.
+	if xs := collected[ie.FARID]; len(xs) > 0 {
+		v, err := xs[0].FARID()
+		if err != nil {
+			return nil, errors.Wrap(err, "CreatePDR: failed to parse FARID")
+		}
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.PDR_FAR_ID,
+			Value: nl.AttrU32(v),
+		})
+	}
+
+	for _, x := range collected[ie.QERID] {
+		v, err := x.QERID()
+		if err != nil {
+			// QER is optional, log but continue
+			logger.FwderLog.Warnf("CreatePDR: Failed to parse QERID: %v", err)
+			continue
+		}
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.PDR_QER_ID,
+			Value: nl.AttrU32(v),
+		})
+	}
+
+	for _, x := range collected[ie.URRID] {
+		v, err := x.URRID()
+		if err != nil {
+			// URR is optional, log but continue
+			logger.FwderLog.Warnf("CreatePDR: Failed to parse URRID: %v", err)
+			continue
+		}
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.PDR_URR_ID,
+			Value: nl.AttrU32(v),
+		})
+		urrids = append(urrids, v)
 	}
 
 	// TODO:
@@ -879,7 +941,6 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 }
 
 func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
-	var pdrid uint64
 	var attrs []nl.Attr
 	var urrids []uint32
 
@@ -887,80 +948,91 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	if err != nil {
 		return nil, err
 	}
+	collected := collectIEs(ies)
 
-	for _, i := range ies {
-		switch i.Type {
-		case ie.PDRID:
-			v, err := i.PDRID()
-			if err != nil {
-				return nil, errors.Wrap(err, "UpdatePDR: failed to parse PDRID")
-			}
-			pdrid = uint64(v)
-		case ie.Precedence:
-			v, err := i.Precedence()
-			if err != nil {
-				// Precedence is optional in Update, log but continue
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse Precedence: %v", err)
-				break
-			}
+	// PDR ID is the only mandatory IE of Update PDR: it identifies the rule.
+	if len(collected[ie.PDRID]) == 0 {
+		return nil, errors.Wrap(ErrMandatoryIEMissing, "UpdatePDR: PDR ID")
+	}
+	pdridVal, err := collected[ie.PDRID][0].PDRID()
+	if err != nil {
+		return nil, errors.Wrap(err, "UpdatePDR: failed to parse PDRID")
+	}
+	pdrid := uint64(pdridVal)
+
+	if xs := collected[ie.Precedence]; len(xs) > 0 {
+		// Precedence is optional in Update, log but continue
+		if v, err := xs[0].Precedence(); err != nil {
+			logger.FwderLog.Warnf("UpdatePDR: Failed to parse Precedence: %v", err)
+		} else {
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_PRECEDENCE,
 				Value: nl.AttrU32(v),
 			})
-		case ie.PDI:
-			v, err := g.newPdi(i)
-			if err != nil {
-				return nil, errors.Wrap(err, "UpdatePDR: failed to parse PDI")
-			}
-			if v != nil {
-				attrs = append(attrs, nl.Attr{
-					Type:  gtp5gnl.PDR_PDI,
-					Value: v,
-				})
-			}
-		case ie.OuterHeaderRemoval:
-			v, err := i.OuterHeaderRemovalDescription()
-			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse OuterHeaderRemoval: %v", err)
-				break
-			}
+		}
+	}
+
+	// Unlike the fields below, a malformed PDI fails the update: it decides which
+	// packets the rule matches, so CP and UP must not disagree on it.
+	if xs := collected[ie.PDI]; len(xs) > 0 {
+		v, err := g.newPdi(xs[0])
+		if err != nil {
+			return nil, errors.Wrap(err, "UpdatePDR: failed to parse PDI")
+		}
+		if v != nil {
+			attrs = append(attrs, nl.Attr{
+				Type:  gtp5gnl.PDR_PDI,
+				Value: v,
+			})
+		}
+	}
+
+	if xs := collected[ie.OuterHeaderRemoval]; len(xs) > 0 {
+		if v, err := xs[0].OuterHeaderRemovalDescription(); err != nil {
+			logger.FwderLog.Warnf("UpdatePDR: Failed to parse OuterHeaderRemoval: %v", err)
+		} else {
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_OUTER_HEADER_REMOVAL,
 				Value: nl.AttrU8(v),
 			})
 			// ignore GTPUExternsionHeaderDeletion
-		case ie.FARID:
-			v, err := i.FARID()
-			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse FARID: %v", err)
-				break
-			}
+		}
+	}
+
+	if xs := collected[ie.FARID]; len(xs) > 0 {
+		if v, err := xs[0].FARID(); err != nil {
+			logger.FwderLog.Warnf("UpdatePDR: Failed to parse FARID: %v", err)
+		} else {
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.PDR_FAR_ID,
 				Value: nl.AttrU32(v),
 			})
-		case ie.QERID:
-			v, err := i.QERID()
-			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse QERID: %v", err)
-				break
-			}
-			attrs = append(attrs, nl.Attr{
-				Type:  gtp5gnl.PDR_QER_ID,
-				Value: nl.AttrU32(v),
-			})
-		case ie.URRID:
-			v, err := i.URRID()
-			if err != nil {
-				logger.FwderLog.Warnf("UpdatePDR: Failed to parse URRID: %v", err)
-				break
-			}
-			attrs = append(attrs, nl.Attr{
-				Type:  gtp5gnl.PDR_URR_ID,
-				Value: nl.AttrU32(v),
-			})
-			urrids = append(urrids, v)
 		}
+	}
+
+	for _, x := range collected[ie.QERID] {
+		v, err := x.QERID()
+		if err != nil {
+			logger.FwderLog.Warnf("UpdatePDR: Failed to parse QERID: %v", err)
+			continue
+		}
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.PDR_QER_ID,
+			Value: nl.AttrU32(v),
+		})
+	}
+
+	for _, x := range collected[ie.URRID] {
+		v, err := x.URRID()
+		if err != nil {
+			logger.FwderLog.Warnf("UpdatePDR: Failed to parse URRID: %v", err)
+			continue
+		}
+		attrs = append(attrs, nl.Attr{
+			Type:  gtp5gnl.PDR_URR_ID,
+			Value: nl.AttrU32(v),
+		})
+		urrids = append(urrids, v)
 	}
 
 	return &PDRPlan{
@@ -1076,12 +1148,12 @@ func (g *Gtp5g) BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error) {
 		case ie.ApplyAction:
 			b, err := i.ApplyAction()
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrap(err, "UpdateFAR: failed to parse ApplyAction")
 			}
 			var act report.ApplyAction
 			err = act.Unmarshal(b)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrap(err, "UpdateFAR: failed to unmarshal ApplyAction")
 			}
 			attrs = append(attrs, nl.Attr{
 				Type:  gtp5gnl.FAR_APPLY_ACTION,
@@ -1154,7 +1226,7 @@ func (g *Gtp5g) BuildCreateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
 		case ie.QERID:
 			v, err := i.QERID()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "CreateQER: failed to parse QERID")
 			}
 			qerid = uint64(v)
 		case ie.QERCorrelationID:
@@ -1264,7 +1336,7 @@ func (g *Gtp5g) BuildUpdateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error) {
 		case ie.QERID:
 			v, err := i.QERID()
 			if err != nil {
-				break
+				return nil, errors.Wrap(err, "UpdateQER: failed to parse QERID")
 			}
 			qerid = uint64(v)
 		case ie.QERCorrelationID:
@@ -1419,12 +1491,15 @@ func (g *Gtp5g) BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error) {
 				Value: nl.AttrU32(rptTrig.Flags),
 			})
 		case ie.MeasurementPeriod:
+			// Optional IE, but a present-but-invalid value must not be dropped
+			// silently: a zero period would arm a periodic URR that never fires.
 			measurePeriod, err = i.MeasurementPeriod()
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrap(err, "CreateURR: failed to parse MeasurementPeriod")
 			}
 			if measurePeriod <= 0 {
-				return nil, errors.New("invalid measurement period")
+				return nil, errors.Errorf("CreateURR: MeasurementPeriod must be positive, got %v",
+					measurePeriod)
 			}
 			// TODO: convert time.Duration -> ?
 			attrs = append(attrs, nl.Attr{
