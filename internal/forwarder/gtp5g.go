@@ -776,6 +776,9 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	var pdrid uint64
 	var attrs []nl.Attr
 	var urrids []uint32
+	var qerids []uint32
+	var hasFarid bool
+	var farid uint32
 
 	ies, err := req.CreatePDR()
 	if err != nil {
@@ -829,6 +832,8 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 				Type:  gtp5gnl.PDR_FAR_ID,
 				Value: nl.AttrU32(v),
 			})
+			hasFarid = true
+			farid = v
 		case ie.QERID:
 			v, err := i.QERID()
 			if err != nil {
@@ -840,6 +845,7 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 				Type:  gtp5gnl.PDR_QER_ID,
 				Value: nl.AttrU32(v),
 			})
+			qerids = append(qerids, v)
 		case ie.URRID:
 			v, err := i.URRID()
 			if err != nil {
@@ -874,7 +880,10 @@ func (g *Gtp5g) BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		Attrs:      attrs,
 		OriginalIE: req,
 		PDRID:      uint16(pdrid),
+		HasFARID:   hasFarid,
+		FARID:      farid,
 		URRIDs:     urrids,
+		QERIDs:     qerids,
 	}, nil
 }
 
@@ -882,6 +891,9 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 	var pdrid uint64
 	var attrs []nl.Attr
 	var urrids []uint32
+	var qerids []uint32
+	var hasFarid bool
+	var farid uint32
 
 	ies, err := req.UpdatePDR()
 	if err != nil {
@@ -939,6 +951,8 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 				Type:  gtp5gnl.PDR_FAR_ID,
 				Value: nl.AttrU32(v),
 			})
+			hasFarid = true
+			farid = v
 		case ie.QERID:
 			v, err := i.QERID()
 			if err != nil {
@@ -949,6 +963,7 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 				Type:  gtp5gnl.PDR_QER_ID,
 				Value: nl.AttrU32(v),
 			})
+			qerids = append(qerids, v)
 		case ie.URRID:
 			v, err := i.URRID()
 			if err != nil {
@@ -969,7 +984,10 @@ func (g *Gtp5g) BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error) {
 		Attrs:      attrs,
 		OriginalIE: req,
 		PDRID:      uint16(pdrid),
+		HasFARID:   hasFarid,
+		FARID:      farid,
 		URRIDs:     urrids,
+		QERIDs:     qerids,
 	}, nil
 }
 
