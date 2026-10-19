@@ -153,10 +153,6 @@ func (g *Gtp5g) checkVersion() error {
 		return err
 	}
 
-	return checkGtp5gVersion(gtp5gVer)
-}
-
-func checkGtp5gVersion(gtp5gVer string) error {
 	// compare version
 	expMinVer, err := version.NewVersion(expectedMinGtp5gVersion)
 	if err != nil {
