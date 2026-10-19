@@ -55,9 +55,8 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = mux.Serve()
-		if err != nil {
-			g.log.Warnf("mux Serve err: %+v", err)
+		if serveErr := mux.Serve(); serveErr != nil {
+			g.log.Warnf("mux Serve err: %+v", serveErr)
 		}
 	}()
 	g.mux = mux
@@ -154,6 +153,10 @@ func (g *Gtp5g) checkVersion() error {
 		return err
 	}
 
+	return checkGtp5gVersion(gtp5gVer)
+}
+
+func checkGtp5gVersion(gtp5gVer string) error {
 	// compare version
 	expMinVer, err := version.NewVersion(expectedMinGtp5gVersion)
 	if err != nil {
@@ -167,9 +170,9 @@ func (g *Gtp5g) checkVersion() error {
 	if err != nil {
 		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", gtp5gVer)
 	}
-	if nowVer.LessThan(expMinVer) || nowVer.GreaterThanOrEqual(expMaxVer) {
+	if nowVer.LessThan(expMinVer) || nowVer.GreaterThan(expMaxVer) {
 		return errors.Errorf(
-			"gtp5g version(%v) should be %s <= version < %s , please update it",
+			"gtp5g version(%v) should be %s <= version <= %s , please update it",
 			nowVer, expectedMinGtp5gVersion, expectedMaxGtp5gVersion)
 	}
 
