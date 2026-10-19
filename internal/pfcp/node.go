@@ -228,11 +228,7 @@ func (s *Sess) ValidateCreatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan
 		return nil, ErrRuleCreationModificationFailed
 	}
 
-	// Validate FAR reference exists (in session state or in-flight creates).
-	// TS 29.244 6.3.2.3: a Create PDR referencing a FAR ID that has not been
-	// created anywhere in this request (or a prior one) must fail the whole
-	// request rather than be accepted and surface the dangling reference only
-	// when the kernel (gtp5g netlink) rejects it.
+	// Validate FAR reference exists (in session state or in-flight creates; TS 29.244 6.3.2.3)
 	if plan.HasFARID {
 		if _, ok := s.FARIDs[plan.FARID]; !ok && !modPlan.HasCreateFAR(plan.FARID) {
 			return nil, ErrRuleCreationModificationFailed
