@@ -27,7 +27,7 @@ import (
 
 const (
 	expectedMinGtp5gVersion string = "0.9.3"
-	expectedMaxGtp5gVersion string = "0.10.3"
+	expectedMaxGtp5gVersion string = "0.10.4"
 )
 
 type Gtp5g struct {
@@ -55,9 +55,8 @@ func OpenGtp5g(wg *sync.WaitGroup, addr string, mtu uint32) (*Gtp5g, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = mux.Serve()
-		if err != nil {
-			g.log.Warnf("mux Serve err: %+v", err)
+		if serveErr := mux.Serve(); serveErr != nil {
+			g.log.Warnf("mux Serve err: %+v", serveErr)
 		}
 	}()
 	g.mux = mux
