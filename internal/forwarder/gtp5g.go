@@ -27,7 +27,7 @@ import (
 
 const (
 	expectedMinGtp5gVersion string = "0.9.3"
-	expectedMaxGtp5gVersion string = "0.10.3"
+	expectedMaxGtp5gVersion string = "0.10.4"
 )
 
 type Gtp5g struct {
@@ -166,9 +166,9 @@ func (g *Gtp5g) checkVersion() error {
 	if err != nil {
 		return errors.Wrapf(err, "Unable to parse gtp5g version(%s)", gtp5gVer)
 	}
-	if nowVer.LessThan(expMinVer) || nowVer.GreaterThan(expMaxVer) {
+	if nowVer.LessThan(expMinVer) || nowVer.GreaterThanOrEqual(expMaxVer) {
 		return errors.Errorf(
-			"gtp5g version(%v) should be %s <= version <= %s , please update it",
+			"gtp5g version(%v) should be %s <= version < %s , please update it",
 			nowVer, expectedMinGtp5gVersion, expectedMaxGtp5gVersion)
 	}
 
