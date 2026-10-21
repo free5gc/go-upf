@@ -9,6 +9,7 @@ package ees
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 )
@@ -30,12 +31,14 @@ type SubscriptionStore struct {
 	lastTimestampNS   int64
 	sequencePerTS     uint32
 	instanceSuffixStr string // optional, e.g., hostname or short random; empty is fine for MVP
+	changed           chan struct{}
 }
 
 // NewSubscriptionStore creates a new, empty store for subscriptions.
 func NewSubscriptionStore(instanceSuffix string) *SubscriptionStore {
 	return &SubscriptionStore{
 		subscriptionsByID: make(map[string]*Subscription),
+		changed:           make(chan struct{}, 1),
 		instanceSuffixStr: instanceSuffix,
 	}
 }
@@ -59,8 +62,9 @@ func (store *SubscriptionStore) CreateSubscription(newSubscription *Subscription
 		return "", fmt.Errorf("%w: missing Mode", ErrInvalidSubscription)
 	}
 	// PeriodSec is only required for PERIODIC mode
-	if newSubscription.Mode == ModePeriodic && newSubscription.PeriodSec <= 0 {
-		return "", fmt.Errorf("%w: PeriodSec must be > 0 for PERIODIC mode", ErrInvalidSubscription)
+	if newSubscription.Mode == ModePeriodic &&
+		(newSubscription.PeriodSec <= 0 || newSubscription.PeriodSec > math.MaxInt32) {
+		return "", fmt.Errorf("%w: PeriodSec must be a positive DurationSec for PERIODIC mode", ErrInvalidSubscription)
 	}
 	if newSubscription.NfID == "" {
 		return "", fmt.Errorf("%w: missing NfID", ErrInvalidSubscription)
@@ -83,6 +87,7 @@ func (store *SubscriptionStore) CreateSubscription(newSubscription *Subscription
 	store.mutexForSubscriptions.Lock()
 	store.subscriptionsByID[subscriptionID] = newSubscription
 	store.mutexForSubscriptions.Unlock()
+	store.signalChange()
 
 	return subscriptionID, nil
 }
@@ -96,7 +101,15 @@ func (store *SubscriptionStore) DeleteSubscription(subscriptionID string) error 
 		return ErrSubscriptionNotFound
 	}
 	delete(store.subscriptionsByID, subscriptionID)
+	store.signalChange()
 	return nil
+}
+
+func (store *SubscriptionStore) signalChange() {
+	select {
+	case store.changed <- struct{}{}:
+	default:
+	}
 }
 
 // GetSubscription returns the subscription pointer for the given ID and a boolean indicating presence.

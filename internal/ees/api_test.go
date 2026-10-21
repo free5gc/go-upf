@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -59,7 +60,9 @@ func TestHandleCreateSubscription(t *testing.T) {
 		assert.NotEmpty(t, resp.SubscriptionID)
 
 		// Check if it was actually added to store
-		_, ok := store.GetSubscription(resp.SubscriptionID)
+		assert.Equal(t, rr.Header().Get("Location"), resp.SubscriptionID)
+		assert.Contains(t, resp.SubscriptionID, "http://example.com/nupf-ee/v1/ee-subscriptions/")
+		_, ok := store.GetSubscription(path.Base(resp.SubscriptionID))
 		assert.True(t, ok)
 	})
 

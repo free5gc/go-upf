@@ -40,12 +40,12 @@ type FlowInformation struct {
 
 // VolumeMeasurement per TS 29.564 schema.
 type VolumeMeasurement struct {
-	TotalVolume      uint64 `json:"totalVolume,omitempty"`
-	UlVolume         uint64 `json:"ulVolume,omitempty"`
-	DlVolume         uint64 `json:"dlVolume,omitempty"`
-	TotalNbOfPackets uint64 `json:"totalNbOfPackets,omitempty"`
-	UlNbOfPackets    uint64 `json:"ulNbOfPackets,omitempty"`
-	DlNbOfPackets    uint64 `json:"dlNbOfPackets,omitempty"`
+	TotalVolume      string `json:"totalVolume"`
+	UlVolume         string `json:"ulVolume"`
+	DlVolume         string `json:"dlVolume"`
+	TotalNbOfPackets uint64 `json:"totalNbOfPackets"`
+	UlNbOfPackets    uint64 `json:"ulNbOfPackets"`
+	DlNbOfPackets    uint64 `json:"dlNbOfPackets"`
 }
 
 // ThroughputMeasurement per TS 29.564 schema.
@@ -79,11 +79,9 @@ const (
 type Mode string
 
 const (
-	// ModePeriodic: deliver reports every PeriodSec ticks.
+	// ModePeriodic: deliver available measurements at PeriodSec-second intervals.
 	ModePeriodic Mode = "PERIODIC"
-	// ModeOnDemand: deliver one immediate report using the current snapshot
-	// relative to the last snapshot (then refresh the snapshot and typically
-	// switch to PERIODIC in the aggregator per MVP behavior).
+	// ModeOnDemand: wait for real data, report once, delete after successful delivery.
 	ModeOnDemand Mode = "ON_DEMAND"
 )
 
@@ -100,8 +98,7 @@ const (
 	MeasureAppInfo MeasurementType = "APPLICATION_RELATED_INFO"
 )
 
-// TargetScope defines the target selection for a subscription.
-// MVP: only AnyUE=true (all active PDU sessions).
+// TargetScope selects all sessions or sessions with a specific IPv4 address.
 type TargetScope struct {
 	AnyUE bool
 	// Future: UEIP, SUPI, DNN, S-NSSAI, app filters...
@@ -114,7 +111,8 @@ type TargetScope struct {
 type SessionKey struct {
 	LocalSEID  uint64 // UPF user-plane SEID
 	RemoteSEID uint64 // SMF control-plane SEID
-	// Future: UEIP string
+	Generation uint64 // Distinguishes recycled SEIDs, even for the same UE.
+	UEIPv4     string
 }
 
 // Counters represents raw counters collected for a single session over an interval.
@@ -208,13 +206,14 @@ type PDRContext struct {
 
 type SessionContext struct {
 	RemoteSEID uint64
+	Generation uint64
 	UeIPv4Addr string // Added: UE IPv4 Address
 	URRIDs     []uint32
 	PDRs       []*PDRContext
 }
 
-// SessionProvider defines the interface for obtaining active Session information.
-// Used by API Server for provisioning Shadow URRs to all active sessions.
+// SessionProvider supplies immutable snapshots of SMF-provisioned sessions.
+// EES does not create shadow URRs.
 type SessionProvider interface {
 	GetSessionContexts() map[uint64]SessionContext
 	GetSessionContextUEIP(lSeid uint64) (string, bool)

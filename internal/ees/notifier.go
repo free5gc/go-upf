@@ -84,6 +84,12 @@ type NotificationItem struct {
 
 // Notify converts a set of UsageMeasures into a POST request per TS 29.564.
 func (notifier *Notifier) Notify(subscription *Subscription, measures []UsageMeasures) error {
+	return notifier.NotifyContext(context.Background(), subscription, measures)
+}
+
+func (notifier *Notifier) NotifyContext(
+	parent context.Context, subscription *Subscription, measures []UsageMeasures,
+) error {
 	if subscription == nil {
 		return fmt.Errorf("notify: subscription is nil")
 	}
@@ -113,9 +119,9 @@ func (notifier *Notifier) Notify(subscription *Subscription, measures []UsageMea
 			// Conditionally add Volume Measurement
 			if subscription.HasMeasurementType(MeasureVolume) {
 				measurement.VolumeMeasurement = &VolumeMeasurement{
-					TotalVolume:      m.ULBytesDelta + m.DLBytesDelta,
-					UlVolume:         m.ULBytesDelta,
-					DlVolume:         m.DLBytesDelta,
+					TotalVolume:      fmt.Sprintf("%d B", m.ULBytesDelta+m.DLBytesDelta),
+					UlVolume:         fmt.Sprintf("%d B", m.ULBytesDelta),
+					DlVolume:         fmt.Sprintf("%d B", m.DLBytesDelta),
 					TotalNbOfPackets: m.ULPacketsDelta + m.DLPacketsDelta,
 					UlNbOfPackets:    m.ULPacketsDelta,
 					DlNbOfPackets:    m.DLPacketsDelta,
@@ -154,7 +160,7 @@ func (notifier *Notifier) Notify(subscription *Subscription, measures []UsageMea
 	}
 
 	// Context with timeout for the request lifecycle.
-	ctx, cancel := context.WithTimeout(context.Background(), notifier.requestTimeout)
+	ctx, cancel := context.WithTimeout(parent, notifier.requestTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, subscription.NotifURI, bytes.NewReader(bodyBytes))

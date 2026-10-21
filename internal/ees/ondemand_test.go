@@ -64,7 +64,7 @@ func TestModeOnDemandLifecycle(t *testing.T) {
 		assert.True(t, gock.IsDone())
 	})
 
-	t.Run("OnDemandEmptyBuffer_ShouldSendZeroReportAndDelete", func(t *testing.T) {
+	t.Run("OnDemandEmptyBuffer_ShouldWaitForMeasurement", func(t *testing.T) {
 		// Mock SessionProvider to return an active session
 		mockProvider := &mockSessionProvider{
 			sessions: map[uint64]SessionContext{
@@ -90,19 +90,14 @@ func TestModeOnDemandLifecycle(t *testing.T) {
 		require.NoError(t, err)
 		_ = id2 // id2 is used implicitly via store lookup in TickOnce
 
-		// Mock the callback for zero report
-		gock.New("http://subscriber:8080").
-			Post("/callback-zero").
-			Reply(204)
-
 		// Trigger TickOnce with empty buffer
 		n, err := aggregator.TickOnce(context.Background())
 		assert.NoError(t, err)
-		assert.Equal(t, 1, n, "Should have sent 1 zero-value report")
+		assert.Equal(t, 0, n, "No measurement must not be reported as zero usage")
 
 		// Verify subscription is deleted
 		_, exists := store.GetSubscription(id2)
-		assert.False(t, exists, "Subscription should be implicitly deleted even with zero report")
+		assert.True(t, exists, "Subscription must remain pending until a real measurement is delivered")
 		assert.True(t, gock.IsDone())
 	})
 }

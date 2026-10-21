@@ -1,16 +1,3 @@
-// Package ees - UPF Event Exposure Service (EES)
-// aggregator.go: periodic/on-demand reporting loop for USER_DATA_USAGE_MEASURES.
-//
-// MVP behavior (interval semantics):
-// - Source.SnapshotNow() returns per-session counters for the provider's current interval
-//   (UL/DL bytes/packets with StartTime/EndTime).
-// - Aggregator uses the current interval values as-is (no subtraction from previous snapshots).
-// - Throughput is derived as (bytes * 8) / (EndTime - StartTime) in seconds, with guards.
-// - "Clean up unused source": after each tick, for every subscription, remove entries in
-//   subscription.Snapshots whose SessionKey is absent in the current snapshot keys.
-// - ModeOnDemand: deliver one immediate report using the current interval data, then refresh
-//   snapshots and switch the subscription.Mode to PERIODIC.
-
 package ees
 
 import (
@@ -23,467 +10,268 @@ import (
 	"github.com/free5gc/go-upf/internal/report"
 )
 
-// Aggregator accumulates usage reports pushed from the kernel and periodically
-// sends notifications to subscribers. This is a pure Push model - no active polling.
-// PerioServerInterface provides access to URR period information
+// SingleUPFMAQEURRID is the free5GC single-UPF, after-QoS measurement rule.
+// It is session-scoped, not a global counter. ULCL and arbitrary SMF URR
+// allocations are outside this MVP; do not sum all URRs (they may overlap).
+const SingleUPFMAQEURRID uint32 = 2
+
 type PerioServerInterface interface {
 	GetAnyURRPeriod(urrid uint32) time.Duration
 }
 
+// Aggregator buffers real measurements and schedules each subscription
+// independently. It never manufactures measurements for an empty buffer.
 type Aggregator struct {
 	subscriptionStore *SubscriptionStore
-	reportPeriod      time.Duration
 	notifier          *Notifier
 	logger            *logrus.Entry
-
-	// [Push Mode] Mutex protects reportBuffer
-	mu sync.Mutex
-	// [Push Mode] Consolidated reports per subscription: Key=SubscriptionID, SubKey=SessionKey
-	reportBuffer map[string]map[SessionKey]*UsageMeasures
-
-	// [Push Mode] Mutex protects TickOnce from concurrent execution
-	tickMu sync.Mutex
-
-	sessionProvider SessionProvider      // Added: to lookup UE IP
-	perioServer     PerioServerInterface // Added: to query URR periods
-
-	// Dynamic period adjustment
-	ticker         *time.Ticker
-	tickerMu       sync.Mutex
-	tickerReset    chan struct{} // Signal to reset ticker when period changes
-	periodAdjusted bool          // Marks if period has been adjusted once
+	sessionProvider   SessionProvider
+	mu                sync.Mutex
+	reportBuffer      map[string]map[SessionKey]*UsageMeasures
+	inFlight          map[string]bool
+	retryAt           map[string]time.Time
+	wake              chan struct{}
+	workers           sync.WaitGroup
 }
 
-// NewAggregator constructs an Aggregator for pure Push mode.
-// Reports are accumulated via PushReport() and sent periodically by TickOnce().
-func NewAggregator(
-	subscriptionStore *SubscriptionStore,
-	reportPeriod time.Duration,
-	notifier *Notifier,
-	logger *logrus.Entry,
-	sessionProvider SessionProvider,
-	perioServer PerioServerInterface,
+// The legacy global-period/provider arguments are retained for compatibility;
+// repPeriod now controls each subscription independently of URR polling.
+func NewAggregator(store *SubscriptionStore, _ time.Duration, notifier *Notifier,
+	logger *logrus.Entry, provider SessionProvider, _ PerioServerInterface,
 ) *Aggregator {
 	return &Aggregator{
-		subscriptionStore: subscriptionStore,
-		reportPeriod:      reportPeriod,
-		notifier:          notifier,
-		logger:            logger,
-		sessionProvider:   sessionProvider,
-		perioServer:       perioServer,
-
-		// Initialize report buffer for Push mode
-		reportBuffer: make(map[string]map[SessionKey]*UsageMeasures),
-
-		// Initialize ticker reset channel
-		tickerReset: make(chan struct{}, 1),
+		subscriptionStore: store, notifier: notifier, logger: logger,
+		sessionProvider: provider, reportBuffer: make(map[string]map[SessionKey]*UsageMeasures),
+		inFlight: make(map[string]bool), retryAt: make(map[string]time.Time),
+		wake: make(chan struct{}, 1),
 	}
 }
 
-// Run starts the periodic loop until ctx is done.
-// Uses a dual-loop structure to handle ticker replacement when period is adjusted.
-func (aggregator *Aggregator) Run(parentContext context.Context) {
-	aggregator.logger.Infof("ees aggregator started (reportPeriod: %v)", aggregator.reportPeriod)
-
-	// Outer loop: recreate ticker when reset signal is received
-	for {
-		// Create/recreate ticker with current period
-		aggregator.tickerMu.Lock()
-		if aggregator.ticker != nil {
-			aggregator.ticker.Stop()
-		}
-		aggregator.ticker = time.NewTicker(aggregator.reportPeriod)
-		tickerC := aggregator.ticker.C // Capture channel before unlocking
-		currentPeriod := aggregator.reportPeriod
-		aggregator.tickerMu.Unlock()
-
-		aggregator.logger.Debugf("ees ticker initialized (period: %v)", currentPeriod)
-
-		// Inner loop: process ticks until reset or shutdown
-	tickerLoop:
-		for {
-			select {
-			case <-parentContext.Done():
-				aggregator.tickerMu.Lock()
-				if aggregator.ticker != nil {
-					aggregator.ticker.Stop()
-				}
-				aggregator.tickerMu.Unlock()
-				aggregator.logger.Info("ees aggregator stopped")
-				return
-			case <-aggregator.tickerReset:
-				// Ticker needs to be recreated with new period
-				aggregator.logger.Info("ees ticker reset signal received, recreating ticker")
-				break tickerLoop
-			case <-tickerC:
-				if _, err := aggregator.TickOnce(parentContext); err != nil {
-					aggregator.logger.Warnf("ees aggregator tick failed: %v", err)
-				}
-			}
-		}
-	}
-}
-
-// TickOnce sends notifications using accumulated reports from the Push buffer.
-// This is the Pure Push model - no active polling.
-// Reports for the same session are consolidated into a single report.
-// Each subscription's reportPeriod is respected - notifications are only sent
-// when enough time has passed since the last notification.
-// Returns number of notifications attempted (sum over all subscriptions) and any error.
-func (aggregator *Aggregator) TickOnce(ctx context.Context) (int, error) {
-	_ = ctx // ctx reserved for future cancellation support
-
-	// Prevent concurrent TickOnce executions
-	aggregator.tickMu.Lock()
-	defer aggregator.tickMu.Unlock()
-
-	now := time.Now()
-	totalNotifications := 0
-
-	// Lock and swap out the buffer to process current batch
-	aggregator.mu.Lock()
-	bufferedReports := aggregator.reportBuffer
-	aggregator.reportBuffer = make(map[string]map[SessionKey]*UsageMeasures)
-	aggregator.mu.Unlock()
-
-	aggregator.logger.Infof("ees tick - processing buffer (subscriptionCount: %d, currentTime: %v)",
-		len(bufferedReports), now)
-
-	// Iterate over all subscriptions
-	subscriptions := aggregator.subscriptionStore.AllSubscriptions()
-
-	for _, subscription := range subscriptions {
-		// Use subscription mutex for field access
-		subscription.mu.Lock()
-
-		// MVP scope: only USER_DATA_USAGE_MEASURES + perPduSession
-		if subscription.Event != EventUserDataUsageMeasures ||
-			subscription.Granularity != GranularityPerSession {
-			subscription.mu.Unlock()
-			continue
-		}
-
-		// Get consolidated reports for this subscription
-		sessionMap, hasReports := bufferedReports[subscription.ID]
-
-		// [Special Case] For ONE_TIME (OnDemand) mode, if there is no data in buffer,
-		// we MUST send a zero-value report to fulfill the "immediate" requirement
-		// and then delete the subscription.
-		if subscription.Mode == ModeOnDemand && (!hasReports || len(sessionMap) == 0) {
-			aggregator.logger.Infof("ees ONE_TIME subscription %s has no buffered data, "+
-				"sending zero-value report", subscription.ID)
-
-			// Try to find active sessions for this UE to provide at least some identity info
-			zeroReports := aggregator.generateZeroReports(subscription)
-
-			// We can unlock while calling Notifier as it only uses immutable fields or local variables
-			subscription.mu.Unlock()
-
-			if len(zeroReports) > 0 {
-				if err := aggregator.notifier.Notify(subscription, zeroReports); err != nil {
-					aggregator.logger.Warnf("ees failed to send zero-value ONE_TIME report: %v", err)
-					// Keep in store for retry next tick (will be zero again if no data)
-					continue
-				}
-				totalNotifications++
-			} else {
-				aggregator.logger.Warnf("ees ONE_TIME sub %s: no active sessions, skipping notification",
-					subscription.ID)
-			}
-
-			// Implicit delete after "attempting" to report (or if no sessions exist to report on)
-			if err := aggregator.subscriptionStore.DeleteSubscription(subscription.ID); err != nil {
-				aggregator.logger.Warnf("ees failed to delete ONE_TIME sub %s: %v", subscription.ID, err)
-			}
-			aggregator.logger.Infof("ees ONE_TIME subscription %s implicitly deleted (empty/zero path)", subscription.ID)
-			continue
-		}
-		if !hasReports || len(sessionMap) == 0 {
-			subscription.mu.Unlock()
-			continue
-		}
-
-		// Check if enough time has passed since last notification
-		if subscription.Mode == ModePeriodic {
-			periodDuration := time.Duration(subscription.PeriodSec) * time.Second
-			timeSinceLastNotify := now.Sub(subscription.LastNotify)
-
-			if timeSinceLastNotify < (periodDuration - 100*time.Millisecond) {
-				// Keep reports by merging back into main buffer
-				aggregator.mu.Lock()
-				if _, ok := aggregator.reportBuffer[subscription.ID]; !ok {
-					aggregator.reportBuffer[subscription.ID] = make(map[SessionKey]*UsageMeasures)
-				}
-				for _, v := range sessionMap {
-					mergeMeasure(aggregator.reportBuffer[subscription.ID], v)
-				}
-				aggregator.mu.Unlock()
-				subscription.mu.Unlock()
-				continue
-			}
-		}
-
-		// Prepare consolidated list for notification
-		consolidatedList := make([]UsageMeasures, 0, len(sessionMap))
-		for _, m := range sessionMap {
-			computeThroughputIfPossible(m)
-			consolidatedList = append(consolidatedList, *m)
-		}
-
-		// Unlock during network call
-		subscription.mu.Unlock()
-
-		// Perform notification
-		if err := aggregator.notifier.Notify(subscription, consolidatedList); err != nil {
-			aggregator.logger.WithFields(logrus.Fields{
-				"subscriptionId": subscription.ID,
-				"items":          len(consolidatedList),
-			}).Warnf("ees notification failed (will retry next tick): %v", err)
-
-			// Keep reports for retry in next tick
-			aggregator.mu.Lock()
-			if _, ok := aggregator.reportBuffer[subscription.ID]; !ok {
-				aggregator.reportBuffer[subscription.ID] = make(map[SessionKey]*UsageMeasures)
-			}
-			for _, v := range consolidatedList {
-				vCopy := v
-				mergeMeasure(aggregator.reportBuffer[subscription.ID], &vCopy)
-			}
-			aggregator.mu.Unlock()
-		} else {
-			aggregator.logger.WithFields(logrus.Fields{
-				"subscriptionId": subscription.ID,
-				"items":          len(consolidatedList),
-			}).Info("ees notification sent successfully")
-
-			// Update last notify time
-			subscription.mu.Lock()
-			subscription.LastNotify = now
-			subscription.mu.Unlock()
-
-			totalNotifications++
-
-			// 3GPP TS 29.564: ONE_TIME subscriptions are deleted implicitly after reporting.
-			if subscription.Mode == ModeOnDemand {
-				if err := aggregator.subscriptionStore.DeleteSubscription(subscription.ID); err != nil {
-					aggregator.logger.Warnf("ees failed to implicitly delete ONE_TIME subscription %s: %v",
-						subscription.ID, err)
-				} else {
-					aggregator.logger.Infof("ees ONE_TIME subscription %s implicitly deleted", subscription.ID)
-				}
-			}
-		}
-	}
-
-	return totalNotifications, nil
-}
-
-// mergeMeasure merges a new measure into an existing map of consolidated measures.
-func mergeMeasure(m map[SessionKey]*UsageMeasures, newM *UsageMeasures) {
-	existing, ok := m[newM.Key]
-	if !ok {
-		m[newM.Key] = newM
-		return
-	}
-
-	if newM.StartTime.Before(existing.StartTime) {
-		existing.StartTime = newM.StartTime
-	}
-	if newM.EndTime.After(existing.EndTime) {
-		existing.EndTime = newM.EndTime
-	}
-
-	existing.ULBytesDelta += newM.ULBytesDelta
-	existing.DLBytesDelta += newM.DLBytesDelta
-	existing.ULPacketsDelta += newM.ULPacketsDelta
-	existing.DLPacketsDelta += newM.DLPacketsDelta
-
-	// UeIpv4Addr should be the same, but update if existing is empty
-	if existing.UeIpv4Addr == "" {
-		existing.UeIpv4Addr = newM.UeIpv4Addr
-	}
-}
-
-// PushReport handles unsolicited reports (e.g. from Kernel via Handler).
-func (aggregator *Aggregator) PushReport(sessRpt report.SessReport) {
-	aggregator.logger.Debugf("PushReport called (SEID: %d, ReportCount: %d)",
-		sessRpt.SEID, len(sessRpt.Reports))
-
-	var ueIpv4Addr string
-	if aggregator.sessionProvider != nil {
-		if ip, ok := aggregator.sessionProvider.GetSessionContextUEIP(sessRpt.SEID); ok {
-			ueIpv4Addr = ip
-		}
-	}
-
-	var totalUL, totalDL, totalULPkt, totalDLPkt uint64
-	var startTime, endTime time.Time
-	reportCount := 0
-
-	for _, r := range sessRpt.Reports {
-		if r.Type() != report.USAR {
-			continue
-		}
-		usarep, ok := r.(report.USAReport)
-		if !ok {
-			continue
-		}
-
-		if usarep.URRID != 2 {
-			continue
-		}
-
-		totalUL += usarep.VolumMeasure.UplinkVolume
-		totalDL += usarep.VolumMeasure.DownlinkVolume
-		totalULPkt += usarep.VolumMeasure.UplinkPktNum
-		totalDLPkt += usarep.VolumMeasure.DownlinkPktNum
-
-		if reportCount == 0 || usarep.StartTime.Before(startTime) {
-			startTime = usarep.StartTime
-		}
-		if reportCount == 0 || usarep.EndTime.After(endTime) {
-			endTime = usarep.EndTime
-		}
-
-		reportCount++
-	}
-
-	if reportCount == 0 {
-		return
-	}
-
-	m := &UsageMeasures{
-		Key:            SessionKey{LocalSEID: sessRpt.SEID},
-		ULBytesDelta:   totalUL,
-		DLBytesDelta:   totalDL,
-		ULPacketsDelta: totalULPkt,
-		DLPacketsDelta: totalDLPkt,
-		StartTime:      startTime,
-		EndTime:        endTime,
-		UeIpv4Addr:     ueIpv4Addr,
-	}
-
-	subscriptions := aggregator.subscriptionStore.AllSubscriptions()
-	aggregator.mu.Lock()
-	defer aggregator.mu.Unlock()
-
-	for _, sub := range subscriptions {
-		if !aggregator.matchesSubscription(sub, ueIpv4Addr) {
-			continue
-		}
-
-		if _, ok := aggregator.reportBuffer[sub.ID]; !ok {
-			aggregator.reportBuffer[sub.ID] = make(map[SessionKey]*UsageMeasures)
-		}
-
-		// Create a copy for this subscription since mergeMeasure might modify it
-		mCopy := *m
-		mergeMeasure(aggregator.reportBuffer[sub.ID], &mCopy)
-
-		aggregator.logger.WithFields(logrus.Fields{
-			"subscriptionId": sub.ID,
-			"seid":           sessRpt.SEID,
-			"ueIp":           ueIpv4Addr,
-			"ulBytes":        totalUL,
-			"dlBytes":        totalDL,
-			"urrCount":       reportCount,
-		}).Debug("ees smf urr report captured and consolidated")
-	}
-}
-
-func (aggregator *Aggregator) generateZeroReports(sub *Subscription) []UsageMeasures {
-	var reports []UsageMeasures
-	if aggregator.sessionProvider == nil {
-		return reports
-	}
-
-	sessions := aggregator.sessionProvider.GetSessionContexts()
-	now := time.Now()
-
-	for lSeid, ctx := range sessions {
-		if aggregator.matchesSubscription(sub, ctx.UeIPv4Addr) {
-			reports = append(reports, UsageMeasures{
-				Key:        SessionKey{LocalSEID: lSeid, RemoteSEID: ctx.RemoteSEID},
-				StartTime:  now.Add(-1 * time.Second), // minimal interval for zero report
-				EndTime:    now,
-				UeIpv4Addr: ctx.UeIPv4Addr,
-				// All counter fields default to 0
-			})
-		}
-	}
-	return reports
-}
-
-func (aggregator *Aggregator) matchesSubscription(sub *Subscription, ueIpv4Addr string) bool {
-	if sub.Granularity != GranularityPerSession {
-		aggregator.logger.WithFields(logrus.Fields{
-			"subscriptionId": sub.ID,
-			"granularity":    string(sub.Granularity),
-		}).Warn("ees granularity not supported, skipping")
-		return false
-	}
-
-	if sub.Target.AnyUE {
-		return true
-	}
-	if sub.Target.UeIPAddress != "" && sub.Target.UeIPAddress == ueIpv4Addr {
-		return true
-	}
-	return false
-}
-
-func computeThroughputIfPossible(usage *UsageMeasures) {
-	durationSeconds := usage.EndTime.Sub(usage.StartTime).Seconds()
-	if durationSeconds <= 0 {
-		return
-	}
-	usage.ULThroughputBps = (float64(usage.ULBytesDelta) * 8.0) / durationSeconds
-	usage.DLThroughputBps = (float64(usage.DLBytesDelta) * 8.0) / durationSeconds
-	usage.ULPacketThroughputPps = float64(usage.ULPacketsDelta) / durationSeconds
-	usage.DLPacketThroughputPps = float64(usage.DLPacketsDelta) / durationSeconds
-}
-
-func (aggregator *Aggregator) AdjustReportPeriod(urrPeriod time.Duration) bool {
-	aggregator.tickerMu.Lock()
-	defer aggregator.tickerMu.Unlock()
-
-	if aggregator.periodAdjusted {
-		aggregator.logger.Debug("ees period already adjusted, skipping")
-		return false
-	}
-
-	if urrPeriod <= 0 {
-		aggregator.logger.Warnf("ees invalid URR period for adjustment: %v", urrPeriod)
-		return false
-	}
-
-	urrPeriodSec := int(urrPeriod.Seconds())
-	currentPeriodSec := int(aggregator.reportPeriod.Seconds())
-
-	var newPeriodSec int
-	if currentPeriodSec < urrPeriodSec {
-		newPeriodSec = urrPeriodSec
-	} else if currentPeriodSec%urrPeriodSec != 0 {
-		newPeriodSec = ((currentPeriodSec / urrPeriodSec) + 1) * urrPeriodSec
-	} else {
-		aggregator.periodAdjusted = true
-		aggregator.logger.Infof("ees period already optimal (current: %ds, urr: %ds)", currentPeriodSec, urrPeriodSec)
-		return false
-	}
-
-	newPeriod := time.Duration(newPeriodSec) * time.Second
-	aggregator.reportPeriod = newPeriod
-	aggregator.periodAdjusted = true
-
-	aggregator.logger.Infof("ees aggregator period adjusted (old: %ds, new: %ds, urr: %ds)",
-		currentPeriodSec, newPeriodSec, urrPeriodSec)
-
+func (a *Aggregator) signal() {
 	select {
-	case aggregator.tickerReset <- struct{}{}:
-		aggregator.logger.Debug("ees ticker reset signal sent")
+	case a.wake <- struct{}{}:
 	default:
-		aggregator.logger.Debug("ees ticker reset signal already pending")
 	}
+}
 
-	return true
+// Run launches at most one notification per subscription at a time. A slow
+// subscriber does not delay other subscriptions or the scheduler.
+func (a *Aggregator) Run(ctx context.Context) {
+	defer a.workers.Wait()
+	for ctx.Err() == nil {
+		_, delay := a.dispatch(ctx)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+		case <-a.wake:
+		case <-a.subscriptionStore.changed:
+		case <-timer.C:
+		}
+		timer.Stop()
+	}
+}
+
+// TickOnce is a synchronous drain of currently due subscriptions, useful for
+// tests and explicit callers. Run uses the same dispatch without waiting.
+func (a *Aggregator) TickOnce(ctx context.Context) (int, error) {
+	results, _ := a.dispatch(ctx)
+	n := 0
+	for _, done := range results {
+		select {
+		case ok := <-done:
+			if ok {
+				n++
+			}
+		case <-ctx.Done():
+			return n, ctx.Err()
+		}
+	}
+	return n, ctx.Err()
+}
+
+func (a *Aggregator) dispatch(ctx context.Context) ([]<-chan bool, time.Duration) {
+	var results []<-chan bool
+	delay := time.Hour
+	if ctx.Err() != nil {
+		return results, delay
+	}
+	now := time.Now()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for id := range a.reportBuffer {
+		if _, exists := a.subscriptionStore.GetSubscription(id); !exists {
+			delete(a.reportBuffer, id)
+			delete(a.retryAt, id)
+		}
+	}
+	for _, sub := range a.subscriptionStore.AllSubscriptions() {
+		batch := a.reportBuffer[sub.ID]
+		if a.inFlight[sub.ID] || len(batch) == 0 {
+			continue
+		}
+		sub.mu.RLock()
+		due := sub.LastNotify.Add(time.Duration(sub.PeriodSec) * time.Second)
+		if sub.Mode == ModeOnDemand {
+			due = now
+		}
+		sub.mu.RUnlock()
+		if retry := a.retryAt[sub.ID]; retry.After(due) {
+			due = retry
+		}
+		if due.After(now) {
+			if remaining := due.Sub(now); remaining < delay {
+				delay = remaining
+			}
+			continue
+		}
+		delete(a.reportBuffer, sub.ID)
+		a.inFlight[sub.ID] = true
+		done := make(chan bool, 1)
+		results = append(results, done)
+		a.workers.Add(1)
+		go func(sub *Subscription, batch map[SessionKey]*UsageMeasures) {
+			defer a.workers.Done()
+			measures := make([]UsageMeasures, 0, len(batch))
+			for _, m := range batch {
+				computeThroughputIfPossible(m)
+				measures = append(measures, *m)
+			}
+			err := a.notifier.NotifyContext(ctx, sub, measures)
+			a.mu.Lock()
+			_, exists := a.subscriptionStore.GetSubscription(sub.ID)
+			if err != nil && exists {
+				if a.reportBuffer[sub.ID] == nil {
+					a.reportBuffer[sub.ID] = make(map[SessionKey]*UsageMeasures)
+				}
+				for _, m := range batch {
+					mergeMeasure(a.reportBuffer[sub.ID], m)
+				}
+				a.retryAt[sub.ID] = time.Now().Add(time.Second)
+				a.logger.WithError(err).Warn("ees notification failed; retaining measurements")
+			} else {
+				delete(a.retryAt, sub.ID)
+				if err == nil && exists {
+					sub.mu.Lock()
+					sub.LastNotify = time.Now()
+					sub.mu.Unlock()
+					if sub.Mode == ModeOnDemand {
+						if delErr := a.subscriptionStore.DeleteSubscription(sub.ID); delErr != nil {
+							a.logger.WithError(delErr).Debug("ees one-time subscription already removed")
+						}
+						delete(a.reportBuffer, sub.ID)
+					}
+				}
+			}
+			delete(a.inFlight, sub.ID)
+			a.mu.Unlock()
+			done <- err == nil
+			a.signal()
+		}(sub, batch)
+	}
+	return results, delay
+}
+
+func mergeMeasure(m map[SessionKey]*UsageMeasures, incoming *UsageMeasures) {
+	existing, ok := m[incoming.Key]
+	if !ok {
+		m[incoming.Key] = incoming
+		return
+	}
+	if incoming.StartTime.Before(existing.StartTime) {
+		existing.StartTime = incoming.StartTime
+	}
+	if incoming.EndTime.After(existing.EndTime) {
+		existing.EndTime = incoming.EndTime
+	}
+	existing.ULBytesDelta += incoming.ULBytesDelta
+	existing.DLBytesDelta += incoming.DLBytesDelta
+	existing.ULPacketsDelta += incoming.ULPacketsDelta
+	existing.DLPacketsDelta += incoming.DLPacketsDelta
+}
+
+func (a *Aggregator) PushReport(sr report.SessReport) {
+	if a.sessionProvider == nil {
+		return
+	}
+	var identity SessionContext
+	var ok bool
+	if provider, supports := a.sessionProvider.(interface {
+		GetSessionContext(uint64) (SessionContext, bool)
+	}); supports {
+		identity, ok = provider.GetSessionContext(sr.SEID)
+	} else {
+		identity, ok = a.sessionProvider.GetSessionContexts()[sr.SEID]
+	}
+	if ok {
+		a.PushReportWithContext(sr, identity)
+	}
+}
+
+// PushReportWithContext also accepts final reports after session removal.
+// Identity must be captured before cleanup, never re-looked-up by a reused ID.
+func (a *Aggregator) PushReportWithContext(sr report.SessReport, identity SessionContext) {
+	if identity.UeIPv4Addr == "" {
+		return
+	}
+	m := &UsageMeasures{
+		Key: SessionKey{
+			LocalSEID: sr.SEID, RemoteSEID: identity.RemoteSEID,
+			Generation: identity.Generation, UEIPv4: identity.UeIPv4Addr,
+		},
+		UeIpv4Addr: identity.UeIPv4Addr,
+	}
+	count := 0
+	for _, r := range sr.Reports {
+		usage, ok := r.(report.USAReport)
+		if !ok || usage.URRID != SingleUPFMAQEURRID {
+			continue
+		}
+		// A real zero-volume measurement is valid; absent/invalid intervals are not.
+		if usage.StartTime.IsZero() || !usage.EndTime.After(usage.StartTime) {
+			continue
+		}
+		m.ULBytesDelta += usage.VolumMeasure.UplinkVolume
+		m.DLBytesDelta += usage.VolumMeasure.DownlinkVolume
+		m.ULPacketsDelta += usage.VolumMeasure.UplinkPktNum
+		m.DLPacketsDelta += usage.VolumMeasure.DownlinkPktNum
+		if count == 0 || usage.StartTime.Before(m.StartTime) {
+			m.StartTime = usage.StartTime
+		}
+		if count == 0 || usage.EndTime.After(m.EndTime) {
+			m.EndTime = usage.EndTime
+		}
+		count++
+	}
+	if count == 0 {
+		return
+	}
+	a.mu.Lock()
+	for _, sub := range a.subscriptionStore.AllSubscriptions() {
+		if !a.matchesSubscription(sub, identity.UeIPv4Addr) {
+			continue
+		}
+		if a.reportBuffer[sub.ID] == nil {
+			a.reportBuffer[sub.ID] = make(map[SessionKey]*UsageMeasures)
+		}
+		measure := *m
+		mergeMeasure(a.reportBuffer[sub.ID], &measure)
+	}
+	a.mu.Unlock()
+	a.signal()
+}
+
+func (a *Aggregator) matchesSubscription(sub *Subscription, ip string) bool {
+	return sub.Event == EventUserDataUsageMeasures && sub.Granularity == GranularityPerSession &&
+		(sub.Target.AnyUE || (sub.Target.UeIPAddress != "" && sub.Target.UeIPAddress == ip))
+}
+
+func computeThroughputIfPossible(m *UsageMeasures) {
+	seconds := m.EndTime.Sub(m.StartTime).Seconds()
+	if seconds <= 0 {
+		return
+	}
+	m.ULThroughputBps = float64(m.ULBytesDelta) * 8 / seconds
+	m.DLThroughputBps = float64(m.DLBytesDelta) * 8 / seconds
+	m.ULPacketThroughputPps = float64(m.ULPacketsDelta) / seconds
+	m.DLPacketThroughputPps = float64(m.DLPacketsDelta) / seconds
 }

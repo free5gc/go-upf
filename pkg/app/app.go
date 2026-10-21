@@ -14,7 +14,6 @@ import (
 
 	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
-	"github.com/free5gc/go-upf/internal/forwarder/perio"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/pfcp"
 	"github.com/free5gc/go-upf/pkg/factory"
@@ -119,7 +118,6 @@ func (u *UpfApp) Run() error {
 	// Go Routine is spawned here for listening for cancellation event on
 	// context
 	go u.listenShutdownEvent()
-	// ... (Original context setting) ...
 
 	var err error
 	u.driver, err = forwarder.NewDriver(&u.wg, u.cfg)
@@ -128,21 +126,16 @@ func (u *UpfApp) Run() error {
 	}
 
 	u.pfcpServer = pfcp.NewPfcpServer(u.cfg, u.driver)
-
-	// [New] Dispatcher wiring
-	reportDispatcher := NewDispatcher(u.pfcpServer)
-	u.driver.HandleReport(reportDispatcher)
-
+	u.driver.HandleReport(u.pfcpServer)
 	u.pfcpServer.Start(&u.wg)
 
-	// [New] Initialize EES if enabled
-	if err := u.initEES(reportDispatcher); err != nil {
+	// EES is optional; when disabled nothing below touches the PFCP path.
+	if err := u.initEES(); err != nil {
 		return err
 	}
 
 	logger.MainLog.Infoln("UPF started")
 
-	// ... (Subsequent Signal handling remains unchanged)
 	// Wait for interrupt signal to gracefully shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -157,12 +150,13 @@ func (u *UpfApp) Run() error {
 	return nil
 }
 
-func (u *UpfApp) initEES(reportDispatcher *Dispatcher) error {
+func (u *UpfApp) initEES() error {
 	if u.cfg.EES == nil || !u.cfg.EES.Enabled {
 		return nil
 	}
 
 	logger.MainLog.Infoln("Starting EES Module (Pure Push Mode)...")
+	logger.MainLog.Infoln("EES supports only the free5GC single-UPF scenario; keep it disabled in ULCL deployments")
 
 	// 1. Use existing EesLog
 	eesLogger := logger.EesLog
@@ -171,48 +165,29 @@ func (u *UpfApp) initEES(reportDispatcher *Dispatcher) error {
 	subscriptionStore := ees.NewSubscriptionStore("")
 	notifier := ees.NewNotifier(eesLogger)
 
-	period := 10
-	if u.cfg.EES.PeriodSec > 0 {
-		period = u.cfg.EES.PeriodSec
-	}
-
 	// Pure Push mode: Reports come from kernel
 	localNode := u.pfcpServer.GetLocalNode()
 	sessionProvider := localNode
 
-	// Get perioServer from driver for URR period queries
-	var perioServer *perio.Server
-	if gtp5gDriver, ok := u.driver.(*forwarder.Gtp5g); ok {
-		perioServer = gtp5gDriver.GetPerioServer()
-	}
-
 	aggregator := ees.NewAggregator(
 		subscriptionStore,
-		time.Duration(period)*time.Second,
+		0, // Scheduling uses each subscription's repPeriod.
 		notifier,
 		eesLogger,
 		sessionProvider,
-		perioServer, // Pass perioServer for period validation
+		nil,
 	)
 
-	// 3. Register EES Handler to Dispatcher
-	eesHandler := ees.NewHandler(aggregator, eesLogger)
-	reportDispatcher.RegisterEESHandler(eesHandler)
-
-	// Set perioServer callbacks
-	if perioServer != nil {
-		// Register callback to adjust aggregator period when URR is added
-		perioServer.SetOnURRAdded(func(urrid uint32, period time.Duration) {
-			// Only adjust for URR 2 (the periodic measurement URR)
-			if urrid == 2 {
-				logger.MainLog.Infof("EES: URR %d added with period %v, triggering aggregator adjustment", urrid, period)
-				aggregator.AdjustReportPeriod(period)
-			}
-		})
-	}
+	// One EES path for kernel reports and PFCP-response reports. The latter
+	// must never re-enter the PFCP queue. URR selection stays session-scoped ID 2.
+	u.pfcpServer.RegisterEESReportHandler(aggregator.PushReportWithContext)
 
 	// 4. Start Aggregator (processes buffered reports periodically)
-	go aggregator.Run(u.ctx)
+	u.wg.Add(1)
+	go func() {
+		defer u.wg.Done()
+		aggregator.Run(u.ctx)
+	}()
 
 	// 5. Start API Server (simplified - no Shadow URR provisioning)
 	port := u.cfg.EES.Port
@@ -222,12 +197,14 @@ func (u *UpfApp) initEES(reportDispatcher *Dispatcher) error {
 	listenAddr := fmt.Sprintf("%s:%d", u.cfg.EES.IP, port)
 	u.eesServer = ees.NewServer(subscriptionStore, aggregator, eesLogger)
 
+	u.wg.Add(1)
 	go func() {
+		defer u.wg.Done()
 		if err := u.eesServer.Serve(listenAddr); err != nil {
 			logger.MainLog.Errorf("EES API Server Error: %v", err)
 		}
 	}()
 
-	logger.MainLog.Infof("EES started at %s with period %ds (Pure Push Mode - SMF URR)", listenAddr, period)
+	logger.MainLog.Infof("EES started at %s (per-subscription scheduling, SMF URR 2)", listenAddr)
 	return nil
 }

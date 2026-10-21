@@ -57,11 +57,15 @@ type Logger struct {
 	ReportCaller bool   `yaml:"reportCaller" valid:"optional"`
 }
 
+// EESConfig enables the embedded Nupf_EventExposure service. It is disabled by
+// default and supports only the free5GC single-UPF scenario; keep it disabled
+// in ULCL deployments.
 type EESConfig struct {
-	Enabled   bool   `yaml:"enabled"    valid:"optional"`
-	IP        string `yaml:"ip"         valid:"optional"`
-	Port      int    `yaml:"port"       valid:"optional"`
-	PeriodSec int    `yaml:"periodSec"  valid:"optional"`
+	Enabled bool   `yaml:"enabled"    valid:"optional"`
+	IP      string `yaml:"ip"         valid:"optional"`
+	Port    int    `yaml:"port"       valid:"optional"`
+	// Deprecated: notification scheduling uses each subscription's repPeriod.
+	PeriodSec int `yaml:"periodSec"  valid:"optional"`
 }
 
 func (c *Config) GetVersion() string {

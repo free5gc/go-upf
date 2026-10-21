@@ -7,7 +7,7 @@
 //
 // Scope & constraints (MVP):
 // - Only USER_DATA_USAGE_MEASURES + perPduSession are accepted.
-// - Mode supports PERIODIC and ON_DEMAND; ON_DEMAND triggers an immediate TickOnce().
+// - PERIODIC and ONE_TIME wait for real measurements; no synthetic zero reports.
 // - Uses SMF-provisioned URRs for data collection (no Shadow URR).
 
 package ees
@@ -17,7 +17,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -38,11 +41,15 @@ func NewServer(
 	aggregator *Aggregator,
 	logger *logrus.Entry,
 ) *Server {
-	return &Server{
+	server := &Server{
 		subscriptionStore: store,
 		aggregator:        aggregator,
 		logger:            logger,
 	}
+	server.httpServer = &http.Server{
+		Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, Protocols: Protocols(),
+	}
+	return server
 }
 
 // Routes registers handlers into the given mux.
@@ -51,18 +58,30 @@ func (server *Server) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("/nupf-ee/v1/ee-subscriptions/", server.handleDeleteSubscriptionByID) // DELETE /.../{id}
 }
 
-// Serve starts an HTTP server on the given listen address.
-func (server *Server) Serve(listenAddress string) error {
+// Protocols enables HTTP/1.1 and HTTP/2 with prior knowledge (h2c), as used by
+// the free5GC generated SBI client on an http:// API root.
+func Protocols() *http.Protocols {
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	return protocols
+}
+
+// Handler returns the EES routes. Serve it with Protocols() for h2c clients.
+func (server *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	server.Routes(mux)
+	return mux
+}
 
+// Serve starts an HTTP server on the given listen address.
+func (server *Server) Serve(listenAddress string) error {
 	server.logger.Infof("ees api server listening at %s", listenAddress)
-	server.httpServer = &http.Server{
-		Addr:              listenAddress,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", listenAddress)
+	if err != nil {
+		return err
 	}
-	if err := server.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := server.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 	return nil
@@ -92,8 +111,16 @@ type UpfEventSubscription struct {
 	EventReportingMode  UpfEventMode `json:"eventReportingMode"`
 
 	// Targeting: choose one
-	UeIPAddress string `json:"ueIpAddress,omitempty"`
-	AnyUE       bool   `json:"anyUe,omitempty"`
+	UeIPAddress *IPAddr `json:"ueIpAddress,omitempty"`
+	AnyUE       bool    `json:"anyUe,omitempty"`
+}
+
+// IPv4 is the supported target in this single-UPF MVP. Other IpAddr forms
+// are decoded so they can be explicitly rejected rather than silently ignored.
+type IPAddr struct {
+	IPv4Addr   string `json:"ipv4Addr,omitempty"`
+	IPv6Addr   string `json:"ipv6Addr,omitempty"`
+	IPv6Prefix string `json:"ipv6Prefix,omitempty"`
 }
 
 type UpfEvent struct {
@@ -109,8 +136,8 @@ type UpfEvent struct {
 }
 
 type UpfEventMode struct {
-	Trigger      string `json:"trigger"`                // "PERIODIC" | "ONE_TIME"
-	ReportPeriod int    `json:"reportPeriod,omitempty"` // Seconds
+	Trigger      string `json:"trigger"`             // "PERIODIC" | "ONE_TIME"
+	ReportPeriod int    `json:"repPeriod,omitempty"` // Seconds (TS 29.564)
 }
 
 type createSubscriptionResponse struct {
@@ -129,8 +156,15 @@ func (server *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Re
 	}
 
 	var inboundRequest createSubscriptionRequest
-	if err := json.NewDecoder(r.Body).Decode(&inboundRequest); err != nil {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	// Preserve forward-compatible decoding (the SMF also sends supplementary
+	// identifiers such as SUPI). This MVP selects targets by UE IPv4.
+	if err := decoder.Decode(&inboundRequest); err != nil {
 		http.Error(w, fmt.Sprintf("invalid json: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		http.Error(w, "request must contain exactly one JSON object", http.StatusBadRequest)
 		return
 	}
 
@@ -154,22 +188,19 @@ func (server *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Re
 	server.logger.Infof("ees subscription created: id=%s nfId=%s trigger=%s",
 		id, inboundRequest.Subscription.NfID, inboundRequest.Subscription.EventReportingMode.Trigger)
 
-	// If Mode is ON_DEMAND, trigger an immediate tick in the aggregator.
-	if subscriptionCandidate.Mode == ModeOnDemand && server.aggregator != nil {
-		server.logger.Infof("ees immediate tick triggered for subscriptionId=%s", id)
-		go func() {
-			if _, tickErr := server.aggregator.TickOnce(context.Background()); tickErr != nil {
-				server.logger.Warnf("ees on-demand immediate tick failed for subscriptionId=%s: %v", id, tickErr)
-			}
-		}()
+	// Do not trust forwarded headers from arbitrary clients. Deployments using
+	// TLS termination must preserve the externally advertised scheme/authority.
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
 	}
-
-	w.Header().Set("Location", "/nupf-ee/v1/ee-subscriptions/"+id)
+	resourceURI := (&url.URL{Scheme: scheme, Host: r.Host, Path: "/nupf-ee/v1/ee-subscriptions/" + id}).String()
+	w.Header().Set("Location", resourceURI)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if encodeErr := json.NewEncoder(w).Encode(createSubscriptionResponse{
 		Subscription:   inboundRequest.Subscription,
-		SubscriptionID: id,
+		SubscriptionID: resourceURI,
 	}); encodeErr != nil {
 		server.logger.Errorf("failed to encode response: %v", encodeErr)
 	}
@@ -182,14 +213,9 @@ func (server *Server) handleDeleteSubscriptionByID(w http.ResponseWriter, r *htt
 		return
 	}
 
-	path := strings.TrimSuffix(r.URL.Path, "/")
-	parts := strings.Split(path, "/")
-	if len(parts) < 4 {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-	id := parts[len(parts)-1]
-	if id == "" {
+	const prefix = "/nupf-ee/v1/ee-subscriptions/"
+	id := strings.TrimPrefix(r.URL.Path, prefix)
+	if !strings.HasPrefix(r.URL.Path, prefix) || id == "" || strings.Contains(id, "/") {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
@@ -210,6 +236,9 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 	if len(sub.EventList) == 0 {
 		return nil, errors.New("eventList must not be empty")
 	}
+	if len(sub.EventList) != 1 {
+		return nil, errors.New("exactly one event is supported")
+	}
 
 	// MVP: Only support the first event for now
 	e := sub.EventList[0]
@@ -220,6 +249,16 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 	// MVP: Only support PER_SESSION granularity
 	if e.GranularityOfMeasurement != string(GranularityPerSession) {
 		return nil, fmt.Errorf("unsupported granularity: %s (MVP only supports PER_SESSION)", e.GranularityOfMeasurement)
+	}
+	if len(e.AppIds) != 0 || len(e.TrafficFilters) != 0 {
+		return nil, errors.New("PER_SESSION cannot include appIds or trafficFilters")
+	}
+	if len(e.MeasurementTypes) == 0 {
+		return nil, errors.New("measurementTypes must not be empty")
+	}
+	notifyURL, err := url.Parse(sub.EventNotifyURI)
+	if err != nil || notifyURL.Host == "" || (notifyURL.Scheme != "http" && notifyURL.Scheme != "https") {
+		return nil, errors.New("eventNotifyUri must be an absolute HTTP(S) URI")
 	}
 
 	var mode Mode
@@ -235,17 +274,25 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 	mTypes := make([]MeasurementType, 0, len(e.MeasurementTypes))
 	for _, mt := range e.MeasurementTypes {
 		mtStr := MeasurementType(strings.ToUpper(mt))
-		if mtStr != MeasureVolume && mtStr != MeasureThroughput && mtStr != MeasureAppInfo {
+		if mtStr != MeasureVolume && mtStr != MeasureThroughput {
 			return nil, fmt.Errorf("unsupported measurementType: %s", mt)
 		}
 		mTypes = append(mTypes, mtStr)
 	}
 
-	if sub.AnyUE && sub.UeIPAddress != "" {
+	if sub.AnyUE && sub.UeIPAddress != nil {
 		return nil, errors.New("cannot specify both anyUe and ueIpAddress")
 	}
-	if !sub.AnyUE && sub.UeIPAddress == "" {
+	if !sub.AnyUE && sub.UeIPAddress == nil {
 		return nil, errors.New("must specify either anyUe or ueIpAddress")
+	}
+	var ueIP string
+	if sub.UeIPAddress != nil {
+		ip := net.ParseIP(sub.UeIPAddress.IPv4Addr)
+		if ip == nil || ip.To4() == nil || sub.UeIPAddress.IPv6Addr != "" || sub.UeIPAddress.IPv6Prefix != "" {
+			return nil, errors.New("ueIpAddress must contain a supported IPv4 address only")
+		}
+		ueIP = ip.To4().String()
 	}
 
 	return &Subscription{
@@ -258,7 +305,7 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 		PeriodSec:           sub.EventReportingMode.ReportPeriod,
 		MeasurementTypes:    mTypes,
 		Target: TargetScope{
-			UeIPAddress: sub.UeIPAddress,
+			UeIPAddress: ueIP,
 			AnyUE:       sub.AnyUE,
 		},
 		Snapshots: make(map[SessionKey]Counters),
