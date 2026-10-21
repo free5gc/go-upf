@@ -16,12 +16,13 @@ const (
 )
 
 type Config struct {
-	Version     string    `yaml:"version"     valid:"required,in(1.0.3)"`
-	Description string    `yaml:"description" valid:"optional"`
-	Pfcp        *Pfcp     `yaml:"pfcp"        valid:"required"`
-	Gtpu        *Gtpu     `yaml:"gtpu"        valid:"required"`
-	DnnList     []DnnList `yaml:"dnnList"     valid:"required"`
-	Logger      *Logger   `yaml:"logger"      valid:"required"`
+	Version     string     `yaml:"version"     valid:"required,in(1.0.3)"`
+	Description string     `yaml:"description" valid:"optional"`
+	Pfcp        *Pfcp      `yaml:"pfcp"        valid:"required"`
+	Gtpu        *Gtpu      `yaml:"gtpu"        valid:"required"`
+	DnnList     []DnnList  `yaml:"dnnList"     valid:"required"`
+	Logger      *Logger    `yaml:"logger"      valid:"required"`
+	EES         *EESConfig `yaml:"ees"        valid:"optional"`
 }
 
 type Pfcp struct {
@@ -57,6 +58,17 @@ type Logger struct {
 	Enable       bool   `yaml:"enable"       valid:"optional"`
 	Level        string `yaml:"level"        valid:"required,in(trace|debug|info|warn|error|fatal|panic)"`
 	ReportCaller bool   `yaml:"reportCaller" valid:"optional"`
+}
+
+// EESConfig enables the embedded Nupf_EventExposure service. It is disabled by
+// default and supports only the free5GC single-UPF scenario; keep it disabled
+// in ULCL deployments.
+type EESConfig struct {
+	Enabled bool   `yaml:"enabled"    valid:"optional"`
+	IP      string `yaml:"ip"         valid:"optional"`
+	Port    int    `yaml:"port"       valid:"optional"`
+	// Deprecated: notification scheduling uses each subscription's repPeriod.
+	PeriodSec int `yaml:"periodSec"  valid:"optional"`
 }
 
 func (c *Config) GetVersion() string {

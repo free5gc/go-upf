@@ -2,14 +2,17 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"runtime/debug"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/pfcp"
@@ -22,6 +25,7 @@ type UpfApp struct {
 	cfg        *factory.Config
 	driver     forwarder.Driver
 	pfcpServer *pfcp.PfcpServer
+	eesServer  *ees.Server
 }
 
 func NewApp(cfg *factory.Config) (*UpfApp, error) {
@@ -61,42 +65,6 @@ func (a *UpfApp) SetLogReportCaller(reportCaller bool) {
 	logger.Log.SetReportCaller(reportCaller)
 }
 
-func (u *UpfApp) Run() error {
-	var cancel context.CancelFunc
-	u.ctx, cancel = context.WithCancel(context.Background())
-	defer cancel()
-
-	u.wg.Add(1)
-	/* Go Routine is spawned here for listening for cancellation event on
-	 * context */
-	go u.listenShutdownEvent()
-
-	var err error
-	u.driver, err = forwarder.NewDriver(&u.wg, u.cfg)
-	if err != nil {
-		return err
-	}
-
-	u.pfcpServer = pfcp.NewPfcpServer(u.cfg, u.driver)
-	u.driver.HandleReport(u.pfcpServer)
-	u.pfcpServer.Start(&u.wg)
-
-	logger.MainLog.Infoln("UPF started")
-
-	// Wait for interrupt signal to gracefully shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	<-sigCh
-
-	// Receive the interrupt signal
-	logger.MainLog.Infof("Shutdown UPF ...")
-	// Notify each goroutine and wait them stopped
-	cancel()
-	u.WaitRoutineStopped()
-	logger.MainLog.Infof("UPF exited")
-	return nil
-}
-
 func (u *UpfApp) listenShutdownEvent() {
 	defer func() {
 		if p := recover(); p != nil {
@@ -110,6 +78,14 @@ func (u *UpfApp) listenShutdownEvent() {
 	<-u.ctx.Done()
 	if u.pfcpServer != nil {
 		u.pfcpServer.Stop()
+	}
+	if u.eesServer != nil {
+		// Use a short timeout for API server shutdown
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := u.eesServer.Shutdown(shutdownCtx); err != nil {
+			logger.MainLog.Errorf("EES API Server Shutdown Error: %v", err)
+		}
 	}
 	if u.driver != nil {
 		u.driver.Close()
@@ -130,4 +106,105 @@ func (u *UpfApp) Start() {
 func (u *UpfApp) Terminate() {
 	logger.MainLog.Infof("Terminating UPF...")
 	logger.MainLog.Infof("UPF terminated")
+}
+
+func (u *UpfApp) Run() error {
+	var cancel context.CancelFunc
+
+	u.ctx, cancel = context.WithCancel(context.Background())
+	defer cancel()
+
+	u.wg.Add(1)
+	// Go Routine is spawned here for listening for cancellation event on
+	// context
+	go u.listenShutdownEvent()
+
+	var err error
+	u.driver, err = forwarder.NewDriver(&u.wg, u.cfg)
+	if err != nil {
+		return err
+	}
+
+	u.pfcpServer = pfcp.NewPfcpServer(u.cfg, u.driver)
+	u.driver.HandleReport(u.pfcpServer)
+	u.pfcpServer.Start(&u.wg)
+
+	// EES is optional; when disabled nothing below touches the PFCP path.
+	if err := u.initEES(); err != nil {
+		return err
+	}
+
+	logger.MainLog.Infoln("UPF started")
+
+	// Wait for interrupt signal to gracefully shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	<-sigCh
+
+	// Receive the interrupt signal
+	logger.MainLog.Infof("Shutdown UPF ...")
+	// Notify each goroutine and wait them stopped
+	cancel()
+	u.WaitRoutineStopped()
+	logger.MainLog.Infof("UPF exited")
+	return nil
+}
+
+func (u *UpfApp) initEES() error {
+	if u.cfg.EES == nil || !u.cfg.EES.Enabled {
+		return nil
+	}
+
+	logger.MainLog.Infoln("Starting EES Module (Pure Push Mode)...")
+	logger.MainLog.Infoln("EES supports only the free5GC single-UPF scenario; keep it disabled in ULCL deployments")
+
+	// 1. Use existing EesLog
+	eesLogger := logger.EesLog
+
+	// 2. Create Store / Notifier / Aggregator
+	subscriptionStore := ees.NewSubscriptionStore("")
+	notifier := ees.NewNotifier(eesLogger)
+
+	// Pure Push mode: Reports come from kernel
+	localNode := u.pfcpServer.GetLocalNode()
+	sessionProvider := localNode
+
+	aggregator := ees.NewAggregator(
+		subscriptionStore,
+		0, // Scheduling uses each subscription's repPeriod.
+		notifier,
+		eesLogger,
+		sessionProvider,
+		nil,
+	)
+
+	// One EES path for kernel reports and PFCP-response reports. The latter
+	// must never re-enter the PFCP queue. URR selection stays session-scoped ID 2.
+	u.pfcpServer.RegisterEESReportHandler(aggregator.PushReportWithContext)
+
+	// 4. Start Aggregator (processes buffered reports periodically)
+	u.wg.Add(1)
+	go func() {
+		defer u.wg.Done()
+		aggregator.Run(u.ctx)
+	}()
+
+	// 5. Start API Server (simplified - no Shadow URR provisioning)
+	port := u.cfg.EES.Port
+	if port == 0 {
+		port = 8088
+	}
+	listenAddr := fmt.Sprintf("%s:%d", u.cfg.EES.IP, port)
+	u.eesServer = ees.NewServer(subscriptionStore, aggregator, eesLogger)
+
+	u.wg.Add(1)
+	go func() {
+		defer u.wg.Done()
+		if err := u.eesServer.Serve(listenAddr); err != nil {
+			logger.MainLog.Errorf("EES API Server Error: %v", err)
+		}
+	}()
+
+	logger.MainLog.Infof("EES started at %s (per-subscription scheduling, SMF URR 2)", listenAddr)
+	return nil
 }

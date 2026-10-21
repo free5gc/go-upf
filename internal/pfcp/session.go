@@ -7,6 +7,7 @@ import (
 	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
+	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 )
@@ -217,6 +218,13 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		return
 	}
 
+	// EES only (nil when disabled): keep identity for final reports of
+	// removed/replaced PDRs.
+	eesHandler := s.eesHandler()
+	var eesIdentity ees.SessionContext
+	if eesHandler != nil {
+		eesIdentity = sess.identitySnapshot()
+	}
 	if req.NodeID != nil {
 		// TS 29.244 7.5.4:
 		// This IE shall be present if a new SMF in an SMF Set,
@@ -538,6 +546,14 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			))
 	}
 
+	if eesHandler != nil {
+		// These reports already belong to the PFCP response. Deliver only to EES.
+		if eesIdentity.UeIPv4Addr == "" {
+			eesIdentity = sess.identitySnapshot()
+		}
+		deliverEESUsage(eesHandler, sess.LocalID, eesIdentity, usars)
+	}
+
 	// Cleanup removed URRs
 	sess.CleanupRemovedURRs()
 
@@ -576,6 +592,12 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		return
 	}
 
+	eesHandler := s.eesHandler()
+	var eesIdentity ees.SessionContext
+	if eesHandler != nil {
+		// Capture before cleanup; the local SEID may be reused afterwards.
+		eesIdentity = sess.identitySnapshot()
+	}
 	usars := sess.rnode.DeleteSess(lSeid)
 
 	rsp := message.NewSessionDeletionResponse(
@@ -605,6 +627,8 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 			delete(sess.URRIDs, r.URRID)
 		}
 	}
+
+	deliverEESUsage(eesHandler, lSeid, eesIdentity, usars)
 
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
