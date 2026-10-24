@@ -217,19 +217,25 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		return
 	}
 
+	// A SEID identifies a session; it does not authorize the sender to modify it.
+	// Check the bound, active association before touching any session or node state.
+	if !sess.rnode.matchesPeer(addr) || s.rnodes[sess.rnode.ID] != sess.rnode {
+		s.log.Warnf("Session Modification rejected: peer %v does not own SEID %#x", addr, req.SEID())
+		s.sendSessModFailRsp(req, nil, addr, ie.CauseRequestRejected)
+		return
+	}
 	if req.NodeID != nil {
-		// TS 29.244 7.5.4:
-		// This IE shall be present if a new SMF in an SMF Set,
-		// with one PFCP association per SMF and UPF (see clause 5.22.3),
-		// takes over the control of the PFCP session.
-		// When present, it shall contain the unique identifier of the new SMF.
-		rnodeid, err1 := req.NodeID.NodeID()
-		if err1 != nil {
-			s.log.Errorln(err1)
+		nodeID, err1 := req.NodeID.NodeID()
+		if err1 != nil || nodeID == "" {
+			s.sendSessModFailRsp(req, sess, addr, ie.CauseMandatoryIEIncorrect)
 			return
 		}
-		s.log.Debugf("new remote nodeid: %v\n", rnodeid)
-		s.UpdateNodeID(sess.rnode, rnodeid)
+		// SMF Set membership is not tracked, so a claimed Node ID cannot
+		// authorize takeover or rename an association shared by other sessions.
+		if nodeID != sess.rnode.ID {
+			s.sendSessModFailRsp(req, sess, addr, ie.CauseRequestRejected)
+			return
+		}
 	}
 
 	// ========================================================================
@@ -733,10 +739,14 @@ func (s *PfcpServer) sendSessModFailRsp(
 	addr net.Addr,
 	cause uint8,
 ) {
+	var seid uint64
+	if sess != nil {
+		seid = sess.RemoteID
+	}
 	rsp := message.NewSessionModificationResponse(
-		0,             // mp
-		0,             // fo
-		sess.RemoteID, // seid
+		0, // mp
+		0, // fo
+		seid,
 		req.Header.SequenceNumber,
 		0, // pri
 		ie.NewCause(cause),
