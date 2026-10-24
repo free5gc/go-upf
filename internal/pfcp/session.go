@@ -197,6 +197,21 @@ func (s *PfcpServer) handleSessionModificationRequest(
 ) {
 	s.log.Infoln("handleSessionModificationRequest")
 
+	// TS 29.244 clause 5.8.3: check the sender's association before
+	// looking up a session, including when the requested SEID is unknown.
+	associated := false
+	for _, node := range s.rnodes {
+		if node.matchesPeer(addr) {
+			associated = true
+			break
+		}
+	}
+	if !associated {
+		s.log.Warnf("Session Modification rejected: no PFCP association for peer %v", addr)
+		s.sendSessModFailRsp(req, nil, addr, ie.CauseNoEstablishedPFCPAssociation)
+		return
+	}
+
 	sess, err := s.lnode.Sess(req.SEID())
 	if err != nil {
 		s.log.Errorf("handleSessionModificationRequest: %v", err)
@@ -227,7 +242,8 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	if req.NodeID != nil {
 		nodeID, err1 := req.NodeID.NodeID()
 		if err1 != nil || nodeID == "" {
-			s.sendSessModFailRsp(req, sess, addr, ie.CauseMandatoryIEIncorrect)
+			s.log.Warnf("Session Modification rejected: invalid Node ID for SEID %#x", req.SEID())
+			s.sendSessModFailRsp(req, sess, addr, ie.CauseMandatoryIEIncorrect, ie.NewOffendingIE(ie.NodeID))
 			return
 		}
 		// SMF Set membership is not tracked, so a claimed Node ID cannot
@@ -738,18 +754,20 @@ func (s *PfcpServer) sendSessModFailRsp(
 	sess *Sess,
 	addr net.Addr,
 	cause uint8,
+	additionalIEs ...*ie.IE,
 ) {
 	var seid uint64
 	if sess != nil {
 		seid = sess.RemoteID
 	}
+	ies := append([]*ie.IE{ie.NewCause(cause)}, additionalIEs...)
 	rsp := message.NewSessionModificationResponse(
 		0, // mp
 		0, // fo
 		seid,
 		req.Header.SequenceNumber,
 		0, // pri
-		ie.NewCause(cause),
+		ies...,
 	)
 	err := s.sendRspTo(rsp, addr)
 	if err != nil {

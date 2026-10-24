@@ -31,11 +31,12 @@ func (d *authorizationDriver) ExecuteModificationPlan(
 
 func TestSessionModificationAuthorization(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		peerIP     string
-		nodeID     *ie.IE
-		staleOwner bool
-		wantCause  uint8
+		name           string
+		peerIP         string
+		nodeID         *ie.IE
+		staleOwner     bool
+		unknownSession bool
+		wantCause      uint8
 	}{
 		{name: "owner", peerIP: "127.0.0.2", wantCause: ie.CauseRequestAccepted},
 		{
@@ -43,7 +44,19 @@ func TestSessionModificationAuthorization(t *testing.T) {
 			nodeID: ie.NewNodeID("127.0.0.2", "", ""), wantCause: ie.CauseRequestAccepted,
 		},
 		{name: "other associated peer", peerIP: "127.0.0.3", wantCause: ie.CauseRequestRejected},
-		{name: "unassociated peer", peerIP: "127.0.0.4", wantCause: ie.CauseRequestRejected},
+		{name: "unassociated peer", peerIP: "127.0.0.4", wantCause: ie.CauseNoEstablishedPFCPAssociation},
+		{
+			name: "unassociated peer claiming owner Node ID", peerIP: "127.0.0.4",
+			nodeID: ie.NewNodeID("127.0.0.2", "", ""), wantCause: ie.CauseNoEstablishedPFCPAssociation,
+		},
+		{
+			name: "unassociated peer with unknown session", peerIP: "127.0.0.4", unknownSession: true,
+			wantCause: ie.CauseNoEstablishedPFCPAssociation,
+		},
+		{
+			name: "associated peer with unknown session", peerIP: "127.0.0.2", unknownSession: true,
+			wantCause: ie.CauseSessionContextNotFound,
+		},
 		{
 			name: "other peer claiming owner Node ID", peerIP: "127.0.0.3",
 			nodeID: ie.NewNodeID("127.0.0.2", "", ""), wantCause: ie.CauseRequestRejected,
@@ -59,6 +72,10 @@ func TestSessionModificationAuthorization(t *testing.T) {
 		{
 			name: "malformed Node ID", peerIP: "127.0.0.2",
 			nodeID: ie.New(ie.NodeID, nil), wantCause: ie.CauseMandatoryIEIncorrect,
+		},
+		{
+			name: "empty FQDN Node ID", peerIP: "127.0.0.2",
+			nodeID: ie.New(ie.NodeID, []byte{ie.NodeIDFQDN, 0}), wantCause: ie.CauseMandatoryIEIncorrect,
 		},
 		{
 			name: "stale association", peerIP: "127.0.0.2", staleOwner: true,
@@ -94,6 +111,9 @@ func TestSessionModificationAuthorization(t *testing.T) {
 			registeredOwner := s.rnodes[owner.ID]
 			req := message.NewSessionModificationRequest(0, 0, sess.LocalID, 1, 0,
 				ie.NewUpdateFAR(ie.NewFARID(7), ie.NewApplyAction(2)))
+			if tc.unknownSession {
+				req.Header.SEID += 1000
+			}
 			if tc.nodeID != nil {
 				req.NodeID = tc.nodeID
 			}
@@ -112,7 +132,15 @@ func TestSessionModificationAuthorization(t *testing.T) {
 			cause, err := rsp.Cause.Cause()
 			require.NoError(t, err)
 			require.Equal(t, tc.wantCause, cause)
-			if tc.peerIP != "127.0.0.2" || tc.staleOwner {
+			if tc.wantCause == ie.CauseMandatoryIEIncorrect {
+				require.NotNil(t, rsp.OffendingIE, "TS 29.244 Table 7.5.5.1-1 requires the faulty IE type")
+				offending, err := rsp.OffendingIE.OffendingIE()
+				require.NoError(t, err)
+				require.Equal(t, ie.NodeID, offending)
+			} else {
+				require.Nil(t, rsp.OffendingIE)
+			}
+			if tc.peerIP != "127.0.0.2" || tc.staleOwner || tc.unknownSession {
 				require.Zero(t, rsp.SEID(), "do not disclose the owner's remote SEID to another peer")
 			} else {
 				require.Equal(t, sess.RemoteID, rsp.SEID())
