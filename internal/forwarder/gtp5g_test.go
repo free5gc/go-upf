@@ -1,32 +1,21 @@
-package forwarder
+package forwarder_test
 
 import (
-	"bytes"
 	"net"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/khirono/go-nl"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wmnsk/go-pfcp/ie"
+	"github.com/wmnsk/go-pfcp/message"
 
-	"github.com/free5gc/go-gtp5gnl"
+	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/pfcp"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
-
-func Test_convertSlice(t *testing.T) {
-	t.Run("convert slices", func(t *testing.T) {
-		b := convertSlice([][]uint16{{1}, {2, 4}})
-		want := []byte{0x01, 0x00, 0x01, 0x00, 0x04, 0x00, 0x02, 0x00}
-		if !bytes.Equal(b, want) {
-			t.Errorf("want %x; but got %x\n", want, b)
-		}
-	})
-}
 
 type testHandler struct{}
 
@@ -46,7 +35,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort), 1400)
+	g, err := forwarder.OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort), 1400)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +45,9 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	g.HandleReport(&testHandler{})
 
 	lSeid := uint64(1)
+	handle := forwarder.NewSessionDatapath(g, lSeid)
 	t.Run("create rules", func(t *testing.T) {
-		plan := NewModificationPlan(lSeid)
+		req := &message.SessionModificationRequest{}
 
 		far1 := ie.NewCreateFAR(
 			ie.NewFARID(2),
@@ -67,21 +57,13 @@ func TestGtp5g_CreateRules(t *testing.T) {
 				ie.NewNetworkInstance("internet"),
 			),
 		)
-		fp1, err := g.BuildCreateFARPlan(lSeid, far1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.CreateFARs = append(plan.CreateFARs, fp1)
+		req.CreateFAR = append(req.CreateFAR, far1)
 
 		far2 := ie.NewCreateFAR(
 			ie.NewFARID(4),
 			ie.NewApplyAction(0x2),
 		)
-		fp2, err := g.BuildCreateFARPlan(lSeid, far2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.CreateFARs = append(plan.CreateFARs, fp2)
+		req.CreateFAR = append(req.CreateFAR, far2)
 
 		qer := ie.NewCreateQER(
 			ie.NewQERID(1),
@@ -89,11 +71,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewMBR(200000, 100000),
 			ie.NewQFI(10),
 		)
-		qp, err := g.BuildCreateQERPlan(lSeid, qer)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.CreateQERs = append(plan.CreateQERs, qp)
+		req.CreateQER = append(req.CreateQER, qer)
 
 		rptTrig := report.ReportingTrigger{
 			Flags: report.RPT_TRIG_PERIO,
@@ -105,11 +83,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			rptTrig.IE(),
 			ie.NewMeasurementInformation(4),
 		)
-		up1, err := g.BuildCreateURRPlan(lSeid, urr1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.CreateURRs = append(plan.CreateURRs, up1)
+		req.CreateURR = append(req.CreateURR, urr1)
 
 		rptTrig.Flags = report.RPT_TRIG_VOLTH | report.RPT_TRIG_VOLQU
 		urr2 := ie.NewCreateURR(
@@ -120,11 +94,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewVolumeThreshold(7, 10000, 20000, 30000),
 			ie.NewVolumeQuota(7, 40000, 50000, 60000),
 		)
-		up2, err := g.BuildCreateURRPlan(lSeid, urr2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.CreateURRs = append(plan.CreateURRs, up2)
+		req.CreateURR = append(req.CreateURR, urr2)
 
 		pdr1 := ie.NewCreatePDR(
 			ie.NewPDRID(1),
@@ -153,11 +123,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewURRID(1),
 			ie.NewURRID(2),
 		)
-		pp1, err := g.BuildCreatePDRPlan(lSeid, pdr1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.CreatePDRs = append(plan.CreatePDRs, pp1)
+		req.CreatePDR = append(req.CreatePDR, pdr1)
 
 		pdr2 := ie.NewCreatePDR(
 			ie.NewPDRID(3),
@@ -177,13 +143,11 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewQERID(1),
 			ie.NewURRID(1),
 		)
-		pp2, err := g.BuildCreatePDRPlan(lSeid, pdr2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.CreatePDRs = append(plan.CreatePDRs, pp2)
+		req.CreatePDR = append(req.CreatePDR, pdr2)
 
-		_, err = g.ExecuteEstablishmentPlan(plan)
+		changes, err := (&pfcp.Session{LocalID: lSeid}).ParseModificationChanges(req)
+		require.NoError(t, err)
+		_, err = handle.Establish(changes)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -196,7 +160,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	})
 
 	t.Run("update rules", func(t *testing.T) {
-		plan := NewModificationPlan(lSeid)
+		req := &message.SessionModificationRequest{}
 
 		rpt := report.ReportingTrigger{
 			Flags: report.RPT_TRIG_PERIO,
@@ -206,11 +170,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			ie.NewMeasurementPeriod(2*time.Second),
 			rpt.IE(),
 		)
-		up, err := g.BuildUpdateURRPlan(lSeid, urr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.UpdateURRs = append(plan.UpdateURRs, up)
+		req.UpdateURR = append(req.UpdateURR, urr)
 
 		far := ie.NewUpdateFAR(
 			ie.NewFARID(4),
@@ -229,11 +189,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 				),
 			),
 		)
-		fp, err := g.BuildUpdateFARPlan(lSeid, far)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.UpdateFARs = append(plan.UpdateFARs, fp)
+		req.UpdateFAR = append(req.UpdateFAR, far)
 
 		pdr := ie.NewUpdatePDR(
 			ie.NewPDRID(3),
@@ -251,13 +207,11 @@ func TestGtp5g_CreateRules(t *testing.T) {
 			),
 			ie.NewFARID(4),
 		)
-		pp, err := g.BuildUpdatePDRPlan(lSeid, pdr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.UpdatePDRs = append(plan.UpdatePDRs, pp)
+		req.UpdatePDR = append(req.UpdatePDR, pdr)
 
-		result, err := g.ExecuteModificationPlan(plan)
+		changes, err := (&pfcp.Session{LocalID: lSeid}).ParseModificationChanges(req)
+		require.NoError(t, err)
+		result, err := handle.Modify(changes)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -269,220 +223,28 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	})
 
 	t.Run("remove rules", func(t *testing.T) {
-		plan := NewModificationPlan(lSeid)
+		req := &message.SessionModificationRequest{}
 
 		urr1 := ie.NewRemoveURR(
 			ie.NewURRID(1),
 		)
-		up1, err := g.BuildRemoveURRPlan(lSeid, urr1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.RemoveURRs = append(plan.RemoveURRs, up1)
+		req.RemoveURR = append(req.RemoveURR, urr1)
 
 		urr2 := ie.NewRemoveURR(
 			ie.NewURRID(2),
 		)
-		up2, err := g.BuildRemoveURRPlan(lSeid, urr2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		plan.RemoveURRs = append(plan.RemoveURRs, up2)
+		req.RemoveURR = append(req.RemoveURR, urr2)
 
-		result, err := g.ExecuteModificationPlan(plan)
+		changes, err := (&pfcp.Session{LocalID: lSeid}).ParseModificationChanges(req)
+		require.NoError(t, err)
+		result, err := handle.Modify(changes)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		require.NotNil(t, result.USAReports)
 		require.Equal(t, 2, len(result.USAReports))
-		g.log.Infof("Receive final report from URR(%d), rpts: %+v", result.USAReports[0].URRID, result.USAReports)
-		g.log.Infof("Receive final report from URR(%d)", result.USAReports[1].URRID)
+		t.Logf("Receive final report from URR(%d), rpts: %+v", result.USAReports[0].URRID, result.USAReports)
+		t.Logf("Receive final report from URR(%d)", result.USAReports[1].URRID)
 	})
 }
-
-func TestNewFlowDesc(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping testing in short mode")
-	}
-
-	var wg sync.WaitGroup
-	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort), 1400)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		g.Close()
-		wg.Wait()
-	}()
-
-	cases := []struct {
-		name       string
-		s          string
-		swapSrcDst bool
-		attrs      nl.AttrList
-		err        error
-	}{
-		{
-			name:       "permit out any to assigned",
-			s:          "permit out ip from any to assigned",
-			swapSrcDst: false,
-			attrs: nl.AttrList{
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_ACTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_PERMIT),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_DIRECTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_OUT),
-				},
-			},
-			err: nil,
-		},
-		{
-			name:       "network addr (UL)",
-			s:          "permit out ip from 10.20.30.40/24 to 50.60.70.80/16",
-			swapSrcDst: false,
-			attrs: nl.AttrList{
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_ACTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_PERMIT),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_DIRECTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_OUT),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_SRC_IPV4,
-					Value: nl.AttrBytes(net.IPv4(10, 20, 30, 0).To4()),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_IPV4,
-					Value: nl.AttrBytes(net.IPv4(50, 60, 0, 0).To4()),
-				},
-			},
-			err: nil,
-		},
-		{
-			name:       "network addr (DL)",
-			s:          "permit out ip from 10.20.30.40/24 to 50.60.70.80/16",
-			swapSrcDst: true,
-			attrs: nl.AttrList{
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_ACTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_PERMIT),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_DIRECTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_OUT),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_SRC_IPV4,
-					Value: nl.AttrBytes(net.IPv4(50, 60, 0, 0).To4()),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_IPV4,
-					Value: nl.AttrBytes(net.IPv4(10, 20, 30, 0).To4()),
-				},
-			},
-			err: nil,
-		},
-		{
-			name:       "source port (DL)",
-			s:          "permit out ip from 10.20.30.40/24 345,789-792,1023-1026 to 50.60.70.80/16 456-458,1088,1089",
-			swapSrcDst: false,
-			attrs: nl.AttrList{
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_ACTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_PERMIT),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_DIRECTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_OUT),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_SRC_IPV4,
-					Value: nl.AttrBytes(net.IPv4(10, 20, 30, 0).To4()),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_IPV4,
-					Value: nl.AttrBytes(net.IPv4(50, 60, 0, 0).To4()),
-				},
-				nl.Attr{
-					Type: gtp5gnl.FLOW_DESCRIPTION_SRC_PORT,
-					Value: nl.AttrBytes(convertSlice([][]uint16{
-						{345},
-						{789, 792},
-						{1023, 1026},
-					})),
-				},
-				nl.Attr{
-					Type: gtp5gnl.FLOW_DESCRIPTION_DEST_PORT,
-					Value: nl.AttrBytes(convertSlice([][]uint16{
-						{456, 458},
-						{1088},
-						{1089},
-					})),
-				},
-			},
-			err: nil,
-		},
-		{
-			name:       "source port (UL)",
-			s:          "permit out ip from 10.20.30.40/24 345,789-792,1023-1026 to 50.60.70.80/16 456-458,1088,1089",
-			swapSrcDst: true,
-			attrs: nl.AttrList{
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_ACTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_PERMIT),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_DIRECTION,
-					Value: nl.AttrU8(gtp5gnl.SDF_FILTER_OUT),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_SRC_IPV4,
-					Value: nl.AttrBytes(net.IPv4(50, 60, 0, 0).To4()),
-				},
-				nl.Attr{
-					Type:  gtp5gnl.FLOW_DESCRIPTION_DEST_IPV4,
-					Value: nl.AttrBytes(net.IPv4(10, 20, 30, 0).To4()),
-				},
-				nl.Attr{
-					Type: gtp5gnl.FLOW_DESCRIPTION_SRC_PORT,
-					Value: nl.AttrBytes(convertSlice([][]uint16{
-						{456, 458},
-						{1088},
-						{1089},
-					})),
-				},
-				nl.Attr{
-					Type: gtp5gnl.FLOW_DESCRIPTION_DEST_PORT,
-					Value: nl.AttrBytes(convertSlice([][]uint16{
-						{345},
-						{789, 792},
-						{1023, 1026},
-					})),
-				},
-			},
-			err: nil,
-		},
-	}
-
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			attrs, err := g.newFlowDesc(tt.s, tt.swapSrcDst)
-			if tt.err == nil {
-				if err != nil {
-					t.Fatal(err)
-				}
-				assert.Subset(t, attrs, tt.attrs)
-			} else if err != tt.err {
-				t.Errorf("wantErr %v; but got %v", tt.err, err)
-			}
-		})
-	}
-}
-
-// TODO
-// Test on newSdfFilter()

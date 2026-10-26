@@ -1,4 +1,4 @@
-package forwarder
+package rules
 
 import (
 	"fmt"
@@ -131,7 +131,7 @@ func ParseFlowDesc(s string) (*FlowDesc, error) {
 func ParseFlowDescIPNet(s string) (*net.IPNet, error) {
 	if s == "any" || s == "assigned" {
 		return &net.IPNet{
-			IP:   net.IPv6zero,
+			IP:   append(net.IP(nil), net.IPv6zero...),
 			Mask: net.CIDRMask(0, 128),
 		}, nil
 	}

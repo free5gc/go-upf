@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/wmnsk/go-pfcp/ie"
 
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
@@ -16,43 +15,13 @@ import (
 type Driver interface {
 	Close()
 
-	// QueryURR is used internally by diassociateURR when a PDR is removed/updated
+	// QueryURR is used for terminal reporting when a PDR releases its last URR reference.
 	QueryURR(uint64, uint32) ([]report.USAReport, error)
 
 	HandleReport(report.Handler)
 
-	// Plan-based methods for two-phase commit
-	// Build*Plan methods parse and validate IEs without executing
-	BuildCreatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
-	BuildUpdatePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
-	BuildRemovePDRPlan(lSeid uint64, req *ie.IE) (*PDRPlan, error)
-
-	BuildCreateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error)
-	BuildUpdateFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error)
-	BuildRemoveFARPlan(lSeid uint64, req *ie.IE) (*FARPlan, error)
-
-	BuildCreateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error)
-	BuildUpdateQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error)
-	BuildRemoveQERPlan(lSeid uint64, req *ie.IE) (*QERPlan, error)
-
-	BuildCreateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
-	BuildUpdateURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
-	BuildRemoveURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
-	BuildQueryURRPlan(lSeid uint64, req *ie.IE) (*URRPlan, error)
-
-	BuildCreateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
-	BuildUpdateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
-	BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
-
-	// ExecuteModificationPlan executes all operations in the plan.
-	// Create operations are fail-fast: on failure the rules created by this plan
-	// are rolled back and an error is returned. Remove/Update/Query operations
-	// are best-effort: failures are logged and execution continues.
-	ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error)
-
-	// ExecuteEstablishmentPlan executes Create operations for session establishment
-	// Uses fail-fast: returns error on first failure
-	ExecuteEstablishmentPlan(plan *ModificationPlan) (*ExecutionResult, error)
+	// Execution plans are an implementation detail shared only within forwarder.
+	sessionBackend
 }
 
 func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {

@@ -8,22 +8,82 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/pkg/factory"
 	logger_util "github.com/free5gc/util/logger"
 )
 
-type PfcpServerMock struct {
-	PfcpServer
+type messageTransportMock struct {
+	req     message.Message
+	reqAddr net.Addr
+	rsp     message.Message
+	rspAddr net.Addr
 }
 
-func (p *PfcpServerMock) GetRNodes() map[string]*RemoteNode {
-	return p.rnodes
+func (m *messageTransportMock) sendReqTo(msg message.Message, addr net.Addr) error {
+	m.req = msg
+	m.reqAddr = addr
+	return nil
 }
 
-func (p *PfcpServerMock) AddRNode(rnodeid string, node *RemoteNode) {
-	p.rnodes[rnodeid] = node
+func (m *messageTransportMock) sendRspTo(msg message.Message, addr net.Addr) error {
+	m.rsp = msg
+	m.rspAddr = addr
+	return nil
+}
+
+func newTestPfcpServer() *PfcpServer {
+	return NewPfcpServer(
+		&factory.Config{
+			Pfcp: &factory.Pfcp{
+				Addr:   "127.0.0.1",
+				NodeID: "127.0.0.1",
+			},
+		},
+		forwarder.Empty{},
+	)
+}
+
+func TestNewPfcpServerInitializesDispatcher(t *testing.T) {
+	s := newTestPfcpServer()
+
+	assert.NotNil(t, s.dispatcher)
+	assert.Same(t, s, s.dispatcher.transport)
+	assert.NotNil(t, s.dispatcher.node)
+	assert.Equal(t, "127.0.0.1", s.dispatcher.node.NodeID)
+	assert.False(t, s.dispatcher.node.RecoveryTime.IsZero())
+	assert.NotNil(t, s.dispatcher.node.associations)
+	assert.NotNil(t, s.dispatcher.node.sessions)
+	assert.Equal(t, forwarder.Empty{}, s.dispatcher.node.datapath)
+	assert.Same(t, s.log, s.dispatcher.log)
+	assert.Same(t, s.log, s.dispatcher.node.log)
+}
+
+func TestDispatcherDispatchesHeartbeatRequest(t *testing.T) {
+	recoveryTime := time.Unix(1_700_000_000, 0)
+	log := logrus.WithField("test", t.Name())
+	node := NewLocalNode("127.0.0.1", recoveryTime, forwarder.Empty{}, log)
+	transport := &messageTransportMock{}
+	dispatcher := newDispatcher(node, transport, log)
+	addr := &net.UDPAddr{IP: net.IPv4(10, 100, 200, 5), Port: 8805}
+	req := message.NewHeartbeatRequest(42, nil, nil)
+
+	err := dispatcher.HandleRequest(req, addr)
+
+	assert.NoError(t, err)
+	assert.Equal(t, addr, transport.rspAddr)
+	rsp, ok := transport.rsp.(*message.HeartbeatResponse)
+	assert.True(t, ok)
+	if !ok {
+		return
+	}
+	assert.Equal(t, uint32(42), rsp.SequenceNumber)
+	gotRecoveryTime, err := rsp.RecoveryTimeStamp.RecoveryTimeStamp()
+	assert.NoError(t, err)
+	assert.Equal(t, recoveryTime, gotRecoveryTime)
 }
 
 func TestStart(t *testing.T) {
@@ -54,44 +114,6 @@ func TestStop(t *testing.T) {
 	if !isConnClosed(s.conn) {
 		t.Errorf("expected connection to be closed")
 	}
-}
-
-func TestNewNode(t *testing.T) {
-	s := &PfcpServer{
-		log: logrus.WithField(logger_util.FieldControlPlaneNodeID, "127.0.0.1"),
-	}
-
-	id := "smf1"
-	driver := forwarder.Empty{}
-	addr, err := net.ResolveUDPAddr("udp", "127.0.0.1:8805")
-	if err != nil {
-		t.Errorf("failed to resolve UDP address: %v", err)
-		return
-	}
-
-	newNode := s.NewNode(id, addr, driver)
-
-	assert.NotNil(t, newNode)
-	assert.Equal(t, id, newNode.ID)
-}
-
-func TestUpdateNodeID(t *testing.T) {
-	s := &PfcpServerMock{
-		PfcpServer: PfcpServer{
-			log:    logrus.WithField(logger_util.FieldControlPlaneNodeID, "127.0.0.1"),
-			rnodes: make(map[string]*RemoteNode),
-		},
-	}
-
-	origNodeId := "127.0.0.1"
-	node := s.NewNode(origNodeId, nil, nil)
-	s.AddRNode(origNodeId, node)
-
-	newNodeId := "192.168.56.101"
-	s.UpdateNodeID(node, newNodeId)
-
-	assert.Nil(t, s.GetRNodes()[origNodeId])
-	assert.NotNil(t, s.GetRNodes()[newNodeId])
 }
 
 func TestNotifySessReport(t *testing.T) {

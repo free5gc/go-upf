@@ -44,39 +44,35 @@ type TransactionTimeout struct {
 }
 
 type PfcpServer struct {
-	cfg          *factory.Config
-	listen       string
-	nodeID       string
-	rcvCh        chan ReceivePacket
-	srCh         chan report.SessReport
-	trToCh       chan TransactionTimeout
-	conn         *net.UDPConn
-	recoveryTime time.Time
-	driver       forwarder.Driver
-	lnode        LocalNode
-	rnodes       map[string]*RemoteNode
-	txTrans      map[string]*TxTransaction // key: RemoteAddr-Sequence
-	rxTrans      map[string]*RxTransaction // key: RemoteAddr-Sequence
-	txSeq        uint32
-	log          *logrus.Entry
+	cfg        *factory.Config
+	listen     string
+	dispatcher *Dispatcher
+	rcvCh      chan ReceivePacket
+	srCh       chan report.SessReport
+	trToCh     chan TransactionTimeout
+	conn       *net.UDPConn
+	txTrans    map[string]*TxTransaction // key: RemoteAddr-Sequence
+	rxTrans    map[string]*RxTransaction // key: RemoteAddr-Sequence
+	txSeq      uint32
+	log        *logrus.Entry
 }
 
 func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 	listen := fmt.Sprintf("%s:%d", cfg.Pfcp.Addr, factory.UpfPfcpDefaultPort)
-	return &PfcpServer{
-		cfg:          cfg,
-		listen:       listen,
-		nodeID:       cfg.Pfcp.NodeID,
-		rcvCh:        make(chan ReceivePacket, RECEIVE_CHANNEL_LEN),
-		srCh:         make(chan report.SessReport, REPORT_CHANNEL_LEN),
-		trToCh:       make(chan TransactionTimeout, TRANS_TIMEOUT_CHANNEL_LEN),
-		recoveryTime: time.Now(),
-		driver:       driver,
-		rnodes:       make(map[string]*RemoteNode),
-		txTrans:      make(map[string]*TxTransaction),
-		rxTrans:      make(map[string]*RxTransaction),
-		log:          logger.PfcpLog.WithField(logger_util.FieldListenAddr, listen),
+	log := logger.PfcpLog.WithField(logger_util.FieldListenAddr, listen)
+	localNode := NewLocalNode(cfg.Pfcp.NodeID, time.Now(), driver, log)
+	server := &PfcpServer{
+		cfg:     cfg,
+		listen:  listen,
+		rcvCh:   make(chan ReceivePacket, RECEIVE_CHANNEL_LEN),
+		srCh:    make(chan report.SessReport, REPORT_CHANNEL_LEN),
+		trToCh:  make(chan TransactionTimeout, TRANS_TIMEOUT_CHANNEL_LEN),
+		txTrans: make(map[string]*TxTransaction),
+		rxTrans: make(map[string]*RxTransaction),
+		log:     log,
 	}
+	server.dispatcher = newDispatcher(localNode, server, log)
+	return server
 }
 
 func (s *PfcpServer) main(wg *sync.WaitGroup) {
@@ -111,11 +107,19 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	wg.Add(1)
 	go s.receiver(wg)
 
+	cleanupTicker := time.NewTicker(time.Second)
+	defer cleanupTicker.Stop()
+	// This event loop owns PFCP rule state and URR reporting runtime. Handlers
+	// run to completion, including response assembly, before the next event.
+	// Keeping dispatch synchronous serializes session transactions with reports,
+	// association cleanup and timeouts without another lock or worker lifecycle.
 	for {
 		select {
+		case now := <-cleanupTicker.C:
+			s.dispatcher.retrySessionCleanup(now)
 		case sr := <-s.srCh:
 			s.log.Tracef("receive SessReport from srCh")
-			s.ServeReport(&sr)
+			s.dispatcher.ServeReport(&sr)
 		case rcvPkt := <-s.rcvCh:
 			s.log.Tracef("receive buf(len=%d) from rcvCh", len(rcvPkt.Buf))
 			if len(rcvPkt.Buf) == 0 {
@@ -153,7 +157,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 					s.log.Debugf("rcvCh: rxtr[%s] req no need to dispatch", trID)
 					continue
 				}
-				err = s.reqDispacher(msg, rcvPkt.RemoteAddr)
+				err = s.dispatcher.HandleRequest(msg, rcvPkt.RemoteAddr)
 				if err != nil {
 					s.log.Errorln(err)
 					s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
@@ -166,7 +170,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 					continue
 				}
 				req := tx.recv(msg)
-				err = s.rspDispacher(msg, rcvPkt.RemoteAddr, req)
+				err = s.dispatcher.HandleResponse(msg, rcvPkt.RemoteAddr, req)
 				if err != nil {
 					s.log.Errorln(err)
 					s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
@@ -241,26 +245,6 @@ func (s *PfcpServer) Stop() {
 	}
 }
 
-func (s *PfcpServer) NewNode(id string, addr net.Addr, driver forwarder.Driver) *RemoteNode {
-	n := NewRemoteNode(
-		id,
-		addr,
-		&s.lnode,
-		driver,
-		s.log.WithField(logger_util.FieldControlPlaneNodeID, id),
-	)
-	n.log.Infoln("New node")
-	return n
-}
-
-func (s *PfcpServer) UpdateNodeID(n *RemoteNode, newId string) {
-	s.log.Infof("Update nodeId %q to %q", n.ID, newId)
-	delete(s.rnodes, n.ID)
-	n.ID = newId
-	n.log = s.log.WithField(logger_util.FieldControlPlaneNodeID, newId)
-	s.rnodes[newId] = n
-}
-
 func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
 	s.srCh <- sr
 }
@@ -270,12 +254,7 @@ func (s *PfcpServer) NotifyTransTimeout(trType TransType, trID string) {
 }
 
 func (s *PfcpServer) PopBufPkt(seid uint64, pdrid uint16) ([]byte, bool) {
-	sess, err := s.lnode.Sess(seid)
-	if err != nil {
-		s.log.Errorln(err)
-		return nil, false
-	}
-	return sess.Pop(pdrid)
+	return s.dispatcher.PopBufPkt(seid, pdrid)
 }
 
 func (s *PfcpServer) sendReqTo(msg message.Message, addr net.Addr) error {
@@ -401,6 +380,8 @@ func setReqSeq(msgtmp message.Message, seq uint32) {
 	case *message.SessionModificationRequest:
 		msg.SetSequenceNumber(seq)
 	case *message.SessionDeletionRequest:
+		msg.SetSequenceNumber(seq)
+	case *sessionReportRequest:
 		msg.SetSequenceNumber(seq)
 	case *message.SessionReportRequest:
 		msg.SetSequenceNumber(seq)
