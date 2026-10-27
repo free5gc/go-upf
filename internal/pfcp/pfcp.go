@@ -118,7 +118,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 			s.ServeReport(&sr)
 		case rcvPkt := <-s.rcvCh:
 			s.log.Tracef("receive buf(len=%d) from rcvCh", len(rcvPkt.Buf))
-			if len(rcvPkt.Buf) == 0 {
+			if rcvPkt.RemoteAddr == nil {
 				// receiver closed
 				return
 			}
@@ -210,6 +210,9 @@ func (s *PfcpServer) receiver(wg *sync.WaitGroup) {
 		n, addr, err := s.conn.ReadFrom(buf)
 		if err != nil {
 			s.log.Errorf("%+v", err)
+			// RemoteAddr is nil only here, to notify main() that the
+			// receiver has stopped. A received packet always carries a
+			// remote address, so it can never be mistaken for this signal.
 			s.rcvCh <- ReceivePacket{}
 			break
 		}
