@@ -106,6 +106,39 @@ func TestRemoteNode(t *testing.T) {
 	})
 }
 
+func TestRemoteNodeMatchesPeer(t *testing.T) {
+	udp := func(ip string, port int, zone string) *net.UDPAddr {
+		return &net.UDPAddr{IP: net.ParseIP(ip), Port: port, Zone: zone}
+	}
+	for _, tc := range []struct {
+		name  string
+		bound net.Addr
+		peer  net.Addr
+		want  bool
+	}{
+		{"same IPv4 different port", udp("192.0.2.1", 8805, ""), udp("192.0.2.1", 12345, ""), true},
+		{"different IPv4", udp("192.0.2.1", 8805, ""), udp("192.0.2.2", 8805, ""), false},
+		{"mapped IPv4", udp("192.0.2.1", 8805, ""), udp("::ffff:192.0.2.1", 8805, ""), true},
+		{"same IPv6", udp("2001:db8::1", 8805, ""), udp("2001:db8::1", 12345, ""), true},
+		{"different IPv6", udp("2001:db8::1", 8805, ""), udp("2001:db8::2", 8805, ""), false},
+		{"same zone", udp("fe80::1", 8805, "eth0"), udp("fe80::1", 12345, "eth0"), true},
+		{"different zone", udp("fe80::1", 8805, "eth0"), udp("fe80::1", 8805, "eth1"), false},
+		{"nil bound", nil, udp("192.0.2.1", 8805, ""), false},
+		{"typed nil bound", (*net.UDPAddr)(nil), udp("192.0.2.1", 8805, ""), false},
+		{"nil peer", udp("192.0.2.1", 8805, ""), nil, false},
+		{"typed nil peer", udp("192.0.2.1", 8805, ""), (*net.UDPAddr)(nil), false},
+		{"missing IP", &net.UDPAddr{}, &net.UDPAddr{}, false},
+		{"wrong transport", udp("192.0.2.1", 8805, ""), &net.TCPAddr{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := &RemoteNode{addr: tc.bound}
+			assert.Equal(t, tc.want, n.matchesPeer(tc.peer))
+		})
+	}
+	var n *RemoteNode
+	assert.False(t, n.matchesPeer(udp("192.0.2.1", 8805, "")))
+}
+
 func TestRemoteNode_multipleSMF(t *testing.T) {
 	var lnode LocalNode
 	n1 := NewRemoteNode(
