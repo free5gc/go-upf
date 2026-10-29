@@ -6,7 +6,7 @@
 // - Payload contains subscription ID, event ID, granularity, and a list of items,
 //   each item includes LocalSEID, RemoteSEID, UL/DL bytes/packets, StartTime/EndTime,
 //   and optional derived throughputs.
-// - Uses a per-request timeout; no retry (keep it simple for MVP).
+// - Uses a per-request timeout; the Aggregator retains and retries failed batches.
 // - Logs both success and failure with descriptive fields.
 
 package ees

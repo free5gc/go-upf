@@ -61,11 +61,9 @@ type Logger struct {
 // default and supports only the free5GC single-UPF scenario; keep it disabled
 // in ULCL deployments.
 type EESConfig struct {
-	Enabled bool   `yaml:"enabled"    valid:"optional"`
-	IP      string `yaml:"ip"         valid:"optional"`
-	Port    int    `yaml:"port"       valid:"optional"`
-	// Deprecated: notification scheduling uses each subscription's repPeriod.
-	PeriodSec int `yaml:"periodSec"  valid:"optional"`
+	Enabled bool   `yaml:"enabled" valid:"optional"`
+	IP      string `yaml:"ip"      valid:"optional"` // empty listens on all interfaces
+	Port    int    `yaml:"port"    valid:"optional"` // 0 uses 8088
 }
 
 func (c *Config) GetVersion() string {

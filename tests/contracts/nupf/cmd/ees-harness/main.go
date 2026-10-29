@@ -64,8 +64,8 @@ func run() error {
 	logger := logrus.NewEntry(log).WithField("component", "ees-harness")
 
 	store := ees.NewSubscriptionStore("")
-	aggregator := ees.NewAggregator(store, 0, ees.NewNotifier(logger), logger, nil, nil)
-	server := ees.NewServer(store, aggregator, logger)
+	aggregator := ees.NewAggregator(store, ees.NewNotifier(logger), logger)
+	server := ees.NewServer(store, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

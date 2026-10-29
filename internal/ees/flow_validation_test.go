@@ -64,7 +64,7 @@ func do(t *testing.T, method, url string, body []byte) (apiResult, []byte) {
 // V1: every accepted and rejected subscription form, over real HTTP.
 func TestValidationAPICreateMatrix(t *testing.T) {
 	store := NewSubscriptionStore("")
-	api := httptest.NewServer(NewServer(store, nil, testLogger()).Handler())
+	api := httptest.NewServer(NewServer(store, testLogger()).Handler())
 	defer api.Close()
 
 	accepted := []struct {
@@ -188,8 +188,8 @@ func TestValidationAPICreateMatrix(t *testing.T) {
 // V1: DELETE semantics and that the scheduler drops a deleted subscription.
 func TestValidationAPIDeleteMatrix(t *testing.T) {
 	store := NewSubscriptionStore("")
-	agg := NewAggregator(store, 0, NewNotifier(testLogger()), testLogger(), nil, nil)
-	api := httptest.NewServer(NewServer(store, agg, testLogger()).Handler())
+	agg := NewAggregator(store, NewNotifier(testLogger()), testLogger())
+	api := httptest.NewServer(NewServer(store, testLogger()).Handler())
 	defer api.Close()
 
 	rsp, _ := do(t, http.MethodPost, api.URL+eeCollection, edit(func(_, _, _ map[string]any) {}))
@@ -370,7 +370,7 @@ func TestValidationNotificationContentMatrix(t *testing.T) {
 			}
 			id, err := store.CreateSubscription(sub)
 			require.NoError(t, err)
-			agg := NewAggregator(store, 0, NewNotifier(testLogger()), testLogger(), nil, nil)
+			agg := NewAggregator(store, NewNotifier(testLogger()), testLogger())
 			pushScenario(agg)
 			sent, err := agg.TickOnce(context.Background())
 			require.NoError(t, err)
@@ -425,7 +425,7 @@ func TestValidationRecycledSEIDKeepsSessionsApart(t *testing.T) {
 	sub.NotifURI = c.srv.URL
 	_, err := store.CreateSubscription(sub)
 	require.NoError(t, err)
-	agg := NewAggregator(store, 0, NewNotifier(testLogger()), testLogger(), nil, nil)
+	agg := NewAggregator(store, NewNotifier(testLogger()), testLogger())
 	for gen, ul := range map[uint64]uint64{1: 100, 2: 200} {
 		agg.PushReportWithContext(sessReport(1, usar(2, 0, time.Second, ul, 0, 1, 0)),
 			SessionContext{RemoteSEID: 2, Generation: gen, UeIPv4Addr: "10.60.0.1"})
@@ -477,8 +477,8 @@ func TestValidationPeriodicDueTable(t *testing.T) {
 func TestValidationPeriodicLifecycleWithRetryAndDelete(t *testing.T) {
 	c := newConsumer(t, http.StatusNoContent, http.StatusInternalServerError, http.StatusOK)
 	store := NewSubscriptionStore("")
-	agg := NewAggregator(store, 0, NewNotifier(testLogger()), testLogger(), nil, nil)
-	api := httptest.NewServer(NewServer(store, agg, testLogger()).Handler())
+	agg := NewAggregator(store, NewNotifier(testLogger()), testLogger())
+	api := httptest.NewServer(NewServer(store, testLogger()).Handler())
 	defer api.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

@@ -15,34 +15,26 @@ import (
 // allocations are outside this MVP; do not sum all URRs (they may overlap).
 const SingleUPFMAQEURRID uint32 = 2
 
-type PerioServerInterface interface {
-	GetAnyURRPeriod(urrid uint32) time.Duration
-}
-
 // Aggregator buffers real measurements and schedules each subscription
 // independently. It never manufactures measurements for an empty buffer.
 type Aggregator struct {
 	subscriptionStore *SubscriptionStore
 	notifier          *Notifier
 	logger            *logrus.Entry
-	sessionProvider   SessionProvider
-	mu                sync.Mutex
-	reportBuffer      map[string]map[SessionKey]*UsageMeasures
-	inFlight          map[string]bool
-	retryAt           map[string]time.Time
-	wake              chan struct{}
-	workers           sync.WaitGroup
+	// mu guards the per-subscription scheduling state below.
+	mu           sync.Mutex
+	reportBuffer map[string]map[SessionKey]*UsageMeasures // pending usage per subscription
+	inFlight     map[string]bool                          // a notification is being sent
+	retryAt      map[string]time.Time                     // earliest retry after a failed send
+	wake         chan struct{}
+	workers      sync.WaitGroup
 }
 
-// The legacy global-period/provider arguments are retained for compatibility;
-// repPeriod now controls each subscription independently of URR polling.
-func NewAggregator(store *SubscriptionStore, _ time.Duration, notifier *Notifier,
-	logger *logrus.Entry, provider SessionProvider, _ PerioServerInterface,
-) *Aggregator {
+func NewAggregator(store *SubscriptionStore, notifier *Notifier, logger *logrus.Entry) *Aggregator {
 	return &Aggregator{
 		subscriptionStore: store, notifier: notifier, logger: logger,
-		sessionProvider: provider, reportBuffer: make(map[string]map[SessionKey]*UsageMeasures),
-		inFlight: make(map[string]bool), retryAt: make(map[string]time.Time),
+		reportBuffer: make(map[string]map[SessionKey]*UsageMeasures),
+		inFlight:     make(map[string]bool), retryAt: make(map[string]time.Time),
 		wake: make(chan struct{}, 1),
 	}
 }
@@ -221,24 +213,6 @@ func mergeMeasure(m map[SessionKey]*UsageMeasures, incoming *UsageMeasures) {
 	existing.DLBytesDelta += incoming.DLBytesDelta
 	existing.ULPacketsDelta += incoming.ULPacketsDelta
 	existing.DLPacketsDelta += incoming.DLPacketsDelta
-}
-
-func (a *Aggregator) PushReport(sr report.SessReport) {
-	if a.sessionProvider == nil {
-		return
-	}
-	var identity SessionContext
-	var ok bool
-	if provider, supports := a.sessionProvider.(interface {
-		GetSessionContext(uint64) (SessionContext, bool)
-	}); supports {
-		identity, ok = provider.GetSessionContext(sr.SEID)
-	} else {
-		identity, ok = a.sessionProvider.GetSessionContexts()[sr.SEID]
-	}
-	if ok {
-		a.PushReportWithContext(sr, identity)
-	}
 }
 
 // PushReportWithContext also accepts final reports after session removal.

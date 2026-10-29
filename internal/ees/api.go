@@ -30,20 +30,14 @@ import (
 // Server provides the minimal REST API for EES.
 type Server struct {
 	subscriptionStore *SubscriptionStore
-	aggregator        *Aggregator
 	logger            *logrus.Entry
 	httpServer        *http.Server
 }
 
 // NewServer constructs a Server.
-func NewServer(
-	store *SubscriptionStore,
-	aggregator *Aggregator,
-	logger *logrus.Entry,
-) *Server {
+func NewServer(store *SubscriptionStore, logger *logrus.Entry) *Server {
 	server := &Server{
 		subscriptionStore: store,
-		aggregator:        aggregator,
 		logger:            logger,
 	}
 	server.httpServer = &http.Server{
@@ -308,6 +302,5 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 			UeIPAddress: ueIP,
 			AnyUE:       sub.AnyUE,
 		},
-		Snapshots: make(map[SessionKey]Counters),
 	}, nil
 }

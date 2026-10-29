@@ -10,7 +10,6 @@
 
 # Build
 build/
-bin/
 log/
 vendor/
 

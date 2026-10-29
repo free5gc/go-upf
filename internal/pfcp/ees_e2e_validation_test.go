@@ -157,8 +157,8 @@ func TestValidationEndToEndSMFUnaffectedByLiveEES(t *testing.T) {
 		log.SetOutput(io.Discard)
 		entry := logrus.NewEntry(log)
 		store = ees.NewSubscriptionStore("")
-		agg := ees.NewAggregator(store, 0, ees.NewNotifier(entry), entry, nil, nil)
-		api := httptest.NewServer(ees.NewServer(store, agg, entry).Handler())
+		agg := ees.NewAggregator(store, ees.NewNotifier(entry), entry)
+		api := httptest.NewServer(ees.NewServer(store, entry).Handler())
 		ctx, cancel := context.WithCancel(context.Background())
 		var wg sync.WaitGroup
 		wg.Add(2)

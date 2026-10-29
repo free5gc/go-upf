@@ -19,7 +19,7 @@ func TestModeOnDemandLifecycle(t *testing.T) {
 	gock.InterceptClient(notifier.httpClient)
 
 	// Mock Aggregator dependencies
-	aggregator := NewAggregator(store, 10*time.Second, notifier, logger, nil, nil)
+	aggregator := NewAggregator(store, notifier, logger)
 
 	sub := &Subscription{
 		NotifURI:            "http://subscriber:8080/callback",
@@ -65,14 +65,6 @@ func TestModeOnDemandLifecycle(t *testing.T) {
 	})
 
 	t.Run("OnDemandEmptyBuffer_ShouldWaitForMeasurement", func(t *testing.T) {
-		// Mock SessionProvider to return an active session
-		mockProvider := &mockSessionProvider{
-			sessions: map[uint64]SessionContext{
-				10: {UeIPv4Addr: "10.60.0.1", RemoteSEID: 99},
-			},
-		}
-		aggregator.sessionProvider = mockProvider
-
 		// Create a new ONE_TIME subscription targeting the UE
 		sub2 := &Subscription{
 			NotifURI:            "http://subscriber:8080/callback-zero",
@@ -100,17 +92,4 @@ func TestModeOnDemandLifecycle(t *testing.T) {
 		assert.True(t, exists, "Subscription must remain pending until a real measurement is delivered")
 		assert.True(t, gock.IsDone())
 	})
-}
-
-type mockSessionProvider struct {
-	sessions map[uint64]SessionContext
-}
-
-func (m *mockSessionProvider) GetSessionContexts() map[uint64]SessionContext {
-	return m.sessions
-}
-
-func (m *mockSessionProvider) GetSessionContextUEIP(lSeid uint64) (string, bool) {
-	ctx, ok := m.sessions[lSeid]
-	return ctx.UeIPv4Addr, ok
 }

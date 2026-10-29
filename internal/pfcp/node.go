@@ -873,13 +873,7 @@ func (n *LocalNode) DeleteSess(lSeid uint64) ([]report.USAReport, error) {
 	return usars, nil
 }
 
-// GetSessionContextUEIP returns the UE IPv4 address for a given SEID.
-// This is more efficient than GetSessionContexts when only the IP is needed.
-func (n *LocalNode) GetSessionContextUEIP(lSeid uint64) (string, bool) {
-	snapshot, ok := n.GetSessionContext(lSeid)
-	return snapshot.UeIPv4Addr, ok
-}
-
+// GetSessionContext returns the EES identity of an active local session.
 func (n *LocalNode) GetSessionContext(id uint64) (ees.SessionContext, bool) {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
@@ -897,56 +891,4 @@ func (s *Sess) identitySnapshot() ees.SessionContext {
 		identity.MeasurePeriod = info.measurePeriod
 	}
 	return identity
-}
-
-// [New] Implement ees.SessionProvider interface
-// Allow EES to obtain the context of active Sessions (RemoteSEID and URRIDs)
-func (n *LocalNode) GetSessionContexts() map[uint64]ees.SessionContext {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-
-	result := make(map[uint64]ees.SessionContext)
-
-	for _, sess := range n.sess {
-		if sess == nil {
-			continue
-		}
-		sess.mu.RLock()
-
-		// Collect all URR IDs under this Session
-		var urrIDs []uint32
-		if sess.URRIDs != nil {
-			for urrID := range sess.URRIDs {
-				urrIDs = append(urrIDs, urrID)
-			}
-		}
-
-		// Only monitor when Session has URR (or decide whether to include empty Session based on requirements)
-		if len(urrIDs) > 0 {
-			// Populate PDRs
-			var pdrs []*ees.PDRContext
-
-			// Correct iteration over PDRIDs map
-			for pdrID, pdrInfo := range sess.PDRIDs {
-				var pdrURRIDs []uint32
-				for uid := range pdrInfo.RelatedURRIDs {
-					pdrURRIDs = append(pdrURRIDs, uid)
-				}
-				pdrs = append(pdrs, &ees.PDRContext{
-					PDRID:  pdrID,
-					URRIDs: pdrURRIDs,
-				})
-			}
-
-			result[sess.LocalID] = ees.SessionContext{
-				RemoteSEID: sess.RemoteID,
-				Generation: sess.generation,
-				UeIPv4Addr: sess.UeIPv4Addr,
-				URRIDs:     urrIDs,
-				PDRs:       pdrs,
-			}
-		}
-		sess.mu.RUnlock()
-	}
-	return result
 }

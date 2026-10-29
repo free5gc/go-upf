@@ -52,7 +52,7 @@ func testAggregator(t *testing.T) (*Aggregator, *Subscription) {
 	sub := testSub()
 	_, err := store.CreateSubscription(sub)
 	require.NoError(t, err)
-	return NewAggregator(store, 10*time.Second, NewNotifier(testLogger()), testLogger(), nil, nil), sub
+	return NewAggregator(store, NewNotifier(testLogger()), testLogger()), sub
 }
 
 func TestTrafficVolumeWireFormatIncludesZero(t *testing.T) {
@@ -192,7 +192,7 @@ const validRequest = `{"subscription":{"nfId":"nf",` +
 	`"eventReportingMode":{"trigger":"PERIODIC","repPeriod":1},"ueIpAddress":{"ipv4Addr":"10.0.0.1"}}}`
 
 func TestAPIRejectsUnfulfillableRequestsAndWrongDeletePath(t *testing.T) {
-	srv := NewServer(NewSubscriptionStore(""), nil, testLogger())
+	srv := NewServer(NewSubscriptionStore(""), testLogger())
 	mux := http.NewServeMux()
 	srv.Routes(mux)
 	for name, body := range map[string]string{

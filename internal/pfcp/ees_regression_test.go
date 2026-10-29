@@ -89,14 +89,7 @@ func TestEESConcurrentRuleSnapshots(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 500; i++ {
 			node.GetSessionContext(s.LocalID)
-			node.GetSessionContextUEIP(s.LocalID)
-			snapshots := node.GetSessionContexts()
-			// Returned slices must be detached from mutable session maps.
-			for _, snapshot := range snapshots {
-				for _, pdr := range snapshot.PDRs {
-					pdr.URRIDs = append(pdr.URRIDs, 123)
-				}
-			}
+			s.identitySnapshot()
 		}
 	}()
 	wg.Wait()

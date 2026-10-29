@@ -54,8 +54,8 @@ subscriptions remain pending without fabricated data.
   (e.g. session release), the partial batch is sent half a URR period after the
   deadline. Without a periodic URR 2 the `repPeriod` is used as is. If an `anyUe`
   batch mixes sessions with different URR periods, the longest one is used.
-  `ees.periodSec` is deprecated. No-data intervals do not generate synthetic
-  reports.
+  The UPF config has no global period. No-data intervals do not generate
+  synthetic reports.
 - One request per subscription may be in flight. Different subscribers run
   independently. Cancellation propagates to HTTP requests, and shutdown waits
   for notification workers. Failed batches are retained and retried with a

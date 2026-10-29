@@ -115,19 +115,6 @@ type SessionKey struct {
 	UEIPv4     string
 }
 
-// Counters represents raw counters collected for a single session over an interval.
-// The interval is [StartTime, EndTime]; think "time window start/end" but field names
-// are strictly StartTime / EndTime per naming guideline.
-type Counters struct {
-	ULBytes   uint64
-	DLBytes   uint64
-	ULPackets uint64
-	DLPackets uint64
-
-	StartTime time.Time // measurement interval start time
-	EndTime   time.Time // measurement interval end time
-}
-
 // UsageMeasures represents a delta (relative to last snapshot) plus derived metrics
 // that are ready to be sent in a Notify payload.
 type UsageMeasures struct {
@@ -178,11 +165,6 @@ type Subscription struct {
 
 	CreatedAt  time.Time
 	LastNotify time.Time
-
-	// Snapshots keeps the last seen per-session counters for delta computation.
-	// Key: SessionKey (LocalSEID, RemoteSEID)
-	// Val: last counters over [StartTime, EndTime]
-	Snapshots map[SessionKey]Counters
 }
 
 // HasMeasurementType checks if the subscription requests the given measurement type.
@@ -195,18 +177,7 @@ func (s *Subscription) HasMeasurementType(mt MeasurementType) bool {
 	return false
 }
 
-// Source abstracts the producer of session-level counters for EES.
-// SnapshotNow should return a *copy* of current per-session counters, each with
-// their StartTime/EndTime representing the measurement interval the counters cover.
-type Source interface {
-	SnapshotNow() (map[SessionKey]Counters, error)
-}
-
-type PDRContext struct {
-	PDRID  uint16
-	URRIDs []uint32
-}
-
+// SessionContext is the session identity captured by PFCP with each report.
 type SessionContext struct {
 	RemoteSEID uint64
 	Generation uint64
@@ -214,13 +185,4 @@ type SessionContext struct {
 	// Periodic measurement period of SingleUPFMAQEURRID in this session;
 	// 0 when that URR does not report periodically.
 	MeasurePeriod time.Duration
-	URRIDs        []uint32
-	PDRs          []*PDRContext
-}
-
-// SessionProvider supplies immutable snapshots of SMF-provisioned sessions.
-// EES does not create shadow URRs.
-type SessionProvider interface {
-	GetSessionContexts() map[uint64]SessionContext
-	GetSessionContextUEIP(lSeid uint64) (string, bool)
 }

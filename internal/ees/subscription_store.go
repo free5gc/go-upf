@@ -80,9 +80,6 @@ func (store *SubscriptionStore) CreateSubscription(newSubscription *Subscription
 	newSubscription.ID = subscriptionID
 	newSubscription.CreatedAt = now
 	newSubscription.LastNotify = now // Initialize to now to avoid time overflow
-	if newSubscription.Snapshots == nil {
-		newSubscription.Snapshots = make(map[SessionKey]Counters)
-	}
 
 	store.mutexForSubscriptions.Lock()
 	store.subscriptionsByID[subscriptionID] = newSubscription

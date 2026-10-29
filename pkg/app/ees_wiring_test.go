@@ -43,6 +43,7 @@ ees:
   ip: 192.168.107.10
   port: 9090
   listenAddr: "10.0.0.1:1"
+  periodSec: 5
 `), &cfg))
 	require.Equal(t, &factory.EESConfig{Enabled: true, IP: "192.168.107.10", Port: 9090}, cfg.EES)
 }

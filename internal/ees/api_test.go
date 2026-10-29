@@ -18,7 +18,7 @@ func TestHandleCreateSubscription(t *testing.T) {
 	logger := logrus.NewEntry(logrus.New())
 	store := NewSubscriptionStore("")
 	// Aggregator can be nil for basic API validation testing if we don't hit ModeOnDemand
-	server := NewServer(store, nil, logger)
+	server := NewServer(store, logger)
 
 	t.Run("ValidPeriodicSubscription", func(t *testing.T) {
 		reqBody := createSubscriptionRequest{
