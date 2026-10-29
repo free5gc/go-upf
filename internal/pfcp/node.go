@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -30,6 +31,8 @@ type URRInfo struct {
 	report.MeasureMethod
 	report.MeasureInformation
 	refPdrNum uint16
+	// Period of the forwarder's periodic report timer; 0 when PERIO is off.
+	measurePeriod time.Duration
 }
 
 type Sess struct {
@@ -605,7 +608,7 @@ func (s *Sess) ApplyCreateURR(plan *forwarder.URRPlan) {
 		mInfo = plan.MeasureInfoIE
 	}
 
-	s.URRIDs[plan.URRID] = &URRInfo{
+	info := &URRInfo{
 		MeasureMethod: report.MeasureMethod{
 			DURAT: plan.OriginalIE.HasDURAT(),
 			VOLUM: plan.OriginalIE.HasVOLUM(),
@@ -619,6 +622,12 @@ func (s *Sess) ApplyCreateURR(plan *forwarder.URRPlan) {
 			MNOP: mInfo.HasMNOP(),
 		},
 	}
+	// Same condition the forwarder uses to arm its periodic report timer.
+	// UpdateURR does not re-arm that timer, so only CreateURR sets this.
+	if plan.ReportingTrigger.PERIO() && plan.MeasurePeriod > 0 {
+		info.measurePeriod = plan.MeasurePeriod
+	}
+	s.URRIDs[plan.URRID] = info
 }
 
 // ApplyUpdateURR updates session state after UpdateURR execution
@@ -883,7 +892,11 @@ func (n *LocalNode) GetSessionContext(id uint64) (ees.SessionContext, bool) {
 func (s *Sess) identitySnapshot() ees.SessionContext {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return ees.SessionContext{RemoteSEID: s.RemoteID, Generation: s.generation, UeIPv4Addr: s.UeIPv4Addr}
+	identity := ees.SessionContext{RemoteSEID: s.RemoteID, Generation: s.generation, UeIPv4Addr: s.UeIPv4Addr}
+	if info := s.URRIDs[ees.SingleUPFMAQEURRID]; info != nil && !info.removed {
+		identity.MeasurePeriod = info.measurePeriod
+	}
+	return identity
 }
 
 // [New] Implement ees.SessionProvider interface

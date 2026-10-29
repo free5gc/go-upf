@@ -266,3 +266,71 @@ func TestFailedBatchMergesWithReportsArrivingDuringRequest(t *testing.T) {
 		require.Equal(t, uint64(300), measure.ULBytesDelta)
 	}
 }
+
+func TestNotificationPeriodRoundsUpToURRPeriod(t *testing.T) {
+	for _, c := range []struct{ requested, base, want time.Duration }{
+		{5 * time.Second, 10 * time.Second, 10 * time.Second}, // never faster than the URR reports
+		{25 * time.Second, 10 * time.Second, 30 * time.Second},
+		{30 * time.Second, 10 * time.Second, 30 * time.Second},
+		{3 * time.Second, 2 * time.Second, 4 * time.Second},
+		{7 * time.Second, 0, 7 * time.Second}, // no periodic URR: as requested
+	} {
+		require.Equal(t, c.want, notificationPeriod(c.requested, c.base), "%v over %v", c.requested, c.base)
+	}
+}
+
+func windowReport(start, end time.Time) report.SessReport {
+	return report.SessReport{SEID: 1, Reports: []report.Report{report.USAReport{
+		URRID: SingleUPFMAQEURRID, StartTime: start, EndTime: end,
+		VolumMeasure: report.VolumeMeasure{UplinkVolume: 10},
+	}}}
+}
+
+func TestPeriodicSendsOnceWholeURRPeriodsAreCollected(t *testing.T) {
+	a, sub := testAggregator(t)
+	sub.Mode, sub.PeriodSec = ModePeriodic, 3 // rounded up to 4s over a 2s URR period
+	sub.MeasurementTypes = []MeasurementType{MeasureVolume, MeasureThroughput}
+	var bodies []string
+	a.notifier.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		b, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		bodies = append(bodies, string(b))
+		return response(204), nil
+	})
+	identity := SessionContext{Generation: 1, UeIPv4Addr: "10.0.0.1", MeasurePeriod: 2 * time.Second}
+	now := time.Now()
+
+	a.PushReportWithContext(windowReport(now.Add(-4*time.Second), now.Add(-2*time.Second)), identity)
+	n, err := a.TickOnce(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, n, "one 2s URR period does not fill a 4s notification period")
+
+	a.PushReportWithContext(windowReport(now.Add(-2*time.Second), now), identity)
+	n, err = a.TickOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, n, "sent as soon as two URR periods are collected, not on a wall-clock deadline")
+	require.Len(t, bodies, 1)
+	require.Contains(t, bodies[0], `"ulVolume":"20 B"`)
+	require.Contains(t, bodies[0], `"ulThroughput":"40 bps"`) // 20 B over the 4s span
+}
+
+func TestPeriodicSendsPartialBatchWhenReportsStop(t *testing.T) {
+	a, sub := testAggregator(t)
+	sub.Mode, sub.PeriodSec = ModePeriodic, 1
+	a.notifier.httpClient.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return response(204), nil
+	})
+	now := time.Now()
+	// e.g. the session was released shortly after its last full period.
+	a.PushReportWithContext(windowReport(now.Add(-200*time.Millisecond), now),
+		SessionContext{Generation: 1, UeIPv4Addr: "10.0.0.1", MeasurePeriod: time.Second})
+	n, err := a.TickOnce(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, n)
+	require.Eventually(t, func() bool {
+		n, err := a.TickOnce(context.Background())
+		return err == nil && n == 1
+	}, 3*time.Second, 50*time.Millisecond)
+	require.GreaterOrEqual(t, time.Since(sub.CreatedAt), 1400*time.Millisecond,
+		"partial batch waits for the deadline plus half a URR period")
+}

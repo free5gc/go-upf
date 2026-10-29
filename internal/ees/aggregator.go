@@ -110,7 +110,7 @@ func (a *Aggregator) dispatch(ctx context.Context) ([]<-chan bool, time.Duration
 			continue
 		}
 		sub.mu.RLock()
-		due := sub.LastNotify.Add(time.Duration(sub.PeriodSec) * time.Second)
+		due := periodicDue(sub.LastNotify, time.Duration(sub.PeriodSec)*time.Second, batch, now)
 		if sub.Mode == ModeOnDemand {
 			due = now
 		}
@@ -171,6 +171,39 @@ func (a *Aggregator) dispatch(ctx context.Context) ([]<-chan bool, time.Duration
 	return results, delay
 }
 
+// notificationPeriod rounds the requested period up to a whole number of URR
+// measurement periods, so each notification carries complete kernel reports.
+// Without a periodic URR (base 0) the requested period is used as is.
+func notificationPeriod(requested, base time.Duration) time.Duration {
+	if base <= 0 {
+		return requested
+	}
+	return (requested + base - 1) / base * base
+}
+
+// periodicDue returns when a PERIODIC batch should be sent. With a periodic
+// URR the batch is sent as soon as it spans the rounded period, aligned to
+// report arrival so jitter cannot split measurement periods unevenly. If
+// reports stop arriving (e.g. session release), the partial batch is sent half
+// a measurement period after the deadline.
+func periodicDue(last time.Time, requested time.Duration,
+	batch map[SessionKey]*UsageMeasures, now time.Time,
+) time.Time {
+	var base, span time.Duration
+	for _, m := range batch {
+		base = max(base, m.MeasurePeriod)
+		span = max(span, m.EndTime.Sub(m.StartTime))
+	}
+	period := notificationPeriod(requested, base)
+	if base == 0 {
+		return last.Add(period)
+	}
+	if span >= period-base/2 {
+		return now
+	}
+	return last.Add(period + base/2)
+}
+
 func mergeMeasure(m map[SessionKey]*UsageMeasures, incoming *UsageMeasures) {
 	existing, ok := m[incoming.Key]
 	if !ok {
@@ -183,6 +216,7 @@ func mergeMeasure(m map[SessionKey]*UsageMeasures, incoming *UsageMeasures) {
 	if incoming.EndTime.After(existing.EndTime) {
 		existing.EndTime = incoming.EndTime
 	}
+	existing.MeasurePeriod = max(existing.MeasurePeriod, incoming.MeasurePeriod)
 	existing.ULBytesDelta += incoming.ULBytesDelta
 	existing.DLBytesDelta += incoming.DLBytesDelta
 	existing.ULPacketsDelta += incoming.ULPacketsDelta
@@ -218,7 +252,8 @@ func (a *Aggregator) PushReportWithContext(sr report.SessReport, identity Sessio
 			LocalSEID: sr.SEID, RemoteSEID: identity.RemoteSEID,
 			Generation: identity.Generation, UEIPv4: identity.UeIPv4Addr,
 		},
-		UeIpv4Addr: identity.UeIPv4Addr,
+		UeIpv4Addr:    identity.UeIPv4Addr,
+		MeasurePeriod: identity.MeasurePeriod,
 	}
 	count := 0
 	for _, r := range sr.Reports {

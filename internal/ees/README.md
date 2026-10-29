@@ -46,10 +46,16 @@ subscriptions remain pending without fabricated data.
   `"0 B"` for a real zero-valued measurement.
 - `ONE_TIME` waits for the first real measurement and is deleted only after
   successful delivery. No session or no report is **not** zero usage.
-- Notification deadlines follow each subscription's `repPeriod`, not a global
-  ticker or the first installed URR's period. `ees.periodSec` is deprecated.
-  A requested notification period cannot make kernel measurements arrive
-  faster; no-data intervals do not generate synthetic reports.
+- `PERIODIC` notifications use the subscription's `repPeriod`, rounded up to a
+  whole number of URR 2 measurement periods of the reporting session (from its
+  CreateURR with the PERIO trigger), e.g. `repPeriod` 25 s over a 10 s URR period
+  is sent every 30 s, and 5 s becomes 10 s. A batch is sent as soon as it spans
+  that many URR periods, aligned to kernel report arrival. If reports stop
+  (e.g. session release), the partial batch is sent half a URR period after the
+  deadline. Without a periodic URR 2 the `repPeriod` is used as is. If an `anyUe`
+  batch mixes sessions with different URR periods, the longest one is used.
+  `ees.periodSec` is deprecated. No-data intervals do not generate synthetic
+  reports.
 - One request per subscription may be in flight. Different subscribers run
   independently. Cancellation propagates to HTTP requests, and shutdown waits
   for notification workers. Failed batches are retained and retried with a

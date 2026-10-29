@@ -151,6 +151,9 @@ type UsageMeasures struct {
 
 	// TS 29.564 UE identifiers
 	UeIpv4Addr string // UE IPv4 Address from session context
+
+	// URR measurement period the reports were produced at (0 if not periodic).
+	MeasurePeriod time.Duration
 }
 
 // Subscription holds the in-memory state for a single EES subscription.
@@ -208,8 +211,11 @@ type SessionContext struct {
 	RemoteSEID uint64
 	Generation uint64
 	UeIPv4Addr string // Added: UE IPv4 Address
-	URRIDs     []uint32
-	PDRs       []*PDRContext
+	// Periodic measurement period of SingleUPFMAQEURRID in this session;
+	// 0 when that URR does not report periodically.
+	MeasurePeriod time.Duration
+	URRIDs        []uint32
+	PDRs          []*PDRContext
 }
 
 // SessionProvider supplies immutable snapshots of SMF-provisioned sessions.
