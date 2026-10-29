@@ -175,6 +175,7 @@ func testCaseName(enabled, deletion bool) string {
 type eesDelivery struct {
 	seid, remote uint64
 	ueIP         string
+	period       time.Duration
 	urrs         []uint32
 }
 
@@ -186,7 +187,9 @@ func TestPFCPParityWithEESEnabled(t *testing.T) {
 	var got []eesDelivery
 	trace := runPFCPParityScenario(t, func(s *PfcpServer) {
 		s.RegisterEESReportHandler(func(sr report.SessReport, identity ees.SessionContext) {
-			d := eesDelivery{seid: sr.SEID, remote: identity.RemoteSEID, ueIP: identity.UeIPv4Addr}
+			d := eesDelivery{
+				seid: sr.SEID, remote: identity.RemoteSEID, ueIP: identity.UeIPv4Addr, period: identity.MeasurePeriod,
+			}
 			for _, r := range sr.Reports {
 				d.urrs = append(d.urrs, r.(report.USAReport).URRID)
 			}
@@ -202,12 +205,40 @@ func TestPFCPParityWithEESEnabled(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
+	// URR 2 is created with PERIO and a 10s Measurement Period in the scenario.
+	const p = 10 * time.Second
 	require.Equal(t, []eesDelivery{
-		{seid: 1, remote: 2, ueIP: "10.60.0.1", urrs: []uint32{1, 2, 3}}, // modify A response
-		{seid: 1, remote: 2, ueIP: "10.60.0.1", urrs: []uint32{3, 4}},    // remove branch response
-		{seid: 1, remote: 2, ueIP: "10.60.0.1", urrs: []uint32{1}},       // kernel report
-		{seid: 1, remote: 2, ueIP: "10.60.0.1", urrs: []uint32{1, 2}},    // deletion response
-		{seid: 2, remote: 1, ueIP: "10.60.0.2", urrs: []uint32{2}},       // kernel report
-		{seid: 2, remote: 1, ueIP: "10.60.0.2", urrs: []uint32{1, 2, 3, 4}},
+		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{1, 2, 3}}, // modify A response
+		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{3, 4}},    // remove branch response
+		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{1}},       // kernel report
+		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{1, 2}},    // deletion response
+		{seid: 2, remote: 1, ueIP: "10.60.0.2", period: p, urrs: []uint32{2}},       // kernel report
+		{seid: 2, remote: 1, ueIP: "10.60.0.2", period: p, urrs: []uint32{1, 2, 3, 4}},
 	}, got)
+}
+
+// The notification period is rounded to the forwarder's real report cadence:
+// only a CreateURR with PERIO arms that timer, and a removed URR has none.
+func TestEESIdentityCarriesMAQEMeasurementPeriod(t *testing.T) {
+	node := &LocalNode{}
+	remote := NewRemoteNode("smf", nil, node, forwarder.Empty{}, logger.PfcpLog)
+	s := remote.NewSess(99)
+	create := func(id uint32, perio bool) {
+		trigger := report.ReportingTrigger{}
+		if perio {
+			trigger.Flags = report.RPT_TRIG_PERIO
+		}
+		s.ApplyCreateURR(&forwarder.URRPlan{
+			URRID: id, ReportingTrigger: trigger, MeasurePeriod: 10 * time.Second,
+			OriginalIE: ie.NewCreateURR(ie.NewMeasurementMethod(0, 1, 0)),
+		})
+	}
+	create(ees.SingleUPFMAQEURRID, false)
+	require.Zero(t, s.identitySnapshot().MeasurePeriod, "period without PERIO arms no timer")
+	create(7, true)
+	require.Zero(t, s.identitySnapshot().MeasurePeriod, "only the MAQE URR sets the base period")
+	create(ees.SingleUPFMAQEURRID, true)
+	require.Equal(t, 10*time.Second, s.identitySnapshot().MeasurePeriod)
+	s.ApplyRemoveURR(&forwarder.URRPlan{URRID: ees.SingleUPFMAQEURRID})
+	require.Zero(t, s.identitySnapshot().MeasurePeriod)
 }
