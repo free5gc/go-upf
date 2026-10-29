@@ -110,9 +110,14 @@ func TestEESResponseReportsNeverReenterPFCPQueue(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		for _, deletion := range []bool{false, true} {
 			t.Run(testCaseName(enabled, deletion), func(t *testing.T) {
-				server := &PfcpServer{srCh: make(chan report.SessReport, 1), log: logger.PfcpLog}
+				server := &PfcpServer{
+					srCh: make(chan report.SessReport, 1), log: logger.PfcpLog, rnodes: make(map[string]*RemoteNode),
+				}
 				server.srCh <- report.SessReport{SEID: 777}
-				remote := NewRemoteNode("smf", nil, &server.lnode, eesReportDriver{}, logger.PfcpLog)
+				addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8805}
+				// Requests must come from the associated SMF that owns the session.
+				remote := NewRemoteNode("smf", addr, &server.lnode, eesReportDriver{}, logger.PfcpLog)
+				server.rnodes[remote.ID] = remote
 				sess := remote.NewSess(999) // intentionally not the local SEID
 				sess.ApplyCreatePDR(pdrPlan(1, "10.0.0.1", false))
 				sess.URRIDs[2] = &URRInfo{}
@@ -126,7 +131,6 @@ func TestEESResponseReportsNeverReenterPFCPQueue(t *testing.T) {
 				done := make(chan struct{})
 				go func() {
 					defer close(done)
-					addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8805}
 					if deletion {
 						server.handleSessionDeletionRequest(message.NewSessionDeletionRequest(0, 0, sess.LocalID, 1, 0), addr)
 					} else {

@@ -44,8 +44,10 @@ type Driver interface {
 	BuildUpdateBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
 	BuildRemoveBARPlan(lSeid uint64, req *ie.IE) (*BARPlan, error)
 
-	// ExecuteModificationPlan executes all operations in the plan
-	// Uses best-effort execution: continues on failure, logs errors
+	// ExecuteModificationPlan executes all operations in the plan.
+	// Create operations are fail-fast: on failure the rules created by this plan
+	// are rolled back and an error is returned. Remove/Update/Query operations
+	// are best-effort: failures are logged and execution continues.
 	ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResult, error)
 
 	// ExecuteEstablishmentPlan executes Create operations for session establishment
@@ -77,6 +79,7 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 			return nil, errors.Wrap(err, "open Gtp5g")
 		}
 
+		driver.iptables = NewIptablesManager()
 		link := driver.Link()
 		for _, dnn := range cfg.DnnList {
 			_, dst, err := net.ParseCIDR(dnn.Cidr)
@@ -88,6 +91,19 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 			if err != nil {
 				driver.Close()
 				return nil, err
+			}
+			if dnn.NatIfName != "" || dnn.NatIfCIDR != "" {
+				err = driver.iptables.AddDNNRules(
+					dnn.Cidr,
+					dnn.NatIfName,
+					dnn.NatIfCIDR,
+					dnn.IPForwardEnable,
+					dnn.TCPMss,
+				)
+				if err != nil {
+					driver.Close()
+					return nil, err
+				}
 			}
 		}
 		return driver, nil

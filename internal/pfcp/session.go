@@ -12,11 +12,27 @@ import (
 	"github.com/free5gc/go-upf/internal/report"
 )
 
+// hasPeerAssociation checks the current association records using the
+// transport address instead of trusting the Node ID supplied by a request.
+func (s *PfcpServer) hasPeerAssociation(addr net.Addr) bool {
+	for _, node := range s.rnodes {
+		if node.matchesPeer(addr) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *PfcpServer) handleSessionEstablishmentRequest(
 	req *message.SessionEstablishmentRequest,
 	addr net.Addr,
 ) {
 	s.log.Infoln("handleSessionEstablishmentRequest")
+
+	if !s.hasPeerAssociation(addr) {
+		s.sendSessEstFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
+		return
+	}
 
 	if req.NodeID == nil {
 		s.log.Errorln("not found NodeID")
@@ -35,6 +51,11 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	if !ok {
 		s.log.Errorf("not found NodeID %v\n", rnodeid)
 		s.sendSessEstFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
+		return
+	}
+	if !rnode.matchesPeer(addr) {
+		s.log.Warnf("Session Establishment rejected: peer %v does not match Node ID %q", addr, rnodeid)
+		s.sendSessEstFailRsp(req, addr, ie.CauseRequestRejected)
 		return
 	}
 
@@ -198,6 +219,14 @@ func (s *PfcpServer) handleSessionModificationRequest(
 ) {
 	s.log.Infoln("handleSessionModificationRequest")
 
+	// TS 29.244 clause 5.8.3: check the sender's association before
+	// looking up a session, including when the requested SEID is unknown.
+	if !s.hasPeerAssociation(addr) {
+		s.log.Warnf("Session Modification rejected: no PFCP association for peer %v", addr)
+		s.sendSessModFailRsp(req, nil, addr, ie.CauseNoEstablishedPFCPAssociation)
+		return
+	}
+
 	sess, err := s.lnode.Sess(req.SEID())
 	if err != nil {
 		s.log.Errorf("handleSessionModificationRequest: %v", err)
@@ -218,6 +247,14 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		return
 	}
 
+	// A SEID identifies a session; it does not authorize the sender to modify it.
+	// Check the bound, active association before touching any session or node state.
+	if !sess.rnode.matchesPeer(addr) || s.rnodes[sess.rnode.ID] != sess.rnode {
+		s.log.Warnf("Session Modification rejected: peer %v does not own SEID %#x", addr, req.SEID())
+		s.sendSessModFailRsp(req, nil, addr, ie.CauseRequestRejected)
+		return
+	}
+
 	// EES only (nil when disabled): keep identity for final reports of
 	// removed/replaced PDRs.
 	eesHandler := s.eesHandler()
@@ -226,18 +263,18 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		eesIdentity = sess.identitySnapshot()
 	}
 	if req.NodeID != nil {
-		// TS 29.244 7.5.4:
-		// This IE shall be present if a new SMF in an SMF Set,
-		// with one PFCP association per SMF and UPF (see clause 5.22.3),
-		// takes over the control of the PFCP session.
-		// When present, it shall contain the unique identifier of the new SMF.
-		rnodeid, err1 := req.NodeID.NodeID()
-		if err1 != nil {
-			s.log.Errorln(err1)
+		nodeID, err1 := req.NodeID.NodeID()
+		if err1 != nil || nodeID == "" {
+			s.log.Warnf("Session Modification rejected: invalid Node ID for SEID %#x", req.SEID())
+			s.sendSessModFailRsp(req, sess, addr, ie.CauseMandatoryIEIncorrect, ie.NewOffendingIE(ie.NodeID))
 			return
 		}
-		s.log.Debugf("new remote nodeid: %v\n", rnodeid)
-		s.UpdateNodeID(sess.rnode, rnodeid)
+		// SMF Set membership is not tracked, so a claimed Node ID cannot
+		// authorize takeover or rename an association shared by other sessions.
+		if nodeID != sess.rnode.ID {
+			s.sendSessModFailRsp(req, sess, addr, ie.CauseRequestRejected)
+			return
+		}
 	}
 
 	// ========================================================================
@@ -429,11 +466,19 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	// ========================================================================
-	// PHASE 2: Execution - Execute all operations via gtp5gnl (best-effort)
+	// PHASE 2: Execution - Execute all operations via gtp5gnl
+	// Create operations are fail-fast: an error here means a rule creation
+	// failed and the rules created by this plan were rolled back. Remove/Update
+	// operations are best-effort and never surface an error.
 	// ========================================================================
 	execResult, err1 := sess.rnode.driver.ExecuteModificationPlan(plan)
 	if err1 != nil {
-		s.log.Errorf("Execute Modification Plan err: %v", err1)
+		// A Create operation failed and was rolled back, so the session state
+		// must not be updated: reject the request instead of reporting success
+		// for rules that were not installed.
+		sess.log.Errorf("Mod execution error: %v", err1)
+		s.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
+		return
 	}
 
 	// ========================================================================
@@ -559,28 +604,23 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 	req *message.SessionDeletionRequest,
 	addr net.Addr,
 ) {
-	// TODO: error response
 	s.log.Infoln("handleSessionDeletionRequest")
+
+	if !s.hasPeerAssociation(addr) {
+		s.sendSessDelFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
+		return
+	}
 
 	lSeid := req.SEID()
 	sess, err := s.lnode.Sess(lSeid)
 	if err != nil {
 		s.log.Errorf("handleSessionDeletionRequest: %v", err)
-		rsp := message.NewSessionDeletionResponse(
-			0, // mp
-			0, // fo
-			0, // seid
-			req.Header.SequenceNumber,
-			0, // pri
-			ie.NewCause(ie.CauseSessionContextNotFound),
-			ie.NewReportType(0, 0, 1, 0),
-		)
-
-		err = s.sendRspTo(rsp, addr)
-		if err != nil {
-			s.log.Errorln(err)
-			return
-		}
+		s.sendSessDelFailRsp(req, addr, ie.CauseSessionContextNotFound)
+		return
+	}
+	if !sess.rnode.matchesPeer(addr) || s.rnodes[sess.rnode.ID] != sess.rnode {
+		s.log.Warnf("Session Deletion rejected: peer %v does not own SEID %#x", addr, lSeid)
+		s.sendSessDelFailRsp(req, addr, ie.CauseRequestRejected)
 		return
 	}
 
@@ -730,14 +770,28 @@ func (s *PfcpServer) sendSessEstFailRsp(
 	addr net.Addr,
 	cause uint8,
 ) {
+	var peerSEID uint64
+	if req.CPFSEID != nil {
+		if fseid, err := req.CPFSEID.FSEID(); err == nil {
+			peerSEID = fseid.SEID
+		}
+	}
 	rsp := message.NewSessionEstablishmentResponse(
 		0, // mp
 		0, // fo
-		0, // seid (session not created)
+		peerSEID,
 		req.Header.SequenceNumber,
 		0, // pri
+		newIeNodeID(s.nodeID),
 		ie.NewCause(cause),
 	)
+	if err := s.sendRspTo(rsp, addr); err != nil {
+		s.log.Errorln(err)
+	}
+}
+
+func (s *PfcpServer) sendSessDelFailRsp(req *message.SessionDeletionRequest, addr net.Addr, cause uint8) {
+	rsp := message.NewSessionDeletionResponse(0, 0, 0, req.Header.SequenceNumber, 0, ie.NewCause(cause))
 	if err := s.sendRspTo(rsp, addr); err != nil {
 		s.log.Errorln(err)
 	}
@@ -748,14 +802,20 @@ func (s *PfcpServer) sendSessModFailRsp(
 	sess *Sess,
 	addr net.Addr,
 	cause uint8,
+	additionalIEs ...*ie.IE,
 ) {
+	var seid uint64
+	if sess != nil {
+		seid = sess.RemoteID
+	}
+	ies := append([]*ie.IE{ie.NewCause(cause)}, additionalIEs...)
 	rsp := message.NewSessionModificationResponse(
-		0,             // mp
-		0,             // fo
-		sess.RemoteID, // seid
+		0, // mp
+		0, // fo
+		seid,
 		req.Header.SequenceNumber,
 		0, // pri
-		ie.NewCause(cause),
+		ies...,
 	)
 	err := s.sendRspTo(rsp, addr)
 	if err != nil {

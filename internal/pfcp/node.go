@@ -712,6 +712,20 @@ func NewRemoteNode(
 	return n
 }
 
+// matchesPeer compares the transport peer, not the self-reported Node ID.
+// Request source ports are locally allocated (TS 29.244 clause 4.2.2).
+func (n *RemoteNode) matchesPeer(addr net.Addr) bool {
+	if n == nil {
+		return false
+	}
+	peer, ok := addr.(*net.UDPAddr)
+	if !ok || peer == nil || len(peer.IP) == 0 {
+		return false
+	}
+	bound, ok := n.addr.(*net.UDPAddr)
+	return ok && bound != nil && len(bound.IP) != 0 && bound.IP.Equal(peer.IP) && bound.Zone == peer.Zone
+}
+
 func (n *RemoteNode) Reset() {
 	for id := range n.sess {
 		n.DeleteSess(id)
