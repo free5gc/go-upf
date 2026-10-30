@@ -39,8 +39,13 @@ type PDRPlan struct {
 	Attrs      []nl.Attr
 	OriginalIE *ie.IE
 	// Parsed fields for node.go to use
-	PDRID  uint16
-	URRIDs []uint32
+	PDRID uint16
+	// FAR ID is a single optional reference (TS 29.244 Table 7.5.2.2-1), so
+	// HasFARID distinguishes "no FAR ID IE present" from "FAR ID 0 referenced".
+	HasFARID bool
+	FARID    uint32
+	URRIDs   []uint32
+	QERIDs   []uint32
 }
 
 // FARPlan contains validated FAR operation parameters

@@ -228,6 +228,20 @@ func (s *Sess) ValidateCreatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan
 		return nil, ErrRuleCreationModificationFailed
 	}
 
+	// Validate FAR reference exists (in session state or in-flight creates; TS 29.244 6.3.2.3)
+	if plan.HasFARID {
+		if _, ok := s.FARIDs[plan.FARID]; !ok && !modPlan.HasCreateFAR(plan.FARID) {
+			return nil, ErrRuleCreationModificationFailed
+		}
+	}
+
+	// Validate QER references exist (in session state or in-flight creates)
+	for _, qerid := range plan.QERIDs {
+		if _, ok := s.QERIDs[qerid]; !ok && !modPlan.HasCreateQER(qerid) {
+			return nil, ErrRuleCreationModificationFailed
+		}
+	}
+
 	// Validate URR references exist (in session state or in-flight creates)
 	for _, urrid := range plan.URRIDs {
 		if _, ok := s.URRIDs[urrid]; !ok && !modPlan.HasCreateURR(urrid) {
@@ -248,6 +262,22 @@ func (s *Sess) ValidateUpdatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan
 	// Validate PDR exists (in session state or in-flight creates)
 	if _, ok := s.PDRIDs[plan.PDRID]; !ok && !modPlan.HasCreatePDR(plan.PDRID) {
 		return nil, ErrRuleNotFound
+	}
+
+	// Validate FAR reference exists (in session state or in-flight creates).
+	// Same dangling-reference gap as ValidateCreatePDR: an Update PDR can
+	// repoint a PDR at a FAR ID that was never created.
+	if plan.HasFARID {
+		if _, ok := s.FARIDs[plan.FARID]; !ok && !modPlan.HasCreateFAR(plan.FARID) {
+			return nil, ErrRuleCreationModificationFailed
+		}
+	}
+
+	// Validate QER references exist (in session state or in-flight creates)
+	for _, qerid := range plan.QERIDs {
+		if _, ok := s.QERIDs[qerid]; !ok && !modPlan.HasCreateQER(qerid) {
+			return nil, ErrRuleCreationModificationFailed
+		}
 	}
 
 	return plan, nil
