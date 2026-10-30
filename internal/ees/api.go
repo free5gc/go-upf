@@ -120,13 +120,11 @@ type IPAddr struct {
 type UpfEvent struct {
 	Type             string   `json:"type"`
 	MeasurementTypes []string `json:"measurementTypes,omitempty"`
-	// TS 29.564: Required when type=USER_DATA_USAGE_MEASURES
+	// TS 29.564: PER_SESSION, PER_APPLICATION or PER_FLOW; only PER_SESSION is supported.
 	GranularityOfMeasurement string `json:"granularityOfMeasurement,omitempty"`
-	// PER_SESSION, PER_APPLICATION, PER_FLOW
-	AppIds []string `json:"appIds,omitempty"`
-	// Required for PER_APPLICATION
+	// Used with PER_APPLICATION / PER_FLOW; decoded only to reject them with PER_SESSION.
+	AppIds         []string          `json:"appIds,omitempty"`
 	TrafficFilters []FlowInformation `json:"trafficFilters,omitempty"`
-	// Required for PER_FLOW
 }
 
 type UpfEventMode struct {
@@ -236,13 +234,26 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 
 	// MVP: Only support the first event for now
 	e := sub.EventList[0]
-	if e.Type != string(EventUserDataUsageMeasures) {
-		return nil, fmt.Errorf("unsupported event type: %s", e.Type)
+	// TS 29.564 values this profile does not implement are told apart from
+	// unknown values; both are rejected with 400.
+	switch EventType(e.Type) {
+	case EventUserDataUsageMeasures:
+	case EventUserDataUsageTrends:
+		return nil, fmt.Errorf("event type %s is not supported by this UPF", e.Type)
+	default:
+		return nil, fmt.Errorf("unknown event type: %q", e.Type)
 	}
 
 	// MVP: Only support PER_SESSION granularity
-	if e.GranularityOfMeasurement != string(GranularityPerSession) {
-		return nil, fmt.Errorf("unsupported granularity: %s (MVP only supports PER_SESSION)", e.GranularityOfMeasurement)
+	switch Granularity(e.GranularityOfMeasurement) {
+	case GranularityPerSession:
+	case GranularityPerApplication, GranularityPerFlow:
+		return nil, fmt.Errorf("granularity %s is not supported by this UPF (only PER_SESSION)",
+			e.GranularityOfMeasurement)
+	case "":
+		return nil, errors.New("granularityOfMeasurement is required")
+	default:
+		return nil, fmt.Errorf("unknown granularity: %q", e.GranularityOfMeasurement)
 	}
 	if len(e.AppIds) != 0 || len(e.TrafficFilters) != 0 {
 		return nil, errors.New("PER_SESSION cannot include appIds or trafficFilters")
@@ -268,8 +279,12 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 	mTypes := make([]MeasurementType, 0, len(e.MeasurementTypes))
 	for _, mt := range e.MeasurementTypes {
 		mtStr := MeasurementType(strings.ToUpper(mt))
-		if mtStr != MeasureVolume && mtStr != MeasureThroughput {
-			return nil, fmt.Errorf("unsupported measurementType: %s", mt)
+		switch mtStr {
+		case MeasureVolume, MeasureThroughput:
+		case MeasureAppInfo:
+			return nil, fmt.Errorf("measurementType %s is not supported by this UPF", mt)
+		default:
+			return nil, fmt.Errorf("unknown measurementType: %q", mt)
 		}
 		mTypes = append(mTypes, mtStr)
 	}

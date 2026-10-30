@@ -13,7 +13,10 @@ trace recorded from upstream free5gc/go-upf (`0012ceb`; re-recording on
 `6404375` gives the same trace).
 
 This implementation exposes `USER_DATA_USAGE_MEASURES`, `PER_SESSION`, IPv4,
-and `VOLUME_MEASUREMENT` / `THROUGHPUT_MEASUREMENT`.
+and `VOLUME_MEASUREMENT` / `THROUGHPUT_MEASUREMENT`. Other TS 29.564 values
+(`USER_DATA_USAGE_TRENDS`, `PER_APPLICATION`, `PER_FLOW`,
+`APPLICATION_RELATED_INFO`) are rejected with 400 as not supported, with an
+error distinct from values the specification does not define.
 It uses existing SMF-provisioned measurements, not shadow URRs.
 
 ## URR selection is intentionally constrained

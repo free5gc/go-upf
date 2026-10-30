@@ -138,6 +138,7 @@ func TestValidationAPICreateMatrix(t *testing.T) {
 		{"two events", edit(func(s, e, _ map[string]any) { s["eventList"] = []any{e, e} })},
 		{"trends event", edit(func(_, e, _ map[string]any) { e["type"] = "USER_DATA_USAGE_TRENDS" })},
 		{"per application", edit(func(_, e, _ map[string]any) { e["granularityOfMeasurement"] = "PER_APPLICATION" })},
+		{"per flow", edit(func(_, e, _ map[string]any) { e["granularityOfMeasurement"] = "PER_FLOW" })},
 		{"missing granularity", edit(func(_, e, _ map[string]any) { delete(e, "granularityOfMeasurement") })},
 		{"per session with appIds", edit(func(_, e, _ map[string]any) { e["appIds"] = []any{"app"} })},
 		{"per session with filters", edit(func(_, e, _ map[string]any) {
@@ -182,6 +183,47 @@ func TestValidationAPICreateMatrix(t *testing.T) {
 	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 		rsp, _ := do(t, method, api.URL+eeCollection, nil)
 		require.Equal(t, http.StatusMethodNotAllowed, rsp.StatusCode, method)
+	}
+}
+
+// TS 29.564 values outside this profile are rejected as not supported,
+// distinct from values the specification does not define.
+func TestValidationAPINotSupportedVersusUnknown(t *testing.T) {
+	api := httptest.NewServer(NewServer(NewSubscriptionStore(""), testLogger()).Handler())
+	defer api.Close()
+
+	for _, tc := range []struct {
+		name, want string
+		body       []byte
+	}{
+		{"trends event", "not supported by this UPF", edit(func(_, e, _ map[string]any) {
+			e["type"] = "USER_DATA_USAGE_TRENDS"
+		})},
+		{"unknown event", "unknown event type", edit(func(_, e, _ map[string]any) { e["type"] = "USER_DATA_USAGE" })},
+		{"per application", "not supported by this UPF", edit(func(_, e, _ map[string]any) {
+			e["granularityOfMeasurement"] = "PER_APPLICATION"
+		})},
+		{"per flow", "not supported by this UPF", edit(func(_, e, _ map[string]any) {
+			e["granularityOfMeasurement"] = "PER_FLOW"
+		})},
+		{"unknown granularity", "unknown granularity", edit(func(_, e, _ map[string]any) {
+			e["granularityOfMeasurement"] = "PER_UE"
+		})},
+		{"missing granularity", "granularityOfMeasurement is required", edit(func(_, e, _ map[string]any) {
+			delete(e, "granularityOfMeasurement")
+		})},
+		{"app info measurement", "not supported by this UPF", edit(func(_, e, _ map[string]any) {
+			e["measurementTypes"] = []any{"APPLICATION_RELATED_INFO"}
+		})},
+		{"unknown measurement", "unknown measurementType", edit(func(_, e, _ map[string]any) {
+			e["measurementTypes"] = []any{"VOLUME"}
+		})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rsp, body := do(t, http.MethodPost, api.URL+eeCollection, tc.body)
+			require.Equal(t, http.StatusBadRequest, rsp.StatusCode)
+			require.Contains(t, string(body), tc.want)
+		})
 	}
 }
 
