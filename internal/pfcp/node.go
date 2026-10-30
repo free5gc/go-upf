@@ -3,11 +3,14 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/ie"
 
+	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 	logger_util "github.com/free5gc/util/logger"
@@ -19,6 +22,7 @@ const (
 
 type PDRInfo struct {
 	RelatedURRIDs map[uint32]struct{}
+	UEIPv4        string
 }
 
 type URRInfo struct {
@@ -27,20 +31,26 @@ type URRInfo struct {
 	report.MeasureMethod
 	report.MeasureInformation
 	refPdrNum uint16
+	// Period of the forwarder's periodic report timer; 0 when PERIO is off.
+	measurePeriod time.Duration
 }
 
 type Sess struct {
-	rnode    *RemoteNode
-	LocalID  uint64
-	RemoteID uint64
-	PDRIDs   map[uint16]*PDRInfo    // key: PDR_ID
-	FARIDs   map[uint32]struct{}    // key: FAR_ID
-	QERIDs   map[uint32]struct{}    // key: QER_ID
-	URRIDs   map[uint32]*URRInfo    // key: URR_ID
-	BARIDs   map[uint8]struct{}     // key: BAR_ID
-	q        map[uint16]chan []byte // key: PDR_ID
-	qlen     int
-	log      *logrus.Entry
+	// PFCP owns rule mutation; EES readers share this lock with Apply* writers.
+	mu         sync.RWMutex
+	generation uint64
+	rnode      *RemoteNode
+	LocalID    uint64
+	RemoteID   uint64
+	UeIPv4Addr string                 // UE IPv4 from the PDI of the session PDRs
+	PDRIDs     map[uint16]*PDRInfo    // key: PDR_ID
+	FARIDs     map[uint32]struct{}    // key: FAR_ID
+	QERIDs     map[uint32]struct{}    // key: QER_ID
+	URRIDs     map[uint32]*URRInfo    // key: URR_ID
+	BARIDs     map[uint8]struct{}     // key: BAR_ID
+	q          map[uint16]chan []byte // key: PDR_ID
+	qlen       int
+	log        *logrus.Entry
 }
 
 var (
@@ -208,6 +218,8 @@ func (s *Sess) Pop(pdrid uint16) ([]byte, bool) {
 }
 
 func (s *Sess) URRSeq(urrid uint32) uint32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	info, ok := s.URRIDs[urrid]
 	if !ok {
 		return 0
@@ -449,6 +461,8 @@ func (s *Sess) ValidateRemoveBAR(req *ie.IE, modPlan *forwarder.ModificationPlan
 
 // ApplyCreatePDR updates session state after CreatePDR execution
 func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	urrids := make(map[uint32]struct{})
 	for _, urrid := range plan.URRIDs {
 		urrids[urrid] = struct{}{}
@@ -460,15 +474,20 @@ func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
 	s.PDRIDs[plan.PDRID] = &PDRInfo{
 		RelatedURRIDs: urrids,
 	}
+	s.updatePDRIdentity(plan)
 }
 
 // ApplyUpdatePDR updates session state after UpdatePDR execution
 // Returns USAReports from disassociated URRs
 func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	pdrInfo, ok := s.PDRIDs[plan.PDRID]
 	if !ok {
 		return nil
 	}
+	// Identity tracking only; URR association semantics stay as upstream.
+	s.updatePDRIdentity(plan)
 
 	newUrrids := make(map[uint32]struct{})
 	for _, urrid := range plan.URRIDs {
@@ -492,6 +511,8 @@ func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
 // ApplyRemovePDR updates session state after RemovePDR execution
 // Returns USAReports from disassociated URRs
 func (s *Sess) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	pdrInfo, ok := s.PDRIDs[plan.PDRID]
 	if !ok {
 		return nil
@@ -505,8 +526,57 @@ func (s *Sess) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
 		}
 	}
 	delete(s.PDRIDs, plan.PDRID)
+	s.refreshUEIdentity()
 
 	return usars
+}
+
+// Called with s.mu held, and only after the data-plane operation succeeded.
+func (s *Sess) updatePDRIdentity(plan *forwarder.PDRPlan) {
+	if plan.OriginalIE == nil {
+		return
+	}
+	var children []*ie.IE
+	var err error
+	switch plan.OriginalIE.Type {
+	case ie.CreatePDR:
+		children, err = plan.OriginalIE.CreatePDR()
+	case ie.UpdatePDR:
+		children, err = plan.OriginalIE.UpdatePDR()
+	}
+	if err != nil {
+		return
+	}
+	for _, child := range children {
+		if child.Type != ie.PDI {
+			continue
+		}
+		address, err := child.UEIPAddress()
+		if err != nil {
+			continue
+		} // An omitted address preserves the old value.
+		ip := ""
+		if v4 := address.IPv4Address.To4(); v4 != nil {
+			ip = v4.String()
+		}
+		s.PDRIDs[plan.PDRID].UEIPv4 = ip
+		if ip != "" {
+			s.UeIPv4Addr = ip
+		} else {
+			s.refreshUEIdentity()
+		}
+	}
+}
+
+func (s *Sess) refreshUEIdentity() {
+	s.UeIPv4Addr = ""
+	// Prefer the lowest PDR ID for deterministic snapshots.
+	var selected uint16
+	for id, pdr := range s.PDRIDs {
+		if pdr.UEIPv4 != "" && (s.UeIPv4Addr == "" || id < selected) {
+			s.UeIPv4Addr, selected = pdr.UEIPv4, id
+		}
+	}
 }
 
 // ApplyCreateFAR updates session state after CreateFAR execution
@@ -531,12 +601,14 @@ func (s *Sess) ApplyRemoveQER(plan *forwarder.QERPlan) {
 
 // ApplyCreateURR updates session state after CreateURR execution
 func (s *Sess) ApplyCreateURR(plan *forwarder.URRPlan) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	mInfo := &ie.IE{}
 	if plan.MeasureInfoIE != nil {
 		mInfo = plan.MeasureInfoIE
 	}
 
-	s.URRIDs[plan.URRID] = &URRInfo{
+	info := &URRInfo{
 		MeasureMethod: report.MeasureMethod{
 			DURAT: plan.OriginalIE.HasDURAT(),
 			VOLUM: plan.OriginalIE.HasVOLUM(),
@@ -550,10 +622,18 @@ func (s *Sess) ApplyCreateURR(plan *forwarder.URRPlan) {
 			MNOP: mInfo.HasMNOP(),
 		},
 	}
+	// Same condition the forwarder uses to arm its periodic report timer.
+	// UpdateURR does not re-arm that timer, so only CreateURR sets this.
+	if plan.ReportingTrigger.PERIO() && plan.MeasurePeriod > 0 {
+		info.measurePeriod = plan.MeasurePeriod
+	}
+	s.URRIDs[plan.URRID] = info
 }
 
 // ApplyUpdateURR updates session state after UpdateURR execution
 func (s *Sess) ApplyUpdateURR(plan *forwarder.URRPlan) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	urrInfo, ok := s.URRIDs[plan.URRID]
 	if !ok {
 		return
@@ -578,6 +658,8 @@ func (s *Sess) ApplyUpdateURR(plan *forwarder.URRPlan) {
 
 // ApplyRemoveURR updates session state after RemoveURR execution
 func (s *Sess) ApplyRemoveURR(plan *forwarder.URRPlan) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if info, ok := s.URRIDs[plan.URRID]; ok {
 		info.removed = true
 	}
@@ -595,6 +677,8 @@ func (s *Sess) ApplyRemoveBAR(plan *forwarder.BARPlan) {
 
 // CleanupRemovedURRs removes URRInfo entries marked as removed
 func (s *Sess) CleanupRemovedURRs() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for id, info := range s.URRIDs {
 		if info.removed {
 			delete(s.URRIDs, id)
@@ -685,11 +769,16 @@ func (n *RemoteNode) DeleteSess(lSeid uint64) []report.USAReport {
 }
 
 type LocalNode struct {
-	sess []*Sess
-	free []uint64
+	generation uint64
+	sess       []*Sess
+	free       []uint64
+	mu         sync.RWMutex
 }
 
 func (n *LocalNode) Reset() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	for _, sess := range n.sess {
 		if sess != nil {
 			sess.Close()
@@ -703,6 +792,9 @@ func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 	if lSeid == 0 {
 		return nil, errors.New("Sess: invalid lSeid:0")
 	}
+
+	n.mu.RLock()
+	defer n.mu.RUnlock()
 
 	// Length as int; compare as uint64 to match lSeid type.
 	sessLen := len(n.sess)
@@ -720,6 +812,9 @@ func (n *LocalNode) Sess(lSeid uint64) (*Sess, error) {
 }
 
 func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
 	addrString := ""
 	if addr != nil {
 		addrString = addr.String()
@@ -737,15 +832,20 @@ func (n *LocalNode) RemoteSess(rSeid uint64, addr net.Addr) (*Sess, error) {
 }
 
 func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.generation++
 	s := &Sess{
-		RemoteID: rSeid,
-		PDRIDs:   make(map[uint16]*PDRInfo),
-		FARIDs:   make(map[uint32]struct{}),
-		QERIDs:   make(map[uint32]struct{}),
-		URRIDs:   make(map[uint32]*URRInfo),
-		BARIDs:   make(map[uint8]struct{}),
-		q:        make(map[uint16]chan []byte),
-		qlen:     qlen,
+		generation: n.generation,
+		RemoteID:   rSeid,
+		PDRIDs:     make(map[uint16]*PDRInfo),
+		FARIDs:     make(map[uint32]struct{}),
+		QERIDs:     make(map[uint32]struct{}),
+		URRIDs:     make(map[uint32]*URRInfo),
+		BARIDs:     make(map[uint8]struct{}),
+		q:          make(map[uint16]chan []byte),
+		qlen:       qlen,
 	}
 	last := len(n.free) - 1
 	if last >= 0 {
@@ -763,6 +863,9 @@ func (n *LocalNode) DeleteSess(lSeid uint64) ([]report.USAReport, error) {
 	if lSeid == 0 {
 		return nil, errors.New("DeleteSess: invalid lSeid:0")
 	}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
 
 	// Capacity as int; compare as uint64 to match lSeid type.
 	sessCap := len(n.sess)
@@ -782,4 +885,24 @@ func (n *LocalNode) DeleteSess(lSeid uint64) ([]report.USAReport, error) {
 	n.free = append(n.free, lSeid)
 
 	return usars, nil
+}
+
+// GetSessionContext returns the EES identity of an active local session.
+func (n *LocalNode) GetSessionContext(id uint64) (ees.SessionContext, bool) {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	if id == 0 || id > uint64(len(n.sess)) || n.sess[id-1] == nil {
+		return ees.SessionContext{}, false
+	}
+	return n.sess[id-1].identitySnapshot(), true
+}
+
+func (s *Sess) identitySnapshot() ees.SessionContext {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	identity := ees.SessionContext{RemoteSEID: s.RemoteID, Generation: s.generation, UeIPv4Addr: s.UeIPv4Addr}
+	if info := s.URRIDs[ees.SingleUPFMAQEURRID]; info != nil && !info.removed {
+		identity.MeasurePeriod = info.measurePeriod
+	}
+	return identity
 }
