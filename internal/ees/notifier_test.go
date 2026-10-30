@@ -2,6 +2,7 @@ package ees
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -46,7 +47,7 @@ func TestNotifier_Notify(t *testing.T) {
 			Reply(200).
 			BodyString("OK")
 
-		err := notifier.Notify(sub, measures)
+		err := notifier.NotifyContext(context.Background(), sub, measures)
 		assert.NoError(t, err)
 		assert.True(t, gock.IsDone())
 	})
@@ -70,7 +71,7 @@ func TestNotifier_Notify(t *testing.T) {
 			}).
 			Reply(204)
 
-		err := notifier.Notify(sub, measures)
+		err := notifier.NotifyContext(context.Background(), sub, measures)
 		assert.NoError(t, err)
 		assert.True(t, gock.IsDone())
 	})
@@ -81,7 +82,7 @@ func TestNotifier_Notify(t *testing.T) {
 			Reply(500).
 			BodyString("Internal Server Error")
 
-		err := notifier.Notify(sub, measures)
+		err := notifier.NotifyContext(context.Background(), sub, measures)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "non-2xx response")
 		assert.True(t, gock.IsDone())
@@ -100,7 +101,7 @@ func TestNotifier_Notify(t *testing.T) {
 			},
 		}
 
-		err := notifier.Notify(sub, invalidMeasures)
+		err := notifier.NotifyContext(context.Background(), sub, invalidMeasures)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "missing UE IPv4 address")
 	})

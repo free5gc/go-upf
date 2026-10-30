@@ -34,7 +34,7 @@ func listening(addr string) bool {
 	return conn.Close() == nil
 }
 
-// V5: the "ees" block of the UPF YAML maps to ip/port; old keys are ignored.
+// the "ees" block of the UPF YAML maps to ip/port; old keys are ignored.
 func TestValidationEESConfigKeys(t *testing.T) {
 	var cfg factory.Config
 	require.NoError(t, yaml.Unmarshal([]byte(`
@@ -48,7 +48,7 @@ ees:
 	require.Equal(t, &factory.EESConfig{Enabled: true, IP: "192.168.107.10", Port: 9090}, cfg.EES)
 }
 
-// V5: initEES starts nothing unless enabled, and serves the API when enabled.
+// initEES starts nothing unless enabled, and serves the API when enabled.
 func TestValidationInitEESWiring(t *testing.T) {
 	port := freePort(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)

@@ -6,7 +6,7 @@
 //   DELETE /nupf-ee/v1/ee-subscriptions/{id}   -> Delete subscription
 //
 // Scope & constraints (MVP):
-// - Only USER_DATA_USAGE_MEASURES + perPduSession are accepted.
+// - Only USER_DATA_USAGE_MEASURES + PER_SESSION are accepted.
 // - PERIODIC and ONE_TIME wait for real measurements; no synthetic zero reports.
 // - Uses SMF-provisioned URRs for data collection (no Shadow URR).
 

@@ -42,7 +42,7 @@ type Sess struct {
 	rnode      *RemoteNode
 	LocalID    uint64
 	RemoteID   uint64
-	UeIPv4Addr string                 // Added: UE IPv4 Address derived from PDR
+	UeIPv4Addr string                 // UE IPv4 from the PDI of the session PDRs
 	PDRIDs     map[uint16]*PDRInfo    // key: PDR_ID
 	FARIDs     map[uint32]struct{}    // key: FAR_ID
 	QERIDs     map[uint32]struct{}    // key: QER_ID

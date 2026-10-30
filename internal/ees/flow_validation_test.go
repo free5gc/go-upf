@@ -61,7 +61,7 @@ func do(t *testing.T, method, url string, body []byte) (apiResult, []byte) {
 	return apiResult{StatusCode: rsp.StatusCode, Header: rsp.Header}, b
 }
 
-// V1: every accepted and rejected subscription form, over real HTTP.
+// every accepted and rejected subscription form, over real HTTP.
 func TestValidationAPICreateMatrix(t *testing.T) {
 	store := NewSubscriptionStore("")
 	api := httptest.NewServer(NewServer(store, testLogger()).Handler())
@@ -185,7 +185,7 @@ func TestValidationAPICreateMatrix(t *testing.T) {
 	}
 }
 
-// V1: DELETE semantics and that the scheduler drops a deleted subscription.
+// DELETE semantics and that the scheduler drops a deleted subscription.
 func TestValidationAPIDeleteMatrix(t *testing.T) {
 	store := NewSubscriptionStore("")
 	agg := NewAggregator(store, NewNotifier(testLogger()), testLogger())
@@ -304,7 +304,7 @@ func pushScenario(agg *Aggregator) {
 	agg.PushReportWithContext(sessReport(3, usar(2, 0, 10*time.Second, 1, 1, 1, 1)), SessionContext{RemoteSEID: 9})
 }
 
-// V2: the exact notification body for each measurement type and target.
+// the exact notification body for each measurement type and target.
 func TestValidationNotificationContentMatrix(t *testing.T) {
 	volA := map[string]any{
 		"totalVolume": "4500 B", "ulVolume": "1500 B", "dlVolume": "3000 B",
@@ -417,7 +417,7 @@ func TestValidationNotificationContentMatrix(t *testing.T) {
 	}
 }
 
-// V2: a recycled local SEID with a new generation is a separate session item.
+// a recycled local SEID with a new generation is a separate session item.
 func TestValidationRecycledSEIDKeepsSessionsApart(t *testing.T) {
 	c := newConsumer(t)
 	store := NewSubscriptionStore("")
@@ -441,7 +441,7 @@ func TestValidationRecycledSEIDKeepsSessionsApart(t *testing.T) {
 	require.ElementsMatch(t, []string{"100 B", "200 B"}, uls)
 }
 
-// V3: when a PERIODIC batch is due for every relation of requested period,
+// when a PERIODIC batch is due for every relation of requested period,
 // URR base period and collected span.
 func TestValidationPeriodicDueTable(t *testing.T) {
 	last := t0
@@ -471,7 +471,7 @@ func TestValidationPeriodicDueTable(t *testing.T) {
 	}
 }
 
-// V3: the whole subscription lifecycle against one consumer, over the API:
+// the whole subscription lifecycle against one consumer, over the API:
 // create -> notify -> failed delivery keeps data -> retry merges -> delete ->
 // nothing more is sent.
 func TestValidationPeriodicLifecycleWithRetryAndDelete(t *testing.T) {

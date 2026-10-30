@@ -4,12 +4,13 @@
 
 EES currently supports **only the free5GC single-UPF scenario**. Keep it
 disabled (`ees.enabled: false`, the default) in ULCL or other multi-UPF
-deployments; ULCL support for EES is tracked separately.
+deployments; ULCL support for EES can be addressed separately.
 
 With EES disabled, no EES code runs on the PFCP path: PFCP messages and
 forwarder calls are identical to upstream, including for ULCL-style sessions.
 `internal/pfcp/ees_disabled_parity_test.go` enforces this against a golden
-trace recorded from upstream free5gc/go-upf (`0012ceb`, unchanged on `6b71f51`).
+trace recorded from upstream free5gc/go-upf (`0012ceb`; re-recording on
+`6404375` gives the same trace).
 
 This implementation exposes `USER_DATA_USAGE_MEASURES`, `PER_SESSION`, IPv4,
 and `VOLUME_MEASUREMENT` / `THROUGHPUT_MEASUREMENT`.
@@ -33,7 +34,7 @@ subscriptions remain pending without fabricated data.
 - `ueIpAddress` is an object, e.g. `{"ipv4Addr":"10.60.0.1"}`.
   Alternatively, `anyUe: true` selects all IPv4 sessions.
 - `eventReportingMode.repPeriod` is a positive number of seconds for `PERIODIC`.
-  The old `reportPeriod` spelling is not accepted as a periodic interval.
+  `reportPeriod` is not recognized as the interval.
 - Creation returns the same absolute resource URI in `Location` and
   `subscriptionId`; DELETE uses the last path segment as the ID, at the exact
   `/nupf-ee/v1/ee-subscriptions/{id}` route.
@@ -74,7 +75,7 @@ Target selection currently uses IPv4, not SUPI/DNN/S-NSSAI. Supplementary
 identifiers sent alongside IPv4 by the SMF are not retained as independent
 filters in the created resource. Deploy only where the targeted IPv4 uniquely
 identifies the intended session scope; overlapping address domains need an
-extended identity/filter model. This change does not implement those selectors,
+extended identity/filter model. This profile does not implement those selectors,
 feature negotiation, expiry/max-report controls, or immediate-report requests.
 
 An HTTP timeout does not prove the consumer failed to process a notification.
@@ -87,6 +88,7 @@ From the repository root:
 
 ```sh
 go test -race ./internal/ees ./internal/pfcp
+go test -race -run TestValidation ./pkg/app
 go test -short ./...
 ```
 

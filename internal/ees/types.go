@@ -1,5 +1,5 @@
 // Package ees contains types and interfaces for the UPF Event Exposure Service (EES)
-// MVP: USER_DATA_USAGE_MEASURES with per-PDU-session granularity and periodic/on-demand reporting.
+// MVP: USER_DATA_USAGE_MEASURES with PER_SESSION granularity and PERIODIC/ONE_TIME reporting.
 
 package ees
 
@@ -16,23 +16,17 @@ const (
 	// EventUserDataUsageMeasures reports per-interval usage deltas (bytes/packets, UL/DL),
 	// optionally with throughputs derived from (delta bytes) / (EndTime - StartTime).
 	EventUserDataUsageMeasures EventType = "USER_DATA_USAGE_MEASURES"
-	// EventUserDataUsageTrends reports throughput statistics.
+	// EventUserDataUsageTrends is defined by TS 29.564 but not supported here.
 	EventUserDataUsageTrends EventType = "USER_DATA_USAGE_TRENDS"
 )
 
-// UserDataUsageMeasurements represents measurements per TS 29.564.
-// Contains volume and/or throughput statistics measurements.
+// UserDataUsageMeasurements represents PER_SESSION measurements per TS 29.564.
 type UserDataUsageMeasurements struct {
-	// Granularity identifiers
-	AppId    string           `json:"appId,omitempty"`    // For PER_APPLICATION granularity
-	FlowInfo *FlowInformation `json:"flowInfo,omitempty"` // For PER_FLOW granularity
-
-	VolumeMeasurement               *VolumeMeasurement               `json:"volumeMeasurement,omitempty"`
-	ThroughputMeasurement           *ThroughputMeasurement           `json:"throughputMeasurement,omitempty"`
-	ThroughputStatisticsMeasurement *ThroughputStatisticsMeasurement `json:"throughputStatisticsMeasurement,omitempty"`
+	VolumeMeasurement     *VolumeMeasurement     `json:"volumeMeasurement,omitempty"`
+	ThroughputMeasurement *ThroughputMeasurement `json:"throughputMeasurement,omitempty"`
 }
 
-// FlowInformation per TS 29.512 FlowInformation schema.
+// FlowInformation per TS 29.512; decoded only to reject PER_SESSION filters.
 type FlowInformation struct {
 	FlowDescription string `json:"flowDescription,omitempty"` // IPFilterRule format
 	FlowDirection   string `json:"flowDirection,omitempty"`   // UPLINK, DOWNLINK, BIDIRECTIONAL
@@ -56,22 +50,16 @@ type ThroughputMeasurement struct {
 	DlPacketThroughput string `json:"dlPacketThroughput,omitempty"` // PacketRate
 }
 
-// ThroughputStatisticsMeasurement per TS 29.564 schema.
-type ThroughputStatisticsMeasurement struct {
-	UlAverageThroughput string `json:"ulAverageThroughput,omitempty"` // BitRate as string per spec
-	DlAverageThroughput string `json:"dlAverageThroughput,omitempty"` // BitRate as string per spec
-}
-
 // Granularity controls the level of aggregation for the event.
-// MVP only: perPduSession.
+// MVP only: PER_SESSION.
 type Granularity string
 
 const (
 	// GranularityPerSession reports measurements per PDU session.
 	GranularityPerSession Granularity = "PER_SESSION"
-	// GranularityPerApplication reports measurements grouped by application ID.
+	// GranularityPerApplication is defined by TS 29.564 but not supported here.
 	GranularityPerApplication Granularity = "PER_APPLICATION"
-	// GranularityPerFlow reports measurements grouped by traffic flow.
+	// GranularityPerFlow is defined by TS 29.564 but not supported here.
 	GranularityPerFlow Granularity = "PER_FLOW"
 )
 
@@ -79,7 +67,8 @@ const (
 type Mode string
 
 const (
-	// ModePeriodic: deliver available measurements at PeriodSec-second intervals.
+	// ModePeriodic: deliver measurements every PeriodSec seconds, rounded up to
+	// whole URR measurement periods (see periodicDue).
 	ModePeriodic Mode = "PERIODIC"
 	// ModeOnDemand: wait for real data, report once, delete after successful delivery.
 	ModeOnDemand Mode = "ON_DEMAND"
@@ -94,7 +83,7 @@ const (
 	MeasureVolume MeasurementType = "VOLUME_MEASUREMENT"
 	// MeasureThroughput requests throughput measurements (bit rate).
 	MeasureThroughput MeasurementType = "THROUGHPUT_MEASUREMENT"
-	// MeasureAppInfo requests application-related information.
+	// MeasureAppInfo is defined by TS 29.564 but not supported here.
 	MeasureAppInfo MeasurementType = "APPLICATION_RELATED_INFO"
 )
 
@@ -107,7 +96,7 @@ type TargetScope struct {
 }
 
 // SessionKey uniquely identifies a session for reporting purposes.
-// MVP: use SEIDs; UE IP can be added later without breaking the map key.
+// It combines both SEIDs, the local allocation generation and the UE IP.
 type SessionKey struct {
 	LocalSEID  uint64 // UPF user-plane SEID
 	RemoteSEID uint64 // SMF control-plane SEID
@@ -115,8 +104,8 @@ type SessionKey struct {
 	UEIPv4     string
 }
 
-// UsageMeasures represents a delta (relative to last snapshot) plus derived metrics
-// that are ready to be sent in a Notify payload.
+// UsageMeasures is usage accumulated from reports over [StartTime, EndTime],
+// plus derived metrics, ready to be sent in a Notify payload.
 type UsageMeasures struct {
 	Key SessionKey
 
@@ -128,7 +117,7 @@ type UsageMeasures struct {
 	StartTime time.Time // interval start
 	EndTime   time.Time // interval end
 
-	// Derived metrics (optional in MVP; aggregator may compute them).
+	// Derived bit rates, computed by the aggregator before sending.
 	ULThroughputBps float64
 	DLThroughputBps float64
 
@@ -148,8 +137,8 @@ type Subscription struct {
 	mu                  sync.RWMutex
 	ID                  string
 	NotifURI            string
-	NotifyCorrelationID string // Added: Client-provided correlation ID
-	NfID                string // Added: NF Instance ID
+	NotifyCorrelationID string // client-provided correlation ID
+	NfID                string // consumer NF instance ID
 	Event               EventType
 	Target              TargetScope
 	Granularity         Granularity
@@ -158,10 +147,6 @@ type Subscription struct {
 
 	// TS 29.564: MeasurementTypes specifies which measurements are requested.
 	MeasurementTypes []MeasurementType
-
-	// TS 29.564: Granularity-specific filters
-	AppIds         []string          `json:"appIds,omitempty"`         // For PER_APPLICATION
-	TrafficFilters []FlowInformation `json:"trafficFilters,omitempty"` // For PER_FLOW
 
 	CreatedAt  time.Time
 	LastNotify time.Time
@@ -181,7 +166,7 @@ func (s *Subscription) HasMeasurementType(mt MeasurementType) bool {
 type SessionContext struct {
 	RemoteSEID uint64
 	Generation uint64
-	UeIPv4Addr string // Added: UE IPv4 Address
+	UeIPv4Addr string
 	// Periodic measurement period of SingleUPFMAQEURRID in this session;
 	// 0 when that URR does not report periodically.
 	MeasurePeriod time.Duration

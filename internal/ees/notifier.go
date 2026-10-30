@@ -3,9 +3,8 @@
 //
 // Behavior (MVP):
 // - Sends USER_DATA_USAGE_MEASURES notifications to sub.NotifURI via HTTP POST.
-// - Payload contains subscription ID, event ID, granularity, and a list of items,
-//   each item includes LocalSEID, RemoteSEID, UL/DL bytes/packets, StartTime/EndTime,
-//   and optional derived throughputs.
+// - Payload carries the correlation ID and one item per session: UE IPv4,
+//   start time, and the requested volume and/or throughput measurements.
 // - Uses a per-request timeout; the Aggregator retains and retries failed batches.
 // - Logs both success and failure with descriptive fields.
 
@@ -75,18 +74,13 @@ type NotificationItem struct {
 	UeIpv4Addr string `json:"ueIpv4Addr,omitempty"`
 
 	// Optional fields
-	Supi      string     `json:"supi,omitempty"`
 	StartTime *time.Time `json:"startTime,omitempty"`
 
 	// Measurements array per TS 29.564
 	UserDataUsageMeasurements []UserDataUsageMeasurements `json:"userDataUsageMeasurements,omitempty"`
 }
 
-// Notify converts a set of UsageMeasures into a POST request per TS 29.564.
-func (notifier *Notifier) Notify(subscription *Subscription, measures []UsageMeasures) error {
-	return notifier.NotifyContext(context.Background(), subscription, measures)
-}
-
+// NotifyContext converts a set of UsageMeasures into a POST request per TS 29.564.
 func (notifier *Notifier) NotifyContext(
 	parent context.Context, subscription *Subscription, measures []UsageMeasures,
 ) error {
@@ -138,9 +132,7 @@ func (notifier *Notifier) NotifyContext(
 				}
 			}
 
-			if measurement.VolumeMeasurement == nil &&
-				measurement.ThroughputMeasurement == nil &&
-				measurement.ThroughputStatisticsMeasurement == nil {
+			if measurement.VolumeMeasurement == nil && measurement.ThroughputMeasurement == nil {
 				return fmt.Errorf("notify: subscriptionId=%s has no supported measurementTypes", subscription.ID)
 			}
 			item.UserDataUsageMeasurements = append(item.UserDataUsageMeasurements, measurement)

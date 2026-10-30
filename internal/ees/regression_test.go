@@ -65,7 +65,8 @@ func TestTrafficVolumeWireFormatIncludesZero(t *testing.T) {
 		require.Equal(t, "0 B", volume.DlVolume)
 		return response(204), nil
 	})
-	require.NoError(t, n.Notify(testSub(), []UsageMeasures{{UeIpv4Addr: "10.0.0.1", ULBytesDelta: 123}}))
+	measures := []UsageMeasures{{UeIpv4Addr: "10.0.0.1", ULBytesDelta: 123}}
+	require.NoError(t, n.NotifyContext(context.Background(), testSub(), measures))
 }
 
 func TestSessionGenerationAndMAQESelection(t *testing.T) {
