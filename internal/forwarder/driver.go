@@ -13,6 +13,17 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
+// ErrMandatoryIEMissing reports an IE that TS 29.244 marks Mandatory and that is
+// absent from the request. Build*Plan methods wrap it so that callers can map it
+// onto the PFCP cause "Mandatory IE missing" via errors.Is.
+var ErrMandatoryIEMissing = errors.New("mandatory IE missing")
+
+// ErrConditionalIEMissing reports an IE that TS 29.244 marks Conditional and
+// whose condition, evaluated against the other IEs in the same request, requires
+// it to be present. Build*Plan methods wrap it so that callers can map it onto
+// the PFCP cause "Conditional IE missing" via errors.Is.
+var ErrConditionalIEMissing = errors.New("conditional IE missing")
+
 type Driver interface {
 	Close()
 

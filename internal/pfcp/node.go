@@ -51,6 +51,21 @@ var (
 	ErrMutualExclusionConflict        = errors.New("conflicting operations on same rule")
 )
 
+// pfcpErrFromDriverErr maps a forwarder sentinel onto the session-level error
+// that pfcpCauseFromError turns into the matching PFCP cause. Driver errors
+// carrying no sentinel (parse failures, netlink errors) yield fallback, which
+// differs per operation.
+func pfcpErrFromDriverErr(err error, fallback error) error {
+	switch {
+	case errors.Is(err, forwarder.ErrMandatoryIEMissing):
+		return ErrMissingMandatoryIE
+	case errors.Is(err, forwarder.ErrConditionalIEMissing):
+		return ErrMissingConditionalIE
+	default:
+		return fallback
+	}
+}
+
 func (s *Sess) Close() []report.USAReport {
 	plan := forwarder.NewModificationPlan(s.LocalID)
 
@@ -225,7 +240,8 @@ func (s *Sess) URRSeq(urrid uint32) uint32 {
 func (s *Sess) ValidateCreatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.PDRPlan, error) {
 	plan, err := s.rnode.driver.BuildCreatePDRPlan(s.LocalID, req)
 	if err != nil {
-		return nil, ErrRuleCreationModificationFailed
+		s.log.Warnf("ValidateCreatePDR: %v", err)
+		return nil, pfcpErrFromDriverErr(err, ErrRuleCreationModificationFailed)
 	}
 
 	// Validate URR references exist (in session state or in-flight creates)
@@ -242,7 +258,8 @@ func (s *Sess) ValidateCreatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan
 func (s *Sess) ValidateUpdatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.PDRPlan, error) {
 	plan, err := s.rnode.driver.BuildUpdatePDRPlan(s.LocalID, req)
 	if err != nil {
-		return nil, ErrMissingMandatoryIE
+		s.log.Warnf("ValidateUpdatePDR: %v", err)
+		return nil, pfcpErrFromDriverErr(err, ErrRuleCreationModificationFailed)
 	}
 
 	// Validate PDR exists (in session state or in-flight creates)
