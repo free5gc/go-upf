@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/message"
 
+	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
@@ -44,6 +45,8 @@ type TransactionTimeout struct {
 }
 
 type PfcpServer struct {
+	eesMu        sync.RWMutex
+	eesReport    func(report.SessReport, ees.SessionContext)
 	cfg          *factory.Config
 	listen       string
 	nodeID       string
@@ -265,7 +268,43 @@ func (s *PfcpServer) UpdateNodeID(n *RemoteNode, newId string) {
 }
 
 func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
+	if handler := s.eesHandler(); handler != nil {
+		if identity, ok := s.lnode.GetSessionContext(sr.SEID); ok {
+			handler(sr, identity)
+		}
+	}
 	s.srCh <- sr
+}
+
+// RegisterEESReportHandler installs a buffer-only callback, never a PFCP queue
+// writer or network notifier. It is safe to register while the server runs.
+func (s *PfcpServer) RegisterEESReportHandler(handler func(report.SessReport, ees.SessionContext)) {
+	s.eesMu.Lock()
+	defer s.eesMu.Unlock()
+	s.eesReport = handler
+}
+
+// eesHandler returns the registered EES callback, or nil when EES is disabled.
+func (s *PfcpServer) eesHandler() func(report.SessReport, ees.SessionContext) {
+	s.eesMu.RLock()
+	defer s.eesMu.RUnlock()
+	return s.eesReport
+}
+
+// deliverEESUsage hands usage already carried in a PFCP response to EES only.
+// It never writes srCh, so the usage is not reported to the SMF again and the
+// PFCP loop cannot block on its own queue.
+func deliverEESUsage(handler func(report.SessReport, ees.SessionContext),
+	lSeid uint64, identity ees.SessionContext, usages []report.USAReport,
+) {
+	if handler == nil || len(usages) == 0 {
+		return
+	}
+	reports := make([]report.Report, len(usages))
+	for i := range usages {
+		reports[i] = usages[i]
+	}
+	handler(report.SessReport{SEID: lSeid, Reports: reports}, identity)
 }
 
 func (s *PfcpServer) NotifyTransTimeout(trType TransType, trID string) {

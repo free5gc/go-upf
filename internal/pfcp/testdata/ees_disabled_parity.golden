@@ -1,0 +1,134 @@
+== association
+Association Setup Response seq=1 cause=1
+== establish A (ULCL rules)
+Session Establishment Response seq=2 seid=0x2 len=123
+  0008000f003800020001005d0005020a3c0001
+  0008000f003800020002005d0005020a3c0001
+  0008000f003800020003005d0005020a3c0001
+  0008000f003800020004005d0005020a3c0001
+  0013000101
+  0039000d0200000000000000017f000001
+  003c0005007f000001
+== establish B
+Session Establishment Response seq=3 seid=0x1 len=123
+  0008000f003800020001005d0005020a3c0002
+  0008000f003800020002005d0005020a3c0002
+  0008000f003800020003005d0005020a3c0002
+  0008000f003800020004005d0005020a3c0002
+  0013000101
+  0039000d0200000000000000027f000001
+  003c0005007f000001
+== modify A
+Session Modification Response seq=4 seid=0x2 len=237
+  0013000101
+  004e004400510004000000010068000400000000003f0003820000004b0004ee91c529004c0004ee91c52a004200190700000000002dd27b00000000000f462900000000001e8c52
+  004e004400510004000000020068000400000000003f0003020800004b0004ee91c911004c0004ee91c912004200190700000000002dde3300000000000f4a1100000000001e9422
+  004e004400510004000000030068000400000000003f0003020000004b0004ee91ccf9004c0004ee91ccfa004200190700000000002de9eb00000000000f4df900000000001e9bf2
+== modify A: remove branch
+Session Modification Response seq=5 seid=0x2 len=165
+  0013000101
+  004e004400510004000000030068000400000001003f0003020800004b0004ee91ccfa004c0004ee91ccfb004200190700000000002de9ee00000000000f4dfa00000000001e9bf4
+  004e004400510004000000040068000400000000003f0003020800004b0004ee91d0e1004c0004ee91d0e2004200190700000000002df5a300000000000f51e100000000001ea3c2
+== kernel report A urr 1
+Session Report Request seq=0 seid=0x2 len=93
+  0027000102
+  0050004400510004000000010068000400000001003f0003020000004b0004ee91c52a004c0004ee91c52b004200190700000000002dd27e00000000000f462a00000000001e8c54
+== delete A
+Session Deletion Response seq=6 seid=0x2 len=165
+  0013000101
+  004f004400510004000000010068000400000002003f0003020800004b0004ee91c52b004c0004ee91c52c004200190700000000002dd28100000000000f462b00000000001e8c56
+  004f004400510004000000020068000400000001003f0003020800004b0004ee91c912004c0004ee91c913004200190700000000002dde3600000000000f4a1200000000001e9424
+== kernel report B urr 2
+Session Report Request seq=1 seid=0x1 len=93
+  0027000102
+  0050004400510004000000020068000400000000003f0003020000004b0004eea10b51004c0004eea10b52004200190700000000005ba4f300000000001e8c5100000000003d18a2
+== delete B
+Session Deletion Response seq=7 seid=0x1 len=309
+  0013000101
+  004f004400510004000000010068000400000000003f0003020800004b0004eea10769004c0004eea1076a004200190700000000005b993b00000000001e886900000000003d10d2
+  004f004400510004000000020068000400000001003f0003020800004b0004eea10b52004c0004eea10b53004200190700000000005ba4f600000000001e8c5200000000003d18a4
+  004f004400510004000000030068000400000000003f0003020800004b0004eea10f39004c0004eea10f3a004200190700000000005bb0ab00000000001e903900000000003d2072
+  004f004400510004000000040068000400000000003f0003020800004b0004eea11321004c0004eea11322004200190700000000005bbc6300000000001e942100000000003d2842
+== forwarder calls
+ExecuteEstablishment seid=1
+  CreateFAR 1 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:256} {Type:2 length:0 Value:20481} {Type:4 length:0 Value:2152} {Type:3 length:0 Value:[10 200 200 101]}]}]}]
+  CreateFAR 2 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:256} {Type:2 length:0 Value:20482} {Type:4 length:0 Value:2152} {Type:3 length:0 Value:[10 200 200 102]}]}]}]
+  CreateFAR 3 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:256} {Type:2 length:0 Value:256} {Type:4 length:0 Value:2152} {Type:3 length:0 Value:[10 200 200 1]}]}]}]
+  CreatePDR 1 [{Type:4 length:0 Value:255} {Type:5 length:0 Value:[{Type:4 length:0 Value:0} {Type:2 length:0 Value:[{Type:1 length:0 Value:257} {Type:2 length:0 Value:[10 200 200 2]}]} {Type:1 length:0 Value:[10 60 0 1]}]} {Type:6 length:0 Value:0} {Type:7 length:0 Value:1} {Type:10 length:0 Value:1} {Type:12 length:0 Value:1} {Type:12 length:0 Value:2} {Type:9 length:0 Value:/}]
+  CreatePDR 2 [{Type:4 length:0 Value:100} {Type:5 length:0 Value:[{Type:4 length:0 Value:0} {Type:2 length:0 Value:[{Type:1 length:0 Value:257} {Type:2 length:0 Value:[10 200 200 2]}]} {Type:1 length:0 Value:[10 60 0 1]} {Type:3 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:1} {Type:2 length:0 Value:2} {Type:3 length:0 Value:255} {Type:4 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:5 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:6 length:0 Value:[10 100 0 0]} {Type:7 length:0 Value:[255 255 0 0]} {Type:8 length:0 Value:[]} {Type:9 length:0 Value:[]}]} {Type:5 length:0 Value:1}]}]} {Type:6 length:0 Value:0} {Type:7 length:0 Value:2} {Type:10 length:0 Value:1} {Type:12 length:0 Value:3} {Type:9 length:0 Value:/}]
+  CreatePDR 3 [{Type:4 length:0 Value:255} {Type:5 length:0 Value:[{Type:4 length:0 Value:1} {Type:1 length:0 Value:[10 60 0 1]}]} {Type:7 length:0 Value:3} {Type:10 length:0 Value:1} {Type:12 length:0 Value:1} {Type:12 length:0 Value:2} {Type:9 length:0 Value:/}]
+  CreatePDR 4 [{Type:4 length:0 Value:100} {Type:5 length:0 Value:[{Type:4 length:0 Value:1} {Type:1 length:0 Value:[10 60 0 1]} {Type:3 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:1} {Type:2 length:0 Value:2} {Type:3 length:0 Value:255} {Type:4 length:0 Value:[10 100 0 0]} {Type:5 length:0 Value:[255 255 0 0]} {Type:6 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:7 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:8 length:0 Value:[]} {Type:9 length:0 Value:[]}]} {Type:5 length:0 Value:2}]}]} {Type:7 length:0 Value:3} {Type:10 length:0 Value:1} {Type:12 length:0 Value:3} {Type:12 length:0 Value:4} {Type:9 length:0 Value:/}]
+  CreateQER 1 [{Type:4 length:0 Value:0} {Type:5 length:0 Value:[{Type:1 length:0 Value:781} {Type:2 length:0 Value:64} {Type:3 length:0 Value:390} {Type:4 length:0 Value:160}]}]
+  CreateURR 1 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:2} {Type:9 length:0 Value:[{Type:1 length:0 Value:7} {Type:2 length:0 Value:9000} {Type:3 length:0 Value:6000} {Type:4 length:0 Value:3000}]}]
+  CreateURR 2 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:3} {Type:6 length:0 Value:1410065408} {Type:9 length:0 Value:[{Type:1 length:0 Value:7} {Type:2 length:0 Value:8000} {Type:3 length:0 Value:4000} {Type:4 length:0 Value:4000}]}]
+  CreateURR 3 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:2} {Type:9 length:0 Value:[{Type:1 length:0 Value:7} {Type:2 length:0 Value:7000} {Type:3 length:0 Value:3500} {Type:4 length:0 Value:3500}]}]
+  CreateURR 4 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:2} {Type:9 length:0 Value:[{Type:1 length:0 Value:7} {Type:2 length:0 Value:6000} {Type:3 length:0 Value:3000} {Type:4 length:0 Value:3000}]}]
+ExecuteEstablishment seid=2
+  CreateFAR 1 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:256} {Type:2 length:0 Value:20481} {Type:4 length:0 Value:2152} {Type:3 length:0 Value:[10 200 200 101]}]}]}]
+  CreateFAR 2 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:256} {Type:2 length:0 Value:20482} {Type:4 length:0 Value:2152} {Type:3 length:0 Value:[10 200 200 102]}]}]}]
+  CreateFAR 3 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:256} {Type:2 length:0 Value:512} {Type:4 length:0 Value:2152} {Type:3 length:0 Value:[10 200 200 1]}]}]}]
+  CreatePDR 1 [{Type:4 length:0 Value:255} {Type:5 length:0 Value:[{Type:4 length:0 Value:0} {Type:2 length:0 Value:[{Type:1 length:0 Value:513} {Type:2 length:0 Value:[10 200 200 2]}]} {Type:1 length:0 Value:[10 60 0 2]}]} {Type:6 length:0 Value:0} {Type:7 length:0 Value:1} {Type:10 length:0 Value:1} {Type:12 length:0 Value:1} {Type:12 length:0 Value:2} {Type:9 length:0 Value:/}]
+  CreatePDR 2 [{Type:4 length:0 Value:100} {Type:5 length:0 Value:[{Type:4 length:0 Value:0} {Type:2 length:0 Value:[{Type:1 length:0 Value:513} {Type:2 length:0 Value:[10 200 200 2]}]} {Type:1 length:0 Value:[10 60 0 2]} {Type:3 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:1} {Type:2 length:0 Value:2} {Type:3 length:0 Value:255} {Type:4 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:5 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:6 length:0 Value:[10 100 0 0]} {Type:7 length:0 Value:[255 255 0 0]} {Type:8 length:0 Value:[]} {Type:9 length:0 Value:[]}]} {Type:5 length:0 Value:1}]}]} {Type:6 length:0 Value:0} {Type:7 length:0 Value:2} {Type:10 length:0 Value:1} {Type:12 length:0 Value:3} {Type:9 length:0 Value:/}]
+  CreatePDR 3 [{Type:4 length:0 Value:255} {Type:5 length:0 Value:[{Type:4 length:0 Value:1} {Type:1 length:0 Value:[10 60 0 2]}]} {Type:7 length:0 Value:3} {Type:10 length:0 Value:1} {Type:12 length:0 Value:1} {Type:12 length:0 Value:2} {Type:9 length:0 Value:/}]
+  CreatePDR 4 [{Type:4 length:0 Value:100} {Type:5 length:0 Value:[{Type:4 length:0 Value:1} {Type:1 length:0 Value:[10 60 0 2]} {Type:3 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:1} {Type:2 length:0 Value:2} {Type:3 length:0 Value:255} {Type:4 length:0 Value:[10 100 0 0]} {Type:5 length:0 Value:[255 255 0 0]} {Type:6 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:7 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:8 length:0 Value:[]} {Type:9 length:0 Value:[]}]} {Type:5 length:0 Value:2}]}]} {Type:7 length:0 Value:3} {Type:10 length:0 Value:1} {Type:12 length:0 Value:3} {Type:12 length:0 Value:4} {Type:9 length:0 Value:/}]
+  CreateQER 1 [{Type:4 length:0 Value:0} {Type:5 length:0 Value:[{Type:1 length:0 Value:781} {Type:2 length:0 Value:64} {Type:3 length:0 Value:390} {Type:4 length:0 Value:160}]}]
+  CreateURR 1 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:2} {Type:9 length:0 Value:[{Type:1 length:0 Value:7} {Type:2 length:0 Value:9000} {Type:3 length:0 Value:6000} {Type:4 length:0 Value:3000}]}]
+  CreateURR 2 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:3} {Type:6 length:0 Value:1410065408} {Type:9 length:0 Value:[{Type:1 length:0 Value:7} {Type:2 length:0 Value:8000} {Type:3 length:0 Value:4000} {Type:4 length:0 Value:4000}]}]
+  CreateURR 3 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:2} {Type:9 length:0 Value:[{Type:1 length:0 Value:7} {Type:2 length:0 Value:7000} {Type:3 length:0 Value:3500} {Type:4 length:0 Value:3500}]}]
+  CreateURR 4 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:2} {Type:9 length:0 Value:[{Type:1 length:0 Value:7} {Type:2 length:0 Value:6000} {Type:3 length:0 Value:3000} {Type:4 length:0 Value:3000}]}]
+ExecuteModification seid=1
+  CreatePDR 5 [{Type:4 length:0 Value:90} {Type:5 length:0 Value:[{Type:4 length:0 Value:0} {Type:2 length:0 Value:[{Type:1 length:0 Value:257} {Type:2 length:0 Value:[10 200 200 2]}]} {Type:1 length:0 Value:[10 60 0 1]} {Type:3 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:1} {Type:2 length:0 Value:2} {Type:3 length:0 Value:255} {Type:4 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:5 length:0 Value:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]} {Type:6 length:0 Value:[10 101 0 0]} {Type:7 length:0 Value:[255 255 0 0]} {Type:8 length:0 Value:[]} {Type:9 length:0 Value:[]}]} {Type:5 length:0 Value:3}]}]} {Type:6 length:0 Value:0} {Type:7 length:0 Value:2} {Type:12 length:0 Value:4} {Type:9 length:0 Value:/}]
+  QueryURR 1 <nil>
+  RemovePDR 4 <nil>
+  UpdateFAR 2 [{Type:4 length:0 Value:2} {Type:5 length:0 Value:[{Type:1 length:0 Value:[{Type:1 length:0 Value:256} {Type:2 length:0 Value:20483} {Type:4 length:0 Value:2152} {Type:3 length:0 Value:[10 200 200 103]}]}]}]
+  UpdatePDR 1 [{Type:7 length:0 Value:1} {Type:12 length:0 Value:1}]
+  UpdatePDR 3 [{Type:4 length:0 Value:250} {Type:7 length:0 Value:3}]
+  UpdateURR 3 [{Type:9 length:0 Value:[{Type:1 length:0 Value:7} {Type:2 length:0 Value:5000} {Type:3 length:0 Value:2500} {Type:4 length:0 Value:2500}]}]
+  usage seid=1 urr=1 n=1 via=QueryURR
+  usage seid=1 urr=3 n=1 via=UpdateURR
+QueryURR seid=1 urr=2
+  usage seid=1 urr=2 n=1 via=QueryURR
+ExecuteModification seid=1
+  RemovePDR 2 <nil>
+  RemovePDR 5 <nil>
+  RemoveURR 3 <nil>
+  RemoveURR 4 <nil>
+  usage seid=1 urr=3 n=2 via=RemoveURR
+  usage seid=1 urr=4 n=1 via=RemoveURR
+QueryURR seid=1 urr=3
+QueryURR seid=1 urr=4
+usage seid=1 urr=1 n=2 via=kernel
+ExecuteModification seid=1
+  RemoveFAR 1 <nil>
+  RemoveFAR 2 <nil>
+  RemoveFAR 3 <nil>
+  RemovePDR 1 <nil>
+  RemovePDR 3 <nil>
+  RemoveQER 1 <nil>
+  RemoveURR 1 <nil>
+  RemoveURR 2 <nil>
+  usage seid=1 urr=1 n=3 via=RemoveURR
+  usage seid=1 urr=2 n=2 via=RemoveURR
+QueryURR seid=1 urr=1
+usage seid=2 urr=2 n=1 via=kernel
+ExecuteModification seid=2
+  RemoveFAR 1 <nil>
+  RemoveFAR 2 <nil>
+  RemoveFAR 3 <nil>
+  RemovePDR 1 <nil>
+  RemovePDR 2 <nil>
+  RemovePDR 3 <nil>
+  RemovePDR 4 <nil>
+  RemoveQER 1 <nil>
+  RemoveURR 1 <nil>
+  RemoveURR 2 <nil>
+  RemoveURR 3 <nil>
+  RemoveURR 4 <nil>
+  usage seid=2 urr=1 n=1 via=RemoveURR
+  usage seid=2 urr=2 n=2 via=RemoveURR
+  usage seid=2 urr=3 n=1 via=RemoveURR
+  usage seid=2 urr=4 n=1 via=RemoveURR
+QueryURR seid=2 urr=1
+QueryURR seid=2 urr=2
+QueryURR seid=2 urr=3
+QueryURR seid=2 urr=4
