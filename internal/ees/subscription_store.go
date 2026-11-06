@@ -49,31 +49,8 @@ func NewSubscriptionStore(instanceSuffix string) *SubscriptionStore {
 // CreateSubscription inserts a subscription and returns its generated ID.
 // Minimal validation is performed to reduce accidental bad states.
 func (store *SubscriptionStore) CreateSubscription(newSubscription *Subscription) (string, error) {
-	if newSubscription == nil {
-		return "", ErrInvalidSubscription
-	}
-	if newSubscription.NotifURI == "" {
-		return "", fmt.Errorf("%w: missing NotifURI", ErrInvalidSubscription)
-	}
-	if newSubscription.Event == "" {
-		return "", fmt.Errorf("%w: missing Event", ErrInvalidSubscription)
-	}
-	if newSubscription.Granularity == "" {
-		return "", fmt.Errorf("%w: missing Granularity", ErrInvalidSubscription)
-	}
-	if newSubscription.Mode == "" {
-		return "", fmt.Errorf("%w: missing Mode", ErrInvalidSubscription)
-	}
-	// PeriodSec is only required for PERIODIC mode
-	if newSubscription.Mode == ModePeriodic &&
-		(newSubscription.PeriodSec <= 0 || newSubscription.PeriodSec > math.MaxInt32) {
-		return "", fmt.Errorf("%w: PeriodSec must be a positive DurationSec for PERIODIC mode", ErrInvalidSubscription)
-	}
-	if newSubscription.NfID == "" {
-		return "", fmt.Errorf("%w: missing NfID", ErrInvalidSubscription)
-	}
-	if newSubscription.NotifyCorrelationID == "" {
-		return "", fmt.Errorf("%w: missing NotifyCorrelationID", ErrInvalidSubscription)
+	if err := validateSubscription(newSubscription); err != nil {
+		return "", err
 	}
 
 	subscriptionID := store.generateSubscriptionID()
@@ -90,6 +67,63 @@ func (store *SubscriptionStore) CreateSubscription(newSubscription *Subscription
 	store.signalChange()
 
 	return subscriptionID, nil
+}
+
+// validateSubscription performs the minimal checks shared by create and replace.
+func validateSubscription(subscription *Subscription) error {
+	if subscription == nil {
+		return ErrInvalidSubscription
+	}
+	if subscription.NotifURI == "" {
+		return fmt.Errorf("%w: missing NotifURI", ErrInvalidSubscription)
+	}
+	if subscription.Event == "" {
+		return fmt.Errorf("%w: missing Event", ErrInvalidSubscription)
+	}
+	if subscription.Granularity == "" {
+		return fmt.Errorf("%w: missing Granularity", ErrInvalidSubscription)
+	}
+	if subscription.Mode == "" {
+		return fmt.Errorf("%w: missing Mode", ErrInvalidSubscription)
+	}
+	// PeriodSec is only required for PERIODIC mode
+	if subscription.Mode == ModePeriodic &&
+		(subscription.PeriodSec <= 0 || subscription.PeriodSec > math.MaxInt32) {
+		return fmt.Errorf("%w: PeriodSec must be a positive DurationSec for PERIODIC mode", ErrInvalidSubscription)
+	}
+	if subscription.NfID == "" {
+		return fmt.Errorf("%w: missing NfID", ErrInvalidSubscription)
+	}
+	if subscription.NotifyCorrelationID == "" {
+		return fmt.Errorf("%w: missing NotifyCorrelationID", ErrInvalidSubscription)
+	}
+	return nil
+}
+
+// ReplaceSubscription stores updated under the ID of current, keeping its ID,
+// CreatedAt and LastNotify. Subscriptions are replaced, never edited in place,
+// so readers holding the old pointer see a consistent value. It returns
+// ErrSubscriptionNotFound if current is no longer the stored subscription.
+func (store *SubscriptionStore) ReplaceSubscription(current, updated *Subscription) error {
+	if current == nil {
+		return ErrSubscriptionNotFound
+	}
+	if err := validateSubscription(updated); err != nil {
+		return err
+	}
+
+	store.mutexForSubscriptions.Lock()
+	defer store.mutexForSubscriptions.Unlock()
+
+	if store.subscriptionsByID[current.ID] != current {
+		return ErrSubscriptionNotFound
+	}
+	current.mu.RLock()
+	updated.ID, updated.CreatedAt, updated.LastNotify = current.ID, current.CreatedAt, current.LastNotify
+	current.mu.RUnlock()
+	store.subscriptionsByID[current.ID] = updated
+	store.signalChange()
+	return nil
 }
 
 // DeleteSubscription removes a subscription by ID.
@@ -128,7 +162,7 @@ func (store *SubscriptionStore) Watch() <-chan struct{} {
 
 // GetSubscription returns the subscription pointer for the given ID and a boolean indicating presence.
 // Callers should treat the returned pointer as read-mostly; mutations should be protected externally
-// if done concurrently with other operations.
+// if done concurrently with other operations. A PATCH replaces the pointer stored under the ID.
 func (store *SubscriptionStore) GetSubscription(subscriptionID string) (*Subscription, bool) {
 	store.mutexForSubscriptions.RLock()
 	subscription, ok := store.subscriptionsByID[subscriptionID]

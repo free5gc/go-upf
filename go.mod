@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/davecgh/go-spew v1.1.1
+	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/free5gc/go-gtp5gnl v1.6.2
 	github.com/free5gc/util v1.3.2
 	github.com/hashicorp/go-version v1.6.0

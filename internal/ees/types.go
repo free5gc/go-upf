@@ -173,6 +173,9 @@ type Subscription struct {
 	// TS 29.564: MeasurementTypes specifies which measurements are requested.
 	MeasurementTypes []MeasurementType
 
+	// Resource is the subscription resource as accepted; PATCH applies to it.
+	Resource UpfEventSubscription
+
 	CreatedAt  time.Time
 	LastNotify time.Time
 }

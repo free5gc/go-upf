@@ -1,8 +1,9 @@
 // Package ees - UPF Event Exposure Service (EES)
-// api.go: minimal REST API for EES subscriptions (create/delete).
+// api.go: minimal REST API for EES subscriptions (create/modify/delete).
 //
 // Endpoints (MVP):
 //   POST   /nupf-ee/v1/ee-subscriptions        -> Create subscription
+//   PATCH  /nupf-ee/v1/ee-subscriptions/{id}   -> Modify subscription (patch.go)
 //   DELETE /nupf-ee/v1/ee-subscriptions/{id}   -> Delete subscription
 //
 // Scope & constraints (MVP):
@@ -23,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -34,6 +36,7 @@ type Server struct {
 	logger            *logrus.Entry
 	httpServer        *http.Server
 	source            MeasurementSource // recorded on each new subscription
+	patchMu           sync.Mutex        // serializes PATCH read-modify-write
 }
 
 // NewServer constructs a Server.
@@ -57,8 +60,8 @@ func (server *Server) UseMeasurementSource(source MeasurementSource) {
 
 // Routes registers handlers into the given mux.
 func (server *Server) Routes(mux *http.ServeMux) {
-	mux.HandleFunc("/nupf-ee/v1/ee-subscriptions", server.handleCreateSubscription)      // POST
-	mux.HandleFunc("/nupf-ee/v1/ee-subscriptions/", server.handleDeleteSubscriptionByID) // DELETE /.../{id}
+	mux.HandleFunc("/nupf-ee/v1/ee-subscriptions", server.handleCreateSubscription) // POST
+	mux.HandleFunc("/nupf-ee/v1/ee-subscriptions/", server.handleSubscriptionByID)  // PATCH, DELETE /.../{id}
 }
 
 // Protocols enables HTTP/1.1 and HTTP/2 with prior knowledge (h2c), as used by
@@ -177,6 +180,7 @@ func (server *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Re
 		http.Error(w, validationErr.Error(), http.StatusBadRequest)
 		return
 	}
+	subscriptionCandidate.Resource = inboundRequest.Subscription
 
 	id, err := server.subscriptionStore.CreateSubscription(subscriptionCandidate)
 	if err != nil {
@@ -210,9 +214,9 @@ func (server *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Re
 	}
 }
 
-// handleDeleteSubscriptionByID handles DELETE /nupf-ee/v1/ee-subscriptions/{id}
-func (server *Server) handleDeleteSubscriptionByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
+// handleSubscriptionByID handles PATCH and DELETE /nupf-ee/v1/ee-subscriptions/{id}
+func (server *Server) handleSubscriptionByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete && r.Method != http.MethodPatch {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -224,6 +228,10 @@ func (server *Server) handleDeleteSubscriptionByID(w http.ResponseWriter, r *htt
 		return
 	}
 
+	if r.Method == http.MethodPatch {
+		server.handlePatchSubscription(w, r, id)
+		return
+	}
 	if err := server.subscriptionStore.DeleteSubscription(id); err == nil {
 		server.logger.Infof("ees subscription deleted: id=%s", id)
 		w.WriteHeader(http.StatusNoContent)

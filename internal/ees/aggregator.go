@@ -164,7 +164,8 @@ func (a *Aggregator) send(ctx context.Context, sub *Subscription, st stream,
 	err := a.notifier.NotifyContext(ctx, sub, measures)
 	a.mu.Lock()
 	delete(a.inFlight, st)
-	_, exists := a.subscriptionStore.GetSubscription(sub.ID)
+	// A PATCH may have replaced the subscription during the send.
+	current, exists := a.subscriptionStore.GetSubscription(sub.ID)
 	if err != nil && exists {
 		if a.reportBuffer[st] == nil {
 			a.reportBuffer[st] = make(map[SessionKey]*UsageMeasures)
@@ -179,13 +180,13 @@ func (a *Aggregator) send(ctx context.Context, sub *Subscription, st stream,
 		if err == nil && exists {
 			sentAt := time.Now()
 			a.lastSent[st] = sentAt
-			sub.mu.Lock()
-			sub.LastNotify = sentAt
-			sub.mu.Unlock()
-			if sub.Mode == ModeOnDemand {
+			current.mu.Lock()
+			current.LastNotify = sentAt
+			current.mu.Unlock()
+			if current.Mode == ModeOnDemand {
 				a.oneTimeSent[st] = true
 				delete(a.reportBuffer, st)
-				a.finishOneTime(sub, sentAt)
+				a.finishOneTime(current, sentAt)
 			}
 		}
 	}

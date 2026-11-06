@@ -41,6 +41,14 @@ subscriptions remain pending without fabricated data.
 - Creation returns the same absolute resource URI in `Location` and
   `subscriptionId`; DELETE uses the last path segment as the ID, at the exact
   `/nupf-ee/v1/ee-subscriptions/{id}` route.
+- PATCH on the same route modifies a subscription (TS 29.564 5.2.2.2.3) with
+  a JSON Patch body (`application/json-patch+json`, `array(PatchItem)`). Only
+  `eventList`, `eventReportingMode` and `nfId` can change, the fields named in
+  5.2.2.2.3; changing any other field returns 403 `MODIFICATION_NOT_ALLOWED`.
+  All items are applied or none is: success is 204, and a patch that cannot be
+  applied or yields an invalid subscription returns 400 with the subscription
+  unchanged. The ID, target, measurement source, pending measurements and
+  report schedule are kept.
 - The response URI uses the direct request scheme and authority. Untrusted
   forwarded headers are not used. Reverse proxies with a different external
   scheme/path need an advertised-root design before they can be supported.
@@ -136,8 +144,8 @@ The two switches are independent, and either one starts the service:
   and NFDeregister use an `nnrf-nfm` OAuth2 token when the NRF requires one. The
   advertised address is `ees.ip` (or `pfcp.addr` when `ees.ip` is empty). An SMF
   that uses OAuth2 towards the UPF needs this registration to obtain a token.
-- The API contract (h2c, Location == subscriptionId, DELETE) is the same in all
-  modes. PATCH is not implemented (405).
+- The API contract (h2c, Location == subscriptionId, PATCH, DELETE) is the
+  same in all modes. A PATCH keeps the subscription's source.
 
 `dnn` (optional) narrows the target: a session whose DNN (PDI Network
 Instance, plain or FQDN-encoded) is known and different is excluded; a session
