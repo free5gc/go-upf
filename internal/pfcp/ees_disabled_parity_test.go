@@ -40,6 +40,8 @@ type parityDriver struct {
 	urrs    map[[2]uint64]bool   // installed (lSeid, urrid)
 	reads   map[[2]uint64]uint64 // per-URR report count
 	handler report.Handler
+	// planHook, when set, sees every executed plan (tests of UPF-owned URRs).
+	planHook func(kind string, p *forwarder.ModificationPlan)
 }
 
 func newParityDriver() *parityDriver {
@@ -92,6 +94,9 @@ func (d *parityDriver) execute(kind string, p *forwarder.ModificationPlan) (*for
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	result := forwarder.NewExecutionResult()
+	if d.planHook != nil {
+		d.planHook(kind, p)
+	}
 	d.calls = append(d.calls, fmt.Sprintf("Execute%s seid=%d", kind, p.SEID))
 	rec := func(op string, id any, attrs any) {
 		d.calls = append(d.calls, fmt.Sprintf("  %s %v %+v", op, id, attrs))
@@ -347,9 +352,17 @@ func ulclEstablishment(seq uint32, cpSEID uint64, ueIP string, teid uint32) *mes
 // deterministic trace of UPF output. hook runs before the server starts.
 func runPFCPParityScenario(t *testing.T, hook func(*PfcpServer)) []string {
 	t.Helper()
+	return runPFCPParityScenarioWith(t, newParityDriver(), hook, nil)
+}
+
+// runPFCPParityScenarioWith also runs afterEstablish, if set, once both
+// sessions exist and before they are modified.
+func runPFCPParityScenarioWith(t *testing.T, driver *parityDriver, hook func(*PfcpServer),
+	afterEstablish func(),
+) []string {
+	t.Helper()
 	upfAddr := freeUDPAddr(t)
 	cfg := &factory.Config{Pfcp: &factory.Pfcp{Addr: "127.0.0.1", NodeID: "127.0.0.1"}}
-	driver := newParityDriver()
 	server := NewPfcpServer(cfg, driver)
 	server.listen = upfAddr.String()
 	driver.HandleReport(server)
@@ -398,6 +411,9 @@ func runPFCPParityScenario(t *testing.T, hook func(*PfcpServer)) []string {
 	step("establish A (ULCL rules)", ulclEstablishment(smf.next(), cpA, "10.60.0.1", 0x100), 1)
 	step("establish B", ulclEstablishment(smf.next(), cpB, "10.60.0.2", 0x200), 1)
 	const seidA, seidB = 1, 2
+	if afterEstablish != nil {
+		afterEstablish()
+	}
 
 	// Re-associate PDRs with and without URR ID IEs, add/remove branches and
 	// query/update URRs: every path that produces usage in a PFCP response.

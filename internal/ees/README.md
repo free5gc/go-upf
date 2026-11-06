@@ -41,6 +41,14 @@ subscriptions remain pending without fabricated data.
 - Creation returns the same absolute resource URI in `Location` and
   `subscriptionId`; DELETE uses the last path segment as the ID, at the exact
   `/nupf-ee/v1/ee-subscriptions/{id}` route.
+- PATCH on the same route modifies a subscription (TS 29.564 5.2.2.2.3) with
+  a JSON Patch body (`application/json-patch+json`, `array(PatchItem)`). Only
+  `eventList`, `eventReportingMode` and `nfId` can change, the fields named in
+  5.2.2.2.3; changing any other field returns 403 `MODIFICATION_NOT_ALLOWED`.
+  All items are applied or none is: success is 204, and a patch that cannot be
+  applied or yields an invalid subscription returns 400 with the subscription
+  unchanged. The ID, target, measurement source, pending measurements and
+  report schedule are kept.
 - The response URI uses the direct request scheme and authority. Untrusted
   forwarded headers are not used. Reverse proxies with a different external
   scheme/path need an advertised-root design before they can be supported.
@@ -84,6 +92,65 @@ feature negotiation, expiry/max-report controls, or immediate-report requests.
 An HTTP timeout does not prove the consumer failed to process a notification.
 Retries retain the existing at-least-once behavior; exactly-once delivery is
 not guaranteed.
+
+## UPF-owned monitoring URRs (`ees.upfUrrEnabled`)
+
+```yaml
+ees:
+  enabled: true                    # report usage from SMF URR 2
+  upfUrrEnabled: true              # report usage from UPF-owned URRs
+  upfUrrPeriod: 1                  # seconds (0 = 1)
+  nrfUri: http://127.0.0.10:8000   # optional: register nupf-ee with the NRF
+  ip: 192.168.56.114
+  port: 8088
+```
+
+The two switches are independent, and either one starts the service:
+
+| `ees.enabled` | `ees.upfUrrEnabled` | Result |
+|---|---|---|
+| true | false | EES API runs; usage from the SMF-provisioned URR 2 (behavior above) |
+| false | true | EES API runs; usage from UPF-owned URRs |
+| true | true | EES API runs; usage from both, reported separately |
+| false | false | nothing runs; PFCP path identical to upstream |
+
+- With `ees.upfUrrEnabled`, for each matched PFCP session the UPF creates
+  one URR of its own (VOLUM, PERIO every `upfUrrPeriod`), with an ID from
+  `0xF0000001` up (TS 29.244: URR ID bit 8 set = predefined in the UP
+  function), and adds it to every PDR of the session. The session records the
+  owners, i.e. the subscriptions served by that URR; when the last owner is
+  deleted the URR is removed from the PDRs and deleted, and its final usage
+  goes to EES.
+- The source is recorded on each subscription when it is created. With both
+  URRs on, each subscription has one stream per URR. Each stream has its own
+  buffer, schedule and retries, and sends its own notifications; the two are
+  never summed. The `X-EES-Source` header (`SMF_URR` or `UPF_URR`) says which
+  URR a notification measured, because the TS 29.564 payload has no such field.
+  If the SMF provisions no URR 2, only the UPF stream reports.
+- `ONE_TIME` with both URRs sends each stream's first real measurement once. The
+  subscription is deleted when both have delivered, or 10 s after the first
+  delivery if the other URR stays silent.
+- The SMF never sees UPF-owned URRs: their usage is removed from Session Report,
+  Modification and Deletion messages, SMF requests that use an ID in that range
+  are rejected, and an SMF Update PDR with a URR ID list keeps the owned URR.
+  gtp5g replaces a PDR's whole URR list, so the UPF tracks the list installed in
+  the forwarder and resends the SMF URRs with its own.
+- Rules are changed only inside the PFCP loop (on subscription changes and every
+  second for new sessions), so API handlers never wait on the PFCP loop. A new
+  session is measured from its first reconciliation, up to one second late.
+- `ees.nrfUri`: while the EES API runs, the UPF registers a UPF
+  profile with the nupf-ee service (TS 29.510 NFRegister), sends NFUpdate
+  heartbeats, registers again after a 404, and deregisters on shutdown. NFUpdate
+  and NFDeregister use an `nnrf-nfm` OAuth2 token when the NRF requires one. The
+  advertised address is `ees.ip` (or `pfcp.addr` when `ees.ip` is empty). An SMF
+  that uses OAuth2 towards the UPF needs this registration to obtain a token.
+- The API contract (h2c, Location == subscriptionId, PATCH, DELETE) is the
+  same in all modes. A PATCH keeps the subscription's source.
+
+`dnn` (optional) narrows the target: a session whose DNN (PDI Network
+Instance, plain or FQDN-encoded) is known and different is excluded; a session
+with an unknown DNN is not excluded. S-NSSAI is not used (the UPF does not
+learn it over PFCP).
 
 ## Regression tests
 

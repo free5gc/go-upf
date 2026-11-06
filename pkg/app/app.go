@@ -83,12 +83,14 @@ func (u *UpfApp) Run() error {
 
 	u.pfcpServer = pfcp.NewPfcpServer(u.cfg, u.driver)
 	u.driver.HandleReport(u.pfcpServer)
-	u.pfcpServer.Start(&u.wg)
 
-	// EES is optional; when disabled nothing below touches the PFCP path.
+	// EES is optional; when disabled nothing below touches the PFCP path. It is
+	// set up before the PFCP loop starts because the opt-in UPF-owned URR
+	// source is configured on the PFCP server.
 	if err := u.initEES(); err != nil {
 		return err
 	}
+	u.pfcpServer.Start(&u.wg)
 
 	logger.MainLog.Infoln("UPF started")
 
@@ -148,17 +150,50 @@ func (u *UpfApp) Terminate() {
 	logger.MainLog.Infof("UPF terminated")
 }
 
-// initEES starts the embedded Nupf_EventExposure service when enabled. EES only
-// receives usage through a buffer-only PFCP hook; it never writes the PFCP queue.
+// initEES starts the embedded Nupf_EventExposure service. Two independent
+// switches start it: ees.enabled (usage from the SMF-provisioned URR 2) and
+// ees.upfUrrEnabled (usage from UPF-owned monitoring URRs). With both on the
+// two are reported separately. EES only receives usage through a buffer-only
+// PFCP hook; it never writes the PFCP queue. With both off nothing below runs.
 func (u *UpfApp) initEES() error {
-	if u.cfg.EES == nil || !u.cfg.EES.Enabled {
+	cfg := u.cfg.EES
+	if cfg == nil || (!cfg.Enabled && !cfg.UpfURREnabled) {
 		return nil
 	}
 	logger.MainLog.Infoln("EES supports only the free5GC single-UPF scenario; keep it disabled in ULCL deployments")
 
+	if cfg.UpfURRPeriod < 0 || cfg.UpfURRPeriod > 86400 {
+		return fmt.Errorf("ees.upfUrrPeriod must be 0..86400 seconds, got %d", cfg.UpfURRPeriod)
+	}
+
+	listenIP, port := cfg.IP, 8088
+	if cfg.Port != 0 {
+		port = cfg.Port
+	}
+	var registrar *ees.NRFRegistrar
+	if cfg.NrfUri != "" {
+		advertised := listenIP
+		if advertised == "" {
+			advertised = u.cfg.Pfcp.Addr
+		}
+		var err error
+		if registrar, err = ees.NewNRFRegistrar(cfg.NrfUri, advertised, port, logger.EesLog); err != nil {
+			return fmt.Errorf("ees.nrfUri: %w", err)
+		}
+	}
+
 	store := ees.NewSubscriptionStore("")
 	aggregator := ees.NewAggregator(store, ees.NewNotifier(logger.EesLog), logger.EesLog)
 	u.pfcpServer.RegisterEESReportHandler(aggregator.PushReportWithContext)
+	source, sourceDesc := ees.SourceSMFURR, "SMF URR 2"
+	if cfg.UpfURREnabled {
+		period := time.Duration(max(cfg.UpfURRPeriod, 1)) * time.Second
+		u.pfcpServer.EnableUPFOwnedURRs(store, period)
+		source, sourceDesc = ees.SourceUPFURR, fmt.Sprintf("UPF-owned monitoring URR per session, period %v", period)
+		if cfg.Enabled {
+			source, sourceDesc = ees.SourceBothURRs, "SMF URR 2 and "+sourceDesc
+		}
+	}
 
 	u.wg.Add(1)
 	go func() {
@@ -166,12 +201,9 @@ func (u *UpfApp) initEES() error {
 		aggregator.Run(u.ctx)
 	}()
 
-	port := u.cfg.EES.Port
-	if port == 0 {
-		port = 8088
-	}
-	listenAddr := fmt.Sprintf("%s:%d", u.cfg.EES.IP, port)
+	listenAddr := fmt.Sprintf("%s:%d", listenIP, port)
 	u.eesServer = ees.NewServer(store, logger.EesLog)
+	u.eesServer.UseMeasurementSource(source)
 
 	u.wg.Add(1)
 	go func() {
@@ -181,6 +213,14 @@ func (u *UpfApp) initEES() error {
 		}
 	}()
 
-	logger.MainLog.Infof("EES started at %s (per-subscription repPeriod, SMF URR 2)", listenAddr)
+	if registrar != nil {
+		u.wg.Add(1)
+		go func() {
+			defer u.wg.Done()
+			registrar.Run(u.ctx)
+		}()
+	}
+
+	logger.MainLog.Infof("EES started at %s (per-subscription repPeriod, %s)", listenAddr, sourceDesc)
 	return nil
 }

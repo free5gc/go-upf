@@ -101,3 +101,77 @@ func TestValidationInitEESWiring(t *testing.T) {
 		require.False(t, listening(addr))
 	})
 }
+
+// the UPF-owned URR and NRF settings live in the ees block.
+func TestValidationUPFURRConfigKeys(t *testing.T) {
+	var cfg factory.Config
+	require.NoError(t, yaml.Unmarshal([]byte(`
+ees:
+  upfUrrEnabled: true
+  nrfUri: http://127.0.0.10:8000
+  upfUrrPeriod: 2
+`), &cfg))
+	require.Equal(t, &factory.EESConfig{UpfURREnabled: true, NrfUri: "http://127.0.0.10:8000", UpfURRPeriod: 2},
+		cfg.EES)
+}
+
+// ees.enabled and ees.upfUrrEnabled are independent: either starts the API,
+// each one reports its own URR, and neither starts nothing.
+func TestValidationIndependentEESSwitches(t *testing.T) {
+	for name, tc := range map[string]struct {
+		smf     bool
+		upf     bool
+		running bool
+	}{
+		"both off":            {},
+		"SMF URR 2 only":      {smf: true, running: true},
+		"UPF-owned URR only":  {upf: true, running: true},
+		"both on (both URRs)": {smf: true, upf: true, running: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			port := freePort(t)
+			addr := fmt.Sprintf("127.0.0.1:%d", port)
+			cfg := &factory.Config{
+				Pfcp: &factory.Pfcp{Addr: "127.0.0.1", NodeID: "127.0.0.1"},
+				EES:  &factory.EESConfig{Enabled: tc.smf, UpfURREnabled: tc.upf, IP: "127.0.0.1", Port: port},
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			u := &UpfApp{ctx: ctx, cfg: cfg, pfcpServer: pfcp.NewPfcpServer(cfg, forwarder.Empty{})}
+			require.NoError(t, u.initEES())
+			require.Equal(t, tc.running, u.eesServer != nil)
+			require.Equal(t, tc.upf, u.pfcpServer.UPFOwnedURRsEnabled())
+			if tc.running {
+				require.Eventually(t, func() bool { return listening(addr) }, 2*time.Second, 20*time.Millisecond)
+				shutdownCtx, done := context.WithTimeout(context.Background(), 2*time.Second)
+				defer done()
+				require.NoError(t, u.eesServer.Shutdown(shutdownCtx))
+			} else {
+				time.Sleep(100 * time.Millisecond)
+				require.False(t, listening(addr))
+			}
+			cancel()
+			u.wg.Wait()
+		})
+	}
+}
+
+func TestValidationEESRejectsBadSettings(t *testing.T) {
+	for name, settings := range map[string]factory.EESConfig{
+		"negative period": {UpfURRPeriod: -1},
+		"huge period":     {UpfURRPeriod: 86401},
+		"bad nrfUri":      {NrfUri: "127.0.0.10:8000"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			settings.UpfURREnabled, settings.IP, settings.Port = true, "127.0.0.1", freePort(t)
+			cfg := &factory.Config{
+				Pfcp: &factory.Pfcp{Addr: "127.0.0.1", NodeID: "127.0.0.1"},
+				EES:  &settings,
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			u := &UpfApp{ctx: ctx, cfg: cfg, pfcpServer: pfcp.NewPfcpServer(cfg, forwarder.Empty{})}
+			require.Error(t, u.initEES())
+			require.Nil(t, u.eesServer)
+		})
+	}
+}
