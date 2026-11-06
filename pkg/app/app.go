@@ -170,6 +170,18 @@ func (u *UpfApp) initEES() error {
 	if cfg.Port != 0 {
 		port = cfg.Port
 	}
+	var registrar *ees.NRFRegistrar
+	if cfg.NrfUri != "" {
+		advertised := listenIP
+		if advertised == "" {
+			advertised = u.cfg.Pfcp.Addr
+		}
+		var err error
+		if registrar, err = ees.NewNRFRegistrar(cfg.NrfUri, advertised, port, logger.EesLog); err != nil {
+			return fmt.Errorf("ees.nrfUri: %w", err)
+		}
+	}
+
 	store := ees.NewSubscriptionStore("")
 	aggregator := ees.NewAggregator(store, ees.NewNotifier(logger.EesLog), logger.EesLog)
 	u.pfcpServer.RegisterEESReportHandler(aggregator.PushReportWithContext)
@@ -200,6 +212,14 @@ func (u *UpfApp) initEES() error {
 			logger.MainLog.Errorf("EES API Server Error: %v", err)
 		}
 	}()
+
+	if registrar != nil {
+		u.wg.Add(1)
+		go func() {
+			defer u.wg.Done()
+			registrar.Run(u.ctx)
+		}()
+	}
 
 	logger.MainLog.Infof("EES started at %s (per-subscription repPeriod, %s)", listenAddr, sourceDesc)
 	return nil

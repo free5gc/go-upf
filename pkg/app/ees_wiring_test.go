@@ -108,9 +108,10 @@ func TestValidationUPFURRConfigKeys(t *testing.T) {
 	require.NoError(t, yaml.Unmarshal([]byte(`
 ees:
   upfUrrEnabled: true
+  nrfUri: http://127.0.0.10:8000
   upfUrrPeriod: 2
 `), &cfg))
-	require.Equal(t, &factory.EESConfig{UpfURREnabled: true, UpfURRPeriod: 2},
+	require.Equal(t, &factory.EESConfig{UpfURREnabled: true, NrfUri: "http://127.0.0.10:8000", UpfURRPeriod: 2},
 		cfg.EES)
 }
 
@@ -158,6 +159,7 @@ func TestValidationEESRejectsBadSettings(t *testing.T) {
 	for name, settings := range map[string]factory.EESConfig{
 		"negative period": {UpfURRPeriod: -1},
 		"huge period":     {UpfURRPeriod: 86401},
+		"bad nrfUri":      {NrfUri: "127.0.0.10:8000"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			settings.UpfURREnabled, settings.IP, settings.Port = true, "127.0.0.1", freePort(t)

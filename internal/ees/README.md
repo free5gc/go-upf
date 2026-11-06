@@ -92,6 +92,7 @@ ees:
   enabled: true                    # report usage from SMF URR 2
   upfUrrEnabled: true              # report usage from UPF-owned URRs
   upfUrrPeriod: 1                  # seconds (0 = 1)
+  nrfUri: http://127.0.0.10:8000   # optional: register nupf-ee with the NRF
   ip: 192.168.56.114
   port: 8088
 ```
@@ -129,6 +130,12 @@ The two switches are independent, and either one starts the service:
 - Rules are changed only inside the PFCP loop (on subscription changes and every
   second for new sessions), so API handlers never wait on the PFCP loop. A new
   session is measured from its first reconciliation, up to one second late.
+- `ees.nrfUri`: while the EES API runs, the UPF registers a UPF
+  profile with the nupf-ee service (TS 29.510 NFRegister), sends NFUpdate
+  heartbeats, registers again after a 404, and deregisters on shutdown. NFUpdate
+  and NFDeregister use an `nnrf-nfm` OAuth2 token when the NRF requires one. The
+  advertised address is `ees.ip` (or `pfcp.addr` when `ees.ip` is empty). An SMF
+  that uses OAuth2 towards the UPF needs this registration to obtain a token.
 - The API contract (h2c, Location == subscriptionId, DELETE) is the same in all
   modes. PATCH is not implemented (405).
 
