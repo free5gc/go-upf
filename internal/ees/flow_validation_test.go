@@ -252,7 +252,7 @@ func TestValidationAPIDeleteMatrix(t *testing.T) {
 
 	agg.PushReportWithContext(usageReport(SingleUPFMAQEURRID, 10), SessionContext{UeIPv4Addr: "10.60.0.1"})
 	agg.mu.Lock()
-	require.Len(t, agg.reportBuffer[id], 1)
+	require.Len(t, agg.reportBuffer[smfStream(id)], 1)
 	agg.mu.Unlock()
 
 	rsp, _ = do(t, http.MethodDelete, loc, nil)
@@ -264,7 +264,7 @@ func TestValidationAPIDeleteMatrix(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, sent)
 	agg.mu.Lock()
-	require.NotContains(t, agg.reportBuffer, id, "buffer of a deleted subscription is dropped")
+	require.NotContains(t, agg.reportBuffer, smfStream(id), "buffer of a deleted subscription is dropped")
 	agg.mu.Unlock()
 }
 

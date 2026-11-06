@@ -2,6 +2,7 @@ package ees
 
 import (
 	"context"
+	"maps"
 	"sync"
 	"time"
 
@@ -15,26 +16,45 @@ import (
 // allocations are outside this MVP; do not sum all URRs (they may overlap).
 const SingleUPFMAQEURRID uint32 = 2
 
-// Aggregator buffers real measurements and schedules each subscription
+// oneTimeSourceWait bounds how long a ONE_TIME subscription that reads both
+// URRs stays open for the second source after the first one has delivered.
+// The SMF may not provision URR 2 at all.
+const oneTimeSourceWait = 10 * time.Second
+
+// stream is one URR source of one subscription. Streams are buffered and
+// scheduled independently, so a subscription that reads both URRs gets
+// separate notifications and one source cannot delay or change the other.
+type stream struct {
+	subscriptionID string
+	source         MeasurementSource
+}
+
+// Aggregator buffers real measurements and schedules each stream
 // independently. It never manufactures measurements for an empty buffer.
 type Aggregator struct {
 	subscriptionStore *SubscriptionStore
 	notifier          *Notifier
 	logger            *logrus.Entry
-	// mu guards the per-subscription scheduling state below.
-	mu           sync.Mutex
-	reportBuffer map[string]map[SessionKey]*UsageMeasures // pending usage per subscription
-	inFlight     map[string]bool                          // a notification is being sent
-	retryAt      map[string]time.Time                     // earliest retry after a failed send
-	wake         chan struct{}
-	workers      sync.WaitGroup
+	// mu guards the per-stream scheduling state below.
+	mu              sync.Mutex
+	reportBuffer    map[stream]map[SessionKey]*UsageMeasures // pending usage per stream
+	inFlight        map[stream]bool                          // a notification is being sent
+	retryAt         map[stream]time.Time                     // earliest retry after a failed send
+	lastSent        map[stream]time.Time                     // last successful notification
+	oneTimeSent     map[stream]bool                          // ONE_TIME stream already delivered
+	oneTimeDeadline map[string]time.Time                     // by subscription ID: stop waiting for a source
+	oneTimeWait     time.Duration
+	wake            chan struct{}
+	workers         sync.WaitGroup
 }
 
 func NewAggregator(store *SubscriptionStore, notifier *Notifier, logger *logrus.Entry) *Aggregator {
 	return &Aggregator{
 		subscriptionStore: store, notifier: notifier, logger: logger,
-		reportBuffer: make(map[string]map[SessionKey]*UsageMeasures),
-		inFlight:     make(map[string]bool), retryAt: make(map[string]time.Time),
+		reportBuffer: make(map[stream]map[SessionKey]*UsageMeasures),
+		inFlight:     make(map[stream]bool), retryAt: make(map[stream]time.Time),
+		lastSent: make(map[stream]time.Time), oneTimeSent: make(map[stream]bool),
+		oneTimeDeadline: make(map[string]time.Time), oneTimeWait: oneTimeSourceWait,
 		wake: make(chan struct{}, 1),
 	}
 }
@@ -46,7 +66,7 @@ func (a *Aggregator) signal() {
 	}
 }
 
-// Run launches at most one notification per subscription at a time. A slow
+// Run launches at most one notification per stream at a time. A slow
 // subscriber does not delay other subscriptions or the scheduler.
 func (a *Aggregator) Run(ctx context.Context) {
 	defer a.workers.Wait()
@@ -90,77 +110,140 @@ func (a *Aggregator) dispatch(ctx context.Context) ([]<-chan bool, time.Duration
 	now := time.Now()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for id := range a.reportBuffer {
-		if _, exists := a.subscriptionStore.GetSubscription(id); !exists {
-			delete(a.reportBuffer, id)
-			delete(a.retryAt, id)
-		}
-	}
+	a.forgetDeletedSubscriptions()
 	for _, sub := range a.subscriptionStore.AllSubscriptions() {
-		batch := a.reportBuffer[sub.ID]
-		if a.inFlight[sub.ID] || len(batch) == 0 {
-			continue
-		}
-		sub.mu.RLock()
-		due := periodicDue(sub.LastNotify, time.Duration(sub.PeriodSec)*time.Second, batch, now)
-		if sub.Mode == ModeOnDemand {
-			due = now
-		}
-		sub.mu.RUnlock()
-		if retry := a.retryAt[sub.ID]; retry.After(due) {
-			due = retry
-		}
-		if due.After(now) {
-			if remaining := due.Sub(now); remaining < delay {
-				delay = remaining
+		for _, source := range sub.Sources() {
+			st := stream{sub.ID, source}
+			batch := a.reportBuffer[st]
+			if a.inFlight[st] || len(batch) == 0 {
+				continue
 			}
-			continue
+			sub.mu.RLock()
+			last, sent := a.lastSent[st]
+			if !sent {
+				last = sub.LastNotify
+			}
+			due := periodicDue(last, time.Duration(sub.PeriodSec)*time.Second, batch, now)
+			if sub.Mode == ModeOnDemand {
+				due = now
+			}
+			sub.mu.RUnlock()
+			if retry := a.retryAt[st]; retry.After(due) {
+				due = retry
+			}
+			if due.After(now) {
+				if remaining := due.Sub(now); remaining < delay {
+					delay = remaining
+				}
+				continue
+			}
+			delete(a.reportBuffer, st)
+			a.inFlight[st] = true
+			done := make(chan bool, 1)
+			results = append(results, done)
+			a.workers.Add(1)
+			go a.send(ctx, sub, st, batch, done)
 		}
-		delete(a.reportBuffer, sub.ID)
-		a.inFlight[sub.ID] = true
-		done := make(chan bool, 1)
-		results = append(results, done)
-		a.workers.Add(1)
-		go func(sub *Subscription, batch map[SessionKey]*UsageMeasures) {
-			defer a.workers.Done()
-			measures := make([]UsageMeasures, 0, len(batch))
-			for _, m := range batch {
-				computeThroughputIfPossible(m)
-				measures = append(measures, *m)
-			}
-			err := a.notifier.NotifyContext(ctx, sub, measures)
-			a.mu.Lock()
-			_, exists := a.subscriptionStore.GetSubscription(sub.ID)
-			if err != nil && exists {
-				if a.reportBuffer[sub.ID] == nil {
-					a.reportBuffer[sub.ID] = make(map[SessionKey]*UsageMeasures)
-				}
-				for _, m := range batch {
-					mergeMeasure(a.reportBuffer[sub.ID], m)
-				}
-				a.retryAt[sub.ID] = time.Now().Add(time.Second)
-				a.logger.WithError(err).Warn("ees notification failed; retaining measurements")
-			} else {
-				delete(a.retryAt, sub.ID)
-				if err == nil && exists {
-					sub.mu.Lock()
-					sub.LastNotify = time.Now()
-					sub.mu.Unlock()
-					if sub.Mode == ModeOnDemand {
-						if delErr := a.subscriptionStore.DeleteSubscription(sub.ID); delErr != nil {
-							a.logger.WithError(delErr).Debug("ees one-time subscription already removed")
-						}
-						delete(a.reportBuffer, sub.ID)
-					}
-				}
-			}
-			delete(a.inFlight, sub.ID)
-			a.mu.Unlock()
-			done <- err == nil
-			a.signal()
-		}(sub, batch)
+		if remaining := a.finishOneTime(sub, now); remaining > 0 && remaining < delay {
+			delay = remaining
+		}
 	}
 	return results, delay
+}
+
+// send delivers one batch of a stream and records the outcome.
+func (a *Aggregator) send(ctx context.Context, sub *Subscription, st stream,
+	batch map[SessionKey]*UsageMeasures, done chan<- bool,
+) {
+	defer a.workers.Done()
+	measures := make([]UsageMeasures, 0, len(batch))
+	for _, m := range batch {
+		computeThroughputIfPossible(m)
+		measures = append(measures, *m)
+	}
+	err := a.notifier.NotifyContext(ctx, sub, measures)
+	a.mu.Lock()
+	delete(a.inFlight, st)
+	_, exists := a.subscriptionStore.GetSubscription(sub.ID)
+	if err != nil && exists {
+		if a.reportBuffer[st] == nil {
+			a.reportBuffer[st] = make(map[SessionKey]*UsageMeasures)
+		}
+		for _, m := range batch {
+			mergeMeasure(a.reportBuffer[st], m)
+		}
+		a.retryAt[st] = time.Now().Add(time.Second)
+		a.logger.WithError(err).Warn("ees notification failed; retaining measurements")
+	} else {
+		delete(a.retryAt, st)
+		if err == nil && exists {
+			sentAt := time.Now()
+			a.lastSent[st] = sentAt
+			sub.mu.Lock()
+			sub.LastNotify = sentAt
+			sub.mu.Unlock()
+			if sub.Mode == ModeOnDemand {
+				a.oneTimeSent[st] = true
+				delete(a.reportBuffer, st)
+				a.finishOneTime(sub, sentAt)
+			}
+		}
+	}
+	a.mu.Unlock()
+	done <- err == nil
+	a.signal()
+}
+
+// finishOneTime deletes a ONE_TIME subscription once every source has delivered
+// its first real measurement. A source that stays silent is given oneTimeWait
+// after the first delivery. It returns how long the subscription still waits.
+func (a *Aggregator) finishOneTime(sub *Subscription, now time.Time) time.Duration {
+	if sub.Mode != ModeOnDemand {
+		return 0
+	}
+	sources := sub.Sources()
+	delivered := 0
+	for _, source := range sources {
+		st := stream{sub.ID, source}
+		if a.oneTimeSent[st] {
+			delivered++
+		} else if a.inFlight[st] || len(a.reportBuffer[st]) > 0 {
+			return 0
+		}
+	}
+	if delivered == 0 {
+		return 0
+	}
+	if delivered < len(sources) {
+		deadline, waiting := a.oneTimeDeadline[sub.ID]
+		if !waiting {
+			deadline = now.Add(a.oneTimeWait)
+			a.oneTimeDeadline[sub.ID] = deadline
+		}
+		if now.Before(deadline) {
+			return deadline.Sub(now)
+		}
+	}
+	if err := a.subscriptionStore.DeleteSubscription(sub.ID); err != nil {
+		a.logger.WithError(err).Debug("ees one-time subscription already removed")
+	}
+	a.forgetDeletedSubscriptions()
+	return 0
+}
+
+// forgetDeletedSubscriptions drops the scheduling state of deleted subscriptions.
+func (a *Aggregator) forgetDeletedSubscriptions() {
+	deleted := func(id string) bool {
+		_, exists := a.subscriptionStore.GetSubscription(id)
+		return !exists
+	}
+	maps.DeleteFunc(a.reportBuffer, func(st stream, _ map[SessionKey]*UsageMeasures) bool {
+		return deleted(st.subscriptionID)
+	})
+	maps.DeleteFunc(a.retryAt, func(st stream, _ time.Time) bool { return deleted(st.subscriptionID) })
+	maps.DeleteFunc(a.lastSent, func(st stream, _ time.Time) bool { return deleted(st.subscriptionID) })
+	maps.DeleteFunc(a.oneTimeSent, func(st stream, _ bool) bool { return deleted(st.subscriptionID) })
+	maps.DeleteFunc(a.oneTimeDeadline, func(id string, _ time.Time) bool { return deleted(id) })
 }
 
 // notificationPeriod rounds the requested period up to a whole number of URR
@@ -221,18 +304,58 @@ func (a *Aggregator) PushReportWithContext(sr report.SessReport, identity Sessio
 	if identity.UeIPv4Addr == "" {
 		return
 	}
+	// Each stream reads exactly one URR: URR 2 (SMF source) or the UPF-owned
+	// URR (UPF source). The two are never summed.
+	smfUsage := usageFromReports(sr, identity, SingleUPFMAQEURRID, identity.MeasurePeriod)
+	var upfUsage *UsageMeasures
+	if identity.UPFURRID != 0 {
+		upfUsage = usageFromReports(sr, identity, identity.UPFURRID, identity.UPFURRPeriod)
+	}
+	if smfUsage == nil && upfUsage == nil {
+		return
+	}
+	a.mu.Lock()
+	for _, sub := range a.subscriptionStore.AllSubscriptions() {
+		if !MatchesTarget(sub, identity) {
+			continue
+		}
+		for _, source := range sub.Sources() {
+			m := smfUsage
+			if source == SourceUPFURR {
+				m = upfUsage
+			}
+			st := stream{sub.ID, source}
+			if m == nil || (sub.Mode == ModeOnDemand && a.oneTimeSent[st]) {
+				continue
+			}
+			if a.reportBuffer[st] == nil {
+				a.reportBuffer[st] = make(map[SessionKey]*UsageMeasures)
+			}
+			measure := *m
+			measure.Source = source
+			mergeMeasure(a.reportBuffer[st], &measure)
+		}
+	}
+	a.mu.Unlock()
+	a.signal()
+}
+
+// usageFromReports sums the valid usage reports of one URR, or returns nil.
+func usageFromReports(sr report.SessReport, identity SessionContext, urrID uint32,
+	period time.Duration,
+) *UsageMeasures {
 	m := &UsageMeasures{
 		Key: SessionKey{
 			LocalSEID: sr.SEID, RemoteSEID: identity.RemoteSEID,
 			Generation: identity.Generation, UEIPv4: identity.UeIPv4Addr,
 		},
 		UeIpv4Addr:    identity.UeIPv4Addr,
-		MeasurePeriod: identity.MeasurePeriod,
+		MeasurePeriod: period,
 	}
 	count := 0
 	for _, r := range sr.Reports {
 		usage, ok := r.(report.USAReport)
-		if !ok || usage.URRID != SingleUPFMAQEURRID {
+		if !ok || usage.URRID != urrID {
 			continue
 		}
 		// A real zero-volume measurement is valid; absent/invalid intervals are not.
@@ -252,26 +375,9 @@ func (a *Aggregator) PushReportWithContext(sr report.SessReport, identity Sessio
 		count++
 	}
 	if count == 0 {
-		return
+		return nil
 	}
-	a.mu.Lock()
-	for _, sub := range a.subscriptionStore.AllSubscriptions() {
-		if !a.matchesSubscription(sub, identity.UeIPv4Addr) {
-			continue
-		}
-		if a.reportBuffer[sub.ID] == nil {
-			a.reportBuffer[sub.ID] = make(map[SessionKey]*UsageMeasures)
-		}
-		measure := *m
-		mergeMeasure(a.reportBuffer[sub.ID], &measure)
-	}
-	a.mu.Unlock()
-	a.signal()
-}
-
-func (a *Aggregator) matchesSubscription(sub *Subscription, ip string) bool {
-	return sub.Event == EventUserDataUsageMeasures && sub.Granularity == GranularityPerSession &&
-		(sub.Target.AnyUE || (sub.Target.UeIPAddress != "" && sub.Target.UeIPAddress == ip))
+	return m
 }
 
 func computeThroughputIfPossible(m *UsageMeasures) {

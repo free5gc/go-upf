@@ -85,6 +85,58 @@ An HTTP timeout does not prove the consumer failed to process a notification.
 Retries retain the existing at-least-once behavior; exactly-once delivery is
 not guaranteed.
 
+## UPF-owned monitoring URRs (`ees.upfUrrEnabled`)
+
+```yaml
+ees:
+  enabled: true                    # report usage from SMF URR 2
+  upfUrrEnabled: true              # report usage from UPF-owned URRs
+  upfUrrPeriod: 1                  # seconds (0 = 1)
+  ip: 192.168.56.114
+  port: 8088
+```
+
+The two switches are independent, and either one starts the service:
+
+| `ees.enabled` | `ees.upfUrrEnabled` | Result |
+|---|---|---|
+| true | false | EES API runs; usage from the SMF-provisioned URR 2 (behavior above) |
+| false | true | EES API runs; usage from UPF-owned URRs |
+| true | true | EES API runs; usage from both, reported separately |
+| false | false | nothing runs; PFCP path identical to upstream |
+
+- With `ees.upfUrrEnabled`, for each matched PFCP session the UPF creates
+  one URR of its own (VOLUM, PERIO every `upfUrrPeriod`), with an ID from
+  `0xF0000001` up (TS 29.244: URR ID bit 8 set = predefined in the UP
+  function), and adds it to every PDR of the session. The session records the
+  owners, i.e. the subscriptions served by that URR; when the last owner is
+  deleted the URR is removed from the PDRs and deleted, and its final usage
+  goes to EES.
+- The source is recorded on each subscription when it is created. With both
+  URRs on, each subscription has one stream per URR. Each stream has its own
+  buffer, schedule and retries, and sends its own notifications; the two are
+  never summed. The `X-EES-Source` header (`SMF_URR` or `UPF_URR`) says which
+  URR a notification measured, because the TS 29.564 payload has no such field.
+  If the SMF provisions no URR 2, only the UPF stream reports.
+- `ONE_TIME` with both URRs sends each stream's first real measurement once. The
+  subscription is deleted when both have delivered, or 10 s after the first
+  delivery if the other URR stays silent.
+- The SMF never sees UPF-owned URRs: their usage is removed from Session Report,
+  Modification and Deletion messages, SMF requests that use an ID in that range
+  are rejected, and an SMF Update PDR with a URR ID list keeps the owned URR.
+  gtp5g replaces a PDR's whole URR list, so the UPF tracks the list installed in
+  the forwarder and resends the SMF URRs with its own.
+- Rules are changed only inside the PFCP loop (on subscription changes and every
+  second for new sessions), so API handlers never wait on the PFCP loop. A new
+  session is measured from its first reconciliation, up to one second late.
+- The API contract (h2c, Location == subscriptionId, DELETE) is the same in all
+  modes. PATCH is not implemented (405).
+
+`dnn` (optional) narrows the target: a session whose DNN (PDI Network
+Instance, plain or FQDN-encoded) is known and different is excluded; a session
+with an unknown DNN is not excluded. S-NSSAI is not used (the UPF does not
+learn it over PFCP).
+
 ## Regression tests
 
 From the repository root:

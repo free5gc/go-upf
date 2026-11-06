@@ -45,6 +45,10 @@ type TransactionTimeout struct {
 }
 
 type PfcpServer struct {
+	// UPF-owned EES URRs (opt-in); set by EnableUPFOwnedURRs before Start.
+	eesURRStore  *ees.SubscriptionStore
+	eesURRPeriod time.Duration
+	eesURRWatch  <-chan struct{}
 	eesMu        sync.RWMutex
 	eesReport    func(report.SessReport, ees.SessionContext)
 	cfg          *factory.Config
@@ -114,8 +118,20 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 	wg.Add(1)
 	go s.receiver(wg)
 
+	// Both stay nil, and are never selected, unless UPF-owned URRs are enabled.
+	var eesURRTick <-chan time.Time
+	if s.eesURRStore != nil {
+		ticker := time.NewTicker(eesURRReconcileInterval)
+		defer ticker.Stop()
+		eesURRTick = ticker.C
+	}
+
 	for {
 		select {
+		case <-s.eesURRWatch:
+			s.reconcileEESURRs()
+		case <-eesURRTick:
+			s.reconcileEESURRs()
 		case sr := <-s.srCh:
 			s.log.Tracef("receive SessReport from srCh")
 			s.ServeReport(&sr)
@@ -268,9 +284,17 @@ func (s *PfcpServer) UpdateNodeID(n *RemoteNode, newId string) {
 }
 
 func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
-	if handler := s.eesHandler(); handler != nil {
-		if identity, ok := s.lnode.GetSessionContext(sr.SEID); ok {
+	handler := s.eesHandler()
+	if handler != nil || s.eesURRStore != nil {
+		if identity, ok := s.lnode.GetSessionContext(sr.SEID); ok && handler != nil {
 			handler(sr, identity)
+		}
+		if s.eesURRStore != nil {
+			// Usage of UPF-owned URRs is for EES only, never for the SMF.
+			sr.Reports = s.withoutEESURRReports(sr)
+			if len(sr.Reports) == 0 {
+				return
+			}
 		}
 	}
 	s.srCh <- sr

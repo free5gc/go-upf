@@ -23,6 +23,11 @@ const (
 type PDRInfo struct {
 	RelatedURRIDs map[uint32]struct{}
 	UEIPv4        string
+	DNN           string // PDI Network Instance; empty when not provided
+	// fwdURRIDs is the URR ID list installed in the forwarder for this PDR.
+	// An Update PDR without URR IDs leaves it unchanged in gtp5g, while
+	// RelatedURRIDs follows the upstream association semantics.
+	fwdURRIDs map[uint32]struct{}
 }
 
 type URRInfo struct {
@@ -43,6 +48,7 @@ type Sess struct {
 	LocalID    uint64
 	RemoteID   uint64
 	UeIPv4Addr string                 // UE IPv4 from the PDI of the session PDRs
+	DNN        string                 // DNN (PDI Network Instance) of the session PDRs
 	PDRIDs     map[uint16]*PDRInfo    // key: PDR_ID
 	FARIDs     map[uint32]struct{}    // key: FAR_ID
 	QERIDs     map[uint32]struct{}    // key: QER_ID
@@ -51,6 +57,9 @@ type Sess struct {
 	q          map[uint16]chan []byte // key: PDR_ID
 	qlen       int
 	log        *logrus.Entry
+	// eesURR is the monitoring URR the UPF itself created for EES
+	// (ees.upfUrrEnabled); nil otherwise. Mutated only by the PFCP loop, under mu.
+	eesURR *eesOwnedURR
 }
 
 var (
@@ -235,6 +244,10 @@ func (s *Sess) URRSeq(urrid uint32) uint32 {
 
 // ValidateCreatePDR validates CreatePDR and builds plan without modifying state
 func (s *Sess) ValidateCreatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.PDRPlan, error) {
+	// A PDR added later to a session measured by a UPF-owned URR is measured too.
+	if s.eesURR != nil {
+		req = withPDRURRID(req, s.eesURR.id)
+	}
 	plan, err := s.rnode.driver.BuildCreatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrRuleCreationModificationFailed
@@ -252,6 +265,11 @@ func (s *Sess) ValidateCreatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan
 
 // ValidateUpdatePDR validates UpdatePDR and builds plan without modifying state
 func (s *Sess) ValidateUpdatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.PDRPlan, error) {
+	// A URR ID list in Update PDR replaces the PDR's list in gtp5g; keep the
+	// UPF-owned URR in it. Without URR IDs the kernel list is unchanged.
+	if s.eesURR != nil && s.eesURR.linkedTo(s, req) && pdrHasURRID(req) {
+		req = withPDRURRID(req, s.eesURR.id)
+	}
 	plan, err := s.rnode.driver.BuildUpdatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -366,6 +384,9 @@ func (s *Sess) ValidateCreateURR(req *ie.IE) (*forwarder.URRPlan, error) {
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
 	}
+	if err := s.checkNotEESURR(plan.URRID); err != nil {
+		return nil, err
+	}
 
 	return plan, nil
 }
@@ -380,6 +401,9 @@ func (s *Sess) ValidateUpdateURR(req *ie.IE, modPlan *forwarder.ModificationPlan
 	// Validate URR exists (in session state or in-flight creates)
 	if _, ok := s.URRIDs[plan.URRID]; !ok && !modPlan.HasCreateURR(plan.URRID) {
 		return nil, ErrRuleNotFound
+	}
+	if err := s.checkNotEESURR(plan.URRID); err != nil {
+		return nil, err
 	}
 
 	return plan, nil
@@ -396,6 +420,9 @@ func (s *Sess) ValidateRemoveURR(req *ie.IE, modPlan *forwarder.ModificationPlan
 	if _, ok := s.URRIDs[plan.URRID]; !ok && !modPlan.HasCreateURR(plan.URRID) {
 		return nil, ErrRuleNotFound
 	}
+	if err := s.checkNotEESURR(plan.URRID); err != nil {
+		return nil, err
+	}
 
 	return plan, nil
 }
@@ -410,6 +437,9 @@ func (s *Sess) ValidateQueryURR(req *ie.IE, modPlan *forwarder.ModificationPlan)
 	// Validate URR exists (in session state or in-flight creates)
 	if _, ok := s.URRIDs[plan.QueryURRID]; !ok && !modPlan.HasCreateURR(plan.QueryURRID) {
 		return nil, ErrRuleNotFound
+	}
+	if err := s.checkNotEESURR(plan.QueryURRID); err != nil {
+		return nil, err
 	}
 
 	return plan, nil
@@ -471,8 +501,13 @@ func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
 		}
 	}
 
+	fwd := make(map[uint32]struct{}, len(urrids))
+	for urrid := range urrids {
+		fwd[urrid] = struct{}{}
+	}
 	s.PDRIDs[plan.PDRID] = &PDRInfo{
 		RelatedURRIDs: urrids,
+		fwdURRIDs:     fwd,
 	}
 	s.updatePDRIdentity(plan)
 }
@@ -492,6 +527,20 @@ func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
 	newUrrids := make(map[uint32]struct{})
 	for _, urrid := range plan.URRIDs {
 		newUrrids[urrid] = struct{}{}
+	}
+	if len(plan.URRIDs) > 0 {
+		fwd := make(map[uint32]struct{}, len(newUrrids))
+		for urrid := range newUrrids {
+			fwd[urrid] = struct{}{}
+		}
+		pdrInfo.fwdURRIDs = fwd
+	}
+	// The UPF-owned URR stays linked: either ValidateUpdatePDR kept it in the
+	// URR ID list, or the request had no list and gtp5g kept the old one.
+	if own := s.eesURR; own != nil {
+		if _, linked := pdrInfo.RelatedURRIDs[own.id]; linked {
+			newUrrids[own.id] = struct{}{}
+		}
 	}
 
 	var usars []report.USAReport
@@ -527,6 +576,7 @@ func (s *Sess) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
 	}
 	delete(s.PDRIDs, plan.PDRID)
 	s.refreshUEIdentity()
+	s.refreshDNN()
 
 	return usars
 }
@@ -551,6 +601,10 @@ func (s *Sess) updatePDRIdentity(plan *forwarder.PDRPlan) {
 		if child.Type != ie.PDI {
 			continue
 		}
+		if dnn, ok := pdiDNN(child); ok { // An omitted Network Instance preserves the old value.
+			s.PDRIDs[plan.PDRID].DNN = dnn
+			s.refreshDNN()
+		}
 		address, err := child.UEIPAddress()
 		if err != nil {
 			continue
@@ -566,6 +620,37 @@ func (s *Sess) updatePDRIdentity(plan *forwarder.PDRPlan) {
 			s.refreshUEIdentity()
 		}
 	}
+}
+
+// refreshDNN selects the DNN of the lowest PDR ID that has one. Called with s.mu held.
+func (s *Sess) refreshDNN() {
+	s.DNN = ""
+	var selected uint16
+	for id, pdr := range s.PDRIDs {
+		if pdr.DNN != "" && (s.DNN == "" || id < selected) {
+			s.DNN, selected = pdr.DNN, id
+		}
+	}
+}
+
+// pdiDNN returns the Network Instance of a PDI IE, decoding the FQDN (name
+// syntax) encoding when the SMF uses it (free5GC nwInstFqdnEncoding).
+func pdiDNN(pdi *ie.IE) (string, bool) {
+	fields, err := pdi.PDI()
+	if err != nil {
+		return "", false
+	}
+	for _, field := range fields {
+		if field.Type != ie.NetworkInstance {
+			continue
+		}
+		dnn, err := field.NetworkInstanceHeuristic()
+		if err != nil {
+			return "", false
+		}
+		return dnn, true
+	}
+	return "", false
 }
 
 func (s *Sess) refreshUEIdentity() {
@@ -773,6 +858,9 @@ type LocalNode struct {
 	sess       []*Sess
 	free       []uint64
 	mu         sync.RWMutex
+	// eesURRs is set before the PFCP loop starts when UPF-owned EES URRs are
+	// enabled; SMF requests may then not use IDs from eesURRIDBase upwards.
+	eesURRs bool
 }
 
 func (n *LocalNode) Reset() {
@@ -900,9 +988,14 @@ func (n *LocalNode) GetSessionContext(id uint64) (ees.SessionContext, bool) {
 func (s *Sess) identitySnapshot() ees.SessionContext {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	identity := ees.SessionContext{RemoteSEID: s.RemoteID, Generation: s.generation, UeIPv4Addr: s.UeIPv4Addr}
+	identity := ees.SessionContext{
+		RemoteSEID: s.RemoteID, Generation: s.generation, UeIPv4Addr: s.UeIPv4Addr, DNN: s.DNN,
+	}
 	if info := s.URRIDs[ees.SingleUPFMAQEURRID]; info != nil && !info.removed {
 		identity.MeasurePeriod = info.measurePeriod
+	}
+	if own := s.eesURR; own != nil {
+		identity.UPFURRID, identity.UPFURRPeriod = own.id, own.period
 	}
 	return identity
 }

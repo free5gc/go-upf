@@ -60,13 +60,21 @@ type Logger struct {
 	ReportCaller bool   `yaml:"reportCaller" valid:"optional"`
 }
 
-// EESConfig enables the embedded Nupf_EventExposure service. It is disabled by
-// default and supports only the free5GC single-UPF scenario; keep it disabled
-// in ULCL deployments.
+// EESConfig configures the embedded Nupf_EventExposure service. It is disabled
+// by default and supports only the free5GC single-UPF scenario; keep it
+// disabled in ULCL deployments.
+//
+//   - enabled: report usage from the SMF-provisioned URR 2.
+//   - upfUrrEnabled: report usage from a URR that the UPF creates and owns in
+//     each matched session. The two switches are independent: either one starts
+//     the service, and with both on the two URRs are reported separately.
+//   - upfUrrPeriod: measurement period of the UPF-owned URRs in seconds; 0 uses 1.
 type EESConfig struct {
-	Enabled bool   `yaml:"enabled" valid:"optional"`
-	IP      string `yaml:"ip"      valid:"optional"` // empty listens on all interfaces
-	Port    int    `yaml:"port"    valid:"optional"` // 0 uses 8088
+	Enabled       bool   `yaml:"enabled"       valid:"optional"`
+	UpfURREnabled bool   `yaml:"upfUrrEnabled" valid:"optional"`
+	UpfURRPeriod  int    `yaml:"upfUrrPeriod"  valid:"optional"`
+	IP            string `yaml:"ip"            valid:"optional"` // empty listens on all interfaces
+	Port          int    `yaml:"port"          valid:"optional"` // 0 uses 8088
 }
 
 func (c *Config) GetVersion() string {

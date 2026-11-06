@@ -8,7 +8,8 @@
 // Scope & constraints (MVP):
 // - Only USER_DATA_USAGE_MEASURES + PER_SESSION are accepted.
 // - PERIODIC and ONE_TIME wait for real measurements; no synthetic zero reports.
-// - Uses SMF-provisioned URRs for data collection (no Shadow URR).
+// - Uses the SMF-provisioned URR 2, a UPF-owned URR per matched session, or
+//   both reported separately, as configured with UseMeasurementSource.
 
 package ees
 
@@ -32,6 +33,7 @@ type Server struct {
 	subscriptionStore *SubscriptionStore
 	logger            *logrus.Entry
 	httpServer        *http.Server
+	source            MeasurementSource // recorded on each new subscription
 }
 
 // NewServer constructs a Server.
@@ -39,11 +41,18 @@ func NewServer(store *SubscriptionStore, logger *logrus.Entry) *Server {
 	server := &Server{
 		subscriptionStore: store,
 		logger:            logger,
+		source:            SourceSMFURR,
 	}
 	server.httpServer = &http.Server{
 		Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, Protocols: Protocols(),
 	}
 	return server
+}
+
+// UseMeasurementSource sets the source recorded on subscriptions created from
+// now on. Call it before serving.
+func (server *Server) UseMeasurementSource(source MeasurementSource) {
+	server.source = source
 }
 
 // Routes registers handlers into the given mux.
@@ -107,6 +116,8 @@ type UpfEventSubscription struct {
 	// Targeting: choose one
 	UeIPAddress *IPAddr `json:"ueIpAddress,omitempty"`
 	AnyUE       bool    `json:"anyUe,omitempty"`
+	// Optional filter on the PDU session DNN.
+	Dnn string `json:"dnn,omitempty"`
 }
 
 // IPv4 is the supported target in this single-UPF MVP. Other IpAddr forms
@@ -177,8 +188,9 @@ func (server *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Re
 		http.Error(w, err.Error(), status)
 		return
 	}
-	server.logger.Infof("ees subscription created: id=%s nfId=%s trigger=%s",
-		id, inboundRequest.Subscription.NfID, inboundRequest.Subscription.EventReportingMode.Trigger)
+	server.logger.Infof("ees subscription created: id=%s nfId=%s trigger=%s source=%s",
+		id, inboundRequest.Subscription.NfID, inboundRequest.Subscription.EventReportingMode.Trigger,
+		subscriptionCandidate.Source)
 
 	// Do not trust forwarded headers from arbitrary clients. Deployments using
 	// TLS termination must preserve the externally advertised scheme/authority.
@@ -303,6 +315,9 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 		}
 		ueIP = ip.To4().String()
 	}
+	if strings.TrimSpace(sub.Dnn) != sub.Dnn {
+		return nil, errors.New("dnn must not have surrounding spaces")
+	}
 
 	return &Subscription{
 		Event:               EventType(e.Type),
@@ -313,9 +328,11 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 		Mode:                mode,
 		PeriodSec:           sub.EventReportingMode.ReportPeriod,
 		MeasurementTypes:    mTypes,
+		Source:              server.source,
 		Target: TargetScope{
 			UeIPAddress: ueIP,
 			AnyUE:       sub.AnyUE,
+			DNN:         sub.Dnn,
 		},
 	}, nil
 }

@@ -32,6 +32,9 @@ type SubscriptionStore struct {
 	sequencePerTS     uint32
 	instanceSuffixStr string // optional, e.g., hostname or short random; empty is fine for MVP
 	changed           chan struct{}
+	// watchers are extra change listeners (e.g. the PFCP loop that reconciles
+	// UPF-owned URRs). Registered before the store is used concurrently.
+	watchers []chan struct{}
 }
 
 // NewSubscriptionStore creates a new, empty store for subscriptions.
@@ -107,6 +110,20 @@ func (store *SubscriptionStore) signalChange() {
 	case store.changed <- struct{}{}:
 	default:
 	}
+	for _, watcher := range store.watchers {
+		select {
+		case watcher <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// Watch returns a coalescing channel that receives a value after any
+// subscription is created or deleted. Call it before the store is shared.
+func (store *SubscriptionStore) Watch() <-chan struct{} {
+	watcher := make(chan struct{}, 1)
+	store.watchers = append(store.watchers, watcher)
+	return watcher
 }
 
 // GetSubscription returns the subscription pointer for the given ID and a boolean indicating presence.

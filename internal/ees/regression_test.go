@@ -78,14 +78,15 @@ func TestSessionGenerationAndMAQESelection(t *testing.T) {
 	require.Empty(t, a.reportBuffer)
 	a.PushReportWithContext(usageReport(2, 100), old)
 	a.PushReportWithContext(usageReport(2, 200), current)
-	require.Len(t, a.reportBuffer[sub.ID], 2, "even the same IP and both SEIDs must not merge across session lifetimes")
-	for key, m := range a.reportBuffer[sub.ID] {
+	require.Len(t, a.reportBuffer[smfStream(sub.ID)], 2,
+		"even the same IP and both SEIDs must not merge across session lifetimes")
+	for key, m := range a.reportBuffer[smfStream(sub.ID)] {
 		require.Equal(t, uint64(100)*key.Generation, m.ULBytesDelta)
 	}
 	otherSession := usageReport(2, 500)
 	otherSession.SEID = 2
 	a.PushReportWithContext(otherSession, old)
-	require.Len(t, a.reportBuffer[sub.ID], 3, "URR 2 in another live session is a separate rule")
+	require.Len(t, a.reportBuffer[smfStream(sub.ID)], 3, "URR 2 in another live session is a separate rule")
 }
 
 func TestOneTimeWaitsWithoutSessionAndRetriesRealZero(t *testing.T) {
@@ -110,9 +111,9 @@ func TestOneTimeWaitsWithoutSessionAndRetriesRealZero(t *testing.T) {
 	n, err = a.TickOnce(context.Background())
 	require.NoError(t, err)
 	require.Zero(t, n)
-	require.Len(t, a.reportBuffer[sub.ID], 1)
+	require.Len(t, a.reportBuffer[smfStream(sub.ID)], 1)
 	a.mu.Lock()
-	a.retryAt[sub.ID] = time.Time{}
+	a.retryAt[smfStream(sub.ID)] = time.Time{}
 	a.mu.Unlock()
 	n, err = a.TickOnce(context.Background())
 	require.NoError(t, err)
@@ -262,8 +263,8 @@ func TestFailedBatchMergesWithReportsArrivingDuringRequest(t *testing.T) {
 	require.NoError(t, err)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	require.Len(t, a.reportBuffer[sub.ID], 1)
-	for _, measure := range a.reportBuffer[sub.ID] {
+	require.Len(t, a.reportBuffer[smfStream(sub.ID)], 1)
+	for _, measure := range a.reportBuffer[smfStream(sub.ID)] {
 		require.Equal(t, uint64(300), measure.ULBytesDelta)
 	}
 }
