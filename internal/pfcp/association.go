@@ -84,7 +84,49 @@ func (s *PfcpServer) handleAssociationReleaseRequest(
 	req *message.AssociationReleaseRequest,
 	addr net.Addr,
 ) {
-	s.log.Infoln("handleAssociationReleaseRequest not supported")
+	s.log.Infoln("handleAssociationReleaseRequest")
+
+	if req.NodeID == nil {
+		s.log.Errorf("Association Release failed: mandatory IE missing: NodeID")
+		s.sendAssociationReleaseResponse(req, addr, ie.CauseMandatoryIEMissing, ie.NewOffendingIE(ie.NodeID))
+		return
+	}
+	rnodeid, err := req.NodeID.NodeID()
+	if err != nil || rnodeid == "" {
+		s.log.Errorf("Association Release failed: mandatory IE incorrect: NodeID[% x]", req.NodeID.Payload)
+		s.sendAssociationReleaseResponse(req, addr, ie.CauseMandatoryIEIncorrect, ie.NewOffendingIE(ie.NodeID))
+		return
+	}
+
+	if node, ok := s.rnodes[rnodeid]; ok {
+		// A peer releases its own association only
+		if !node.matchesPeer(addr) {
+			s.log.Warnf("Association Release rejected: peer %v does not match Node ID %q", addr, rnodeid)
+			s.sendAssociationReleaseResponse(req, addr, ie.CauseRequestRejected)
+			return
+		}
+		s.log.Infof("delete node: %#+v\n", node)
+		node.Reset()
+		delete(s.rnodes, rnodeid)
+	}
+	s.sendAssociationReleaseResponse(req, addr, ie.CauseRequestAccepted)
+}
+
+func (s *PfcpServer) sendAssociationReleaseResponse(
+	req *message.AssociationReleaseRequest,
+	addr net.Addr,
+	cause uint8,
+	ies ...*ie.IE,
+) {
+	rsp := message.NewAssociationReleaseResponse(
+		req.Header.SequenceNumber,
+		newIeNodeID(s.nodeID),
+		ie.NewCause(cause),
+		ies...,
+	)
+	if err := s.sendRspTo(rsp, addr); err != nil {
+		s.log.Errorln(err)
+	}
 }
 
 func newIeNodeID(nodeID string) *ie.IE {
