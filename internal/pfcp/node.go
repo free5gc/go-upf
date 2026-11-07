@@ -23,6 +23,7 @@ const (
 type PDRInfo struct {
 	RelatedURRIDs map[uint32]struct{}
 	UEIPv4        string
+	LocalTEID     uint32 // the TEID of the PDI's Local F-TEID, 0 for none
 }
 
 type URRInfo struct {
@@ -59,6 +60,8 @@ var (
 	ErrRuleNotFound                   = errors.New("rule not found")
 	ErrRuleCreationModificationFailed = errors.New("rule creation/modification failed")
 	ErrMutualExclusionConflict        = errors.New("conflicting operations on same rule")
+	ErrInvalidFTEIDAllocation         = errors.New("invalid F-TEID allocation option")
+	ErrFTEIDInUse                     = errors.New("F-TEID in use by another session")
 )
 
 func (s *Sess) Close() []report.USAReport {
@@ -234,7 +237,15 @@ func (s *Sess) URRSeq(urrid uint32) uint32 {
 // ============================================================================
 
 // ValidateCreatePDR validates CreatePDR and builds plan without modifying state
-func (s *Sess) ValidateCreatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.PDRPlan, error) {
+func (s *Sess) ValidateCreatePDR(
+	req *ie.IE,
+	modPlan *forwarder.ModificationPlan,
+	fteids *fteidRequest,
+) (*forwarder.PDRPlan, error) {
+	req, err := fteids.createPDR(req)
+	if err != nil {
+		return nil, err
+	}
 	plan, err := s.rnode.driver.BuildCreatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrRuleCreationModificationFailed
@@ -265,7 +276,11 @@ func (s *Sess) ValidateCreatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan
 }
 
 // ValidateUpdatePDR validates UpdatePDR and builds plan without modifying state
-func (s *Sess) ValidateUpdatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan) (*forwarder.PDRPlan, error) {
+func (s *Sess) ValidateUpdatePDR(
+	req *ie.IE,
+	modPlan *forwarder.ModificationPlan,
+	fteids *fteidRequest,
+) (*forwarder.PDRPlan, error) {
 	plan, err := s.rnode.driver.BuildUpdatePDRPlan(s.LocalID, req)
 	if err != nil {
 		return nil, ErrMissingMandatoryIE
@@ -292,6 +307,9 @@ func (s *Sess) ValidateUpdatePDR(req *ie.IE, modPlan *forwarder.ModificationPlan
 		}
 	}
 
+	if err = fteids.checkUpdatePDR(req); err != nil {
+		return nil, err
+	}
 	return plan, nil
 }
 
@@ -501,9 +519,12 @@ func (s *Sess) ApplyCreatePDR(plan *forwarder.PDRPlan) {
 		}
 	}
 
+	teid, _ := localTEIDOf(plan.OriginalIE)
 	s.PDRIDs[plan.PDRID] = &PDRInfo{
 		RelatedURRIDs: urrids,
+		LocalTEID:     teid,
 	}
+	s.rnode.local.fteids.hold(teid)
 	s.updatePDRIdentity(plan)
 }
 
@@ -518,6 +539,11 @@ func (s *Sess) ApplyUpdatePDR(plan *forwarder.PDRPlan) []report.USAReport {
 	}
 	// Identity tracking only; URR association semantics stay as upstream.
 	s.updatePDRIdentity(plan)
+	if teid, ok := localTEIDOf(plan.OriginalIE); ok && teid != pdrInfo.LocalTEID {
+		s.rnode.local.fteids.hold(teid)
+		s.rnode.local.fteids.drop(pdrInfo.LocalTEID)
+		pdrInfo.LocalTEID = teid
+	}
 
 	newUrrids := make(map[uint32]struct{})
 	for _, urrid := range plan.URRIDs {
@@ -555,6 +581,7 @@ func (s *Sess) ApplyRemovePDR(plan *forwarder.PDRPlan) []report.USAReport {
 			usars = append(usars, usar...)
 		}
 	}
+	s.rnode.local.fteids.drop(pdrInfo.LocalTEID)
 	delete(s.PDRIDs, plan.PDRID)
 	s.refreshUEIdentity()
 
@@ -803,6 +830,7 @@ type LocalNode struct {
 	sess       []*Sess
 	free       []uint64
 	mu         sync.RWMutex
+	fteids     fteidAllocator
 }
 
 func (n *LocalNode) Reset() {

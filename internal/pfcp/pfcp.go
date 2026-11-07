@@ -75,6 +75,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		trToCh:       make(chan TransactionTimeout, TRANS_TIMEOUT_CHANNEL_LEN),
 		recoveryTime: time.Now(),
 		driver:       driver,
+		lnode:        LocalNode{fteids: newFTEIDAllocator(cfg)},
 		rnodes:       make(map[string]*RemoteNode),
 		txTrans:      make(map[string]*TxTransaction),
 		rxTrans:      make(map[string]*RxTransaction),

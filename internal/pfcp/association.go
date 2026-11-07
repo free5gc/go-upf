@@ -57,14 +57,16 @@ func (s *PfcpServer) handleAssociationSetupRequest(
 	node := s.NewNode(rnodeid, addr, s.driver)
 	s.rnodes[rnodeid] = node
 
-	rsp := message.NewAssociationSetupResponse(
-		req.Header.SequenceNumber,
+	ies := []*ie.IE{
 		newIeNodeID(s.nodeID),
 		ie.NewCause(ie.CauseRequestAccepted),
 		ie.NewRecoveryTimeStamp(s.recoveryTime),
-		// TODO:
-		// ie.NewUPFunctionFeatures(),
-	)
+	}
+	if s.lnode.fteids.addr != nil {
+		// FTUP, octet 5 bit 5: the UP function allocates the F-TEIDs (TS 29.244 clause 5.5.1)
+		ies = append(ies, ie.NewUPFunctionFeatures(0x10, 0x00))
+	}
+	rsp := message.NewAssociationSetupResponse(req.Header.SequenceNumber, ies...)
 
 	err = s.sendRspTo(rsp, addr)
 	if err != nil {
