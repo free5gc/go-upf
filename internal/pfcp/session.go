@@ -74,7 +74,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 
 	// allocate a session
 	sess := rnode.NewSess(fseid.SEID)
-	fteids := sess.newFTEIDRequest(req.PFCPSEReqFlags != nil && req.PFCPSEReqFlags.HasRESTI(), req.CreatePDR)
+	fteids := sess.newFTEIDRequest(req.PFCPSEReqFlags != nil && req.PFCPSEReqFlags.HasRESTI(),
+		req.CreatePDR, req.CreateTrafficEndpoint)
 	defer fteids.release()
 
 	// ========================================================================
@@ -128,6 +129,13 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			return
 		}
 		plan.CreateBARs = append(plan.CreateBARs, p)
+	}
+
+	if err1 := fteids.takeEndpoints(req.CreateTrafficEndpoint, nil, nil); err1 != nil {
+		sess.log.Errorf("Est Traffic Endpoint error: %v", err1)
+		s.sendSessEstFailRsp(req, addr, pfcpCauseFromError(err1))
+		rnode.DeleteSess(sess.LocalID)
+		return
 	}
 
 	for _, i := range req.CreatePDR {
@@ -187,6 +195,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(createdPDR...))
 		}
 	}
+	fteids.commitEndpoints()
 
 	var v4 net.IP
 	addrv4, err := net.ResolveIPAddr("ip4", s.nodeID)
@@ -198,6 +207,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 
 	ies := make([]*ie.IE, 0)
 	ies = append(ies, CreatedPDRList...)
+	ies = append(ies, fteids.createdEndpoints()...)
 	ies = append(ies,
 		newIeNodeID(s.nodeID),
 		ie.NewCause(ie.CauseRequestAccepted),
@@ -287,7 +297,8 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	// PHASE 1: Validation - Build all plans and validate without execution
 	// ========================================================================
 	plan := forwarder.NewModificationPlan(sess.LocalID)
-	fteids := sess.newFTEIDRequest(false, req.CreatePDR, req.UpdatePDR)
+	fteids := sess.newFTEIDRequest(false,
+		req.CreatePDR, req.UpdatePDR, req.CreateTrafficEndpoint, req.UpdateTrafficEndpoint)
 	defer fteids.release()
 
 	for _, i := range req.CreateFAR {
@@ -332,6 +343,13 @@ func (s *PfcpServer) handleSessionModificationRequest(
 			return
 		}
 		plan.CreateBARs = append(plan.CreateBARs, p)
+	}
+
+	err = fteids.takeEndpoints(req.CreateTrafficEndpoint, req.UpdateTrafficEndpoint, req.RemoveTrafficEndpoint)
+	if err != nil {
+		sess.log.Errorf("Mod Traffic Endpoint error: %v", err)
+		s.sendSessModFailRsp(req, sess, addr, pfcpCauseFromError(err))
+		return
 	}
 
 	for _, i := range req.CreatePDR {
@@ -465,6 +483,12 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		}
 		plan.RemovePDRs = append(plan.RemovePDRs, p)
 	}
+	// The PDRs that refer to an updated or removed Traffic Endpoint
+	if err = fteids.endpointPDRPlans(plan); err != nil {
+		sess.log.Errorf("Mod Traffic Endpoint PDRs error: %v", err)
+		s.sendSessModFailRsp(req, sess, addr, pfcpCauseFromError(err))
+		return
+	}
 	// Validate mutual exclusion across operations
 	if err1 := validateMutualExclusion(plan); err1 != nil {
 		sess.log.Errorf("Mod mutual exclusion validation error: %v", err1)
@@ -546,6 +570,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	for _, p := range plan.RemoveFARs {
 		sess.ApplyRemoveFAR(p)
 	}
+	fteids.commitEndpoints()
 
 	// Collect USAReports from execution result (RemoveURR, UpdateURR, QueryURR)
 	if execResult != nil && len(execResult.USAReports) > 0 {
@@ -577,6 +602,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
+	rsp.CreatedUpdatedTrafficEndpoint = fteids.createdEndpoints()
 	for _, p := range plan.CreatePDRs {
 		if teid, ok := fteids.created[p.PDRID]; ok {
 			rsp.CreatedPDR = append(rsp.CreatedPDR, ie.NewCreatedPDR(ie.NewPDRID(p.PDRID), fteids.fteid(teid)))

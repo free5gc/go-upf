@@ -3,6 +3,7 @@ package pfcp
 import (
 	"math/rand/v2"
 	"net"
+	"slices"
 
 	"github.com/wmnsk/go-pfcp/ie"
 
@@ -99,13 +100,20 @@ type fteidRequest struct {
 	sess       *Sess
 	alloc      *fteidAllocator
 	restoring  bool                // the Restoration Indication of an establishment
-	named      map[uint32]struct{} // the TEIDs of the CP function in the request's PDRs
+	named      map[uint32]struct{} // the TEIDs of the CP function in the request's PDRs and Traffic Endpoints
 	byChooseID map[uint8]uint32
 	chosen     []uint32
 	created    map[uint16]uint32 // the TEID chosen for a Create PDR, by PDR ID
+	// The Traffic Endpoints that the request creates or updates, as it leaves them, those that it removes, and
+	// the TEIDs chosen for them, by Traffic Endpoint ID; the Traffic Endpoint that each PDR with a PDI in the
+	// request refers to, nil for none, by PDR ID (traffic_endpoint.go).
+	endpoints        map[uint8]*trafficEndpoint
+	removedEndpoints map[uint8]struct{}
+	chosenEndpoints  map[uint8]uint32
+	endpointRefs     map[uint16]*endpointRef
 }
 
-func (s *Sess) newFTEIDRequest(restoring bool, pdrLists ...[]*ie.IE) *fteidRequest {
+func (s *Sess) newFTEIDRequest(restoring bool, rules ...[]*ie.IE) *fteidRequest {
 	r := &fteidRequest{
 		sess:       s,
 		alloc:      &s.rnode.local.fteids,
@@ -113,10 +121,15 @@ func (s *Sess) newFTEIDRequest(restoring bool, pdrLists ...[]*ie.IE) *fteidReque
 		named:      make(map[uint32]struct{}),
 		byChooseID: make(map[uint8]uint32),
 		created:    make(map[uint16]uint32),
+
+		endpoints:        make(map[uint8]*trafficEndpoint),
+		removedEndpoints: make(map[uint8]struct{}),
+		chosenEndpoints:  make(map[uint8]uint32),
+		endpointRefs:     make(map[uint16]*endpointRef),
 	}
-	for _, pdrs := range pdrLists {
-		for _, pdr := range pdrs {
-			if teid, _ := localTEIDOf(pdr); teid != 0 {
+	for _, list := range rules {
+		for _, rule := range list {
+			if teid, _ := localTEIDOf(rule); teid != 0 {
 				r.named[teid] = struct{}{}
 			}
 		}
@@ -133,34 +146,37 @@ func (r *fteidRequest) release() {
 	}
 }
 
-// createPDR gives the Create PDR to install: with the F-TEID that the UP function chose, if its Local F-TEID
-// has CH.
+// createPDR gives the Create PDR to install: with the IEs of the Traffic Endpoint that it refers to, or with the
+// F-TEID that the UP function chose if its Local F-TEID has CH.
 func (r *fteidRequest) createPDR(req *ie.IE) (*ie.IE, error) {
 	ies, err := req.CreatePDR()
 	if err != nil {
 		return req, nil
 	}
-	ies, changed, err := r.localFTEID(ies, true)
+	ies, changed, err := r.pdi(ies, true)
 	if err != nil || !changed {
 		return req, err
 	}
 	return ie.NewCreatePDR(ies...), nil
 }
 
-// checkUpdatePDR checks the Local F-TEID of an Update PDR.
-func (r *fteidRequest) checkUpdatePDR(req *ie.IE) error {
+// updatePDR gives the Update PDR to install: with the IEs of the Traffic Endpoint that the PDR refers to, which
+// an Update PDR without a PDI keeps. It checks a Local F-TEID of the CP function.
+func (r *fteidRequest) updatePDR(req *ie.IE) (*ie.IE, error) {
 	ies, err := req.UpdatePDR()
 	if err != nil {
-		return nil
+		return req, nil
 	}
-	_, _, err = r.localFTEID(ies, false)
-	return err
+	ies, changed, err := r.pdi(ies, false)
+	if err != nil || !changed {
+		return req, err
+	}
+	return ie.NewUpdatePDR(ies...), nil
 }
 
-// localFTEID replaces among the IEs of a Create PDR a Local F-TEID that has CH with the F-TEID that the UP
-// function chose, or checks one that the CP function allocated. An IE that does not parse is left to the
-// forwarder's plan.
-func (r *fteidRequest) localFTEID(ies []*ie.IE, create bool) ([]*ie.IE, bool, error) {
+// pdi merges into the PDI among the IEs of a Create or Update PDR the IEs of the Traffic Endpoint that it refers
+// to, or takes its Local F-TEID. A PDI that does not parse is left to the forwarder's plan.
+func (r *fteidRequest) pdi(ies []*ie.IE, create bool) ([]*ie.IE, bool, error) {
 	var pdrID uint16
 	pdiAt := -1
 	for n, i := range ies {
@@ -174,37 +190,61 @@ func (r *fteidRequest) localFTEID(ies []*ie.IE, create bool) ([]*ie.IE, bool, er
 		}
 	}
 	if pdiAt < 0 {
+		// An Update PDR without a PDI keeps the PDR's, and the Traffic Endpoint that it refers to.
+		if info, ok := r.sess.PDRIDs[pdrID]; ok && !create && info.endpoint != nil {
+			return r.referTo(append(ies, nil), len(ies), pdrID, info.endpoint)
+		}
 		return ies, false, nil
 	}
 	pdi, err := ies[pdiAt].PDI()
 	if err != nil {
 		return ies, false, nil
 	}
-	for n, i := range pdi {
+	if at := slices.IndexFunc(pdi, isTrafficEndpointID); at >= 0 {
+		id, idErr := pdi[at].TrafficEndpointID()
+		// A PDI that refers to a Traffic Endpoint has no Local F-TEID of its own (Table 7.5.2.2-2).
+		if idErr != nil || slices.ContainsFunc(pdi, isFTEID) {
+			return ies, false, ErrRuleCreationModificationFailed
+		}
+		return r.referTo(ies, pdiAt, pdrID, &endpointRef{id: id, pdi: pdi})
+	}
+	r.endpointRefs[pdrID] = nil
+	teid, err := r.localFTEID(pdi, r.localTEID(pdrID), create)
+	if err != nil || teid == 0 {
+		return ies, false, err
+	}
+	// On N4, no Updated PDR returns an F-TEID that the UP function chose (Table 7.5.5.5-1); release frees it.
+	if !create {
+		return ies, false, ErrRuleCreationModificationFailed
+	}
+	r.created[pdrID] = teid
+	ies[pdiAt] = ie.NewPDI(pdi...)
+	return ies, true, nil
+}
+
+// localFTEID takes the Local F-TEID among the IEs of a PDI or a Traffic Endpoint whose TEID was current: it
+// replaces one that has CH with the F-TEID that the UP function chose, whose TEID it gives, or checks one that
+// the CP function allocated. One that does not parse is left to the forwarder's plan.
+func (r *fteidRequest) localFTEID(ies []*ie.IE, current uint32, create bool) (uint32, error) {
+	for n, i := range ies {
 		if i.Type != ie.FTEID {
 			continue
 		}
-		fteid, parseErr := i.FTEID()
-		if parseErr != nil {
-			return ies, false, nil
+		fteid, err := i.FTEID()
+		if err != nil {
+			return 0, nil
 		}
 		if !fteid.HasCh() {
-			return ies, false, r.checkCPAllocated(pdrID, fteid.TEID, create)
+			return 0, r.checkCPAllocated(fteid.TEID, current, create)
 		}
-		// On N4, no Updated PDR returns an F-TEID that the UP function chose (Table 7.5.5.5-1).
-		if !create {
-			return ies, false, ErrRuleCreationModificationFailed
+		teid, err := r.choose(fteid)
+		if err != nil {
+			return 0, err
 		}
-		teid, chooseErr := r.choose(fteid)
-		if chooseErr != nil {
-			return ies, false, chooseErr
-		}
-		r.created[pdrID] = teid
-		pdi[n] = r.fteid(teid)
-		ies[pdiAt] = ie.NewPDI(pdi...)
-		return ies, true, nil
+		ies[n] = r.fteid(teid)
+		return teid, nil
 	}
-	return ies, false, nil
+	return 0, nil
 }
 
 func (r *fteidRequest) choose(fteid *ie.FTEIDFields) (uint32, error) {
@@ -225,8 +265,9 @@ func (r *fteidRequest) choose(fteid *ie.FTEIDFields) (uint32, error) {
 	return teid, nil
 }
 
-// checkCPAllocated takes or rejects a Local F-TEID that the CP function allocated.
-func (r *fteidRequest) checkCPAllocated(pdrID uint16, teid uint32, create bool) error {
+// checkCPAllocated takes or rejects a Local F-TEID that the CP function allocated, of a rule whose TEID was
+// current.
+func (r *fteidRequest) checkCPAllocated(teid, current uint32, create bool) error {
 	use, held := r.alloc.teids[teid]
 	if r.restoring {
 		// A restored session has its F-TEID (Table 7.5.2.1-1 NOTE 4). Another session having it is not expected
@@ -236,8 +277,8 @@ func (r *fteidRequest) checkCPAllocated(pdrID uint16, teid uint32, create bool) 
 		}
 		return nil
 	}
-	// A new PDR has an F-TEID of the UP function, an updated one keeps its own (clause 5.5.1).
-	if r.alloc.strict && (create || teid != r.localTEID(pdrID)) {
+	// A new rule has an F-TEID of the UP function, an updated one keeps its own (clause 5.5.1).
+	if r.alloc.strict && (create || teid != current) {
 		return ErrInvalidFTEIDAllocation
 	}
 	// A TEID that the UP function chose belongs to its session.
@@ -260,8 +301,8 @@ func (r *fteidRequest) fteid(teid uint32) *ie.IE {
 	return ie.NewFTEID(0x01, teid, r.alloc.addr, nil, 0)
 }
 
-// localTEIDOf is the TEID of the Local F-TEID of a Create PDR or an Update PDR, and whether the PDR has a PDI:
-// an Update PDR without one keeps its F-TEID.
+// localTEIDOf is the TEID of the Local F-TEID of a Create or Update PDR, and whether the PDR has a PDI (an Update
+// PDR without one keeps its F-TEID), or of a Create or Update Traffic Endpoint.
 func localTEIDOf(pdr *ie.IE) (uint32, bool) {
 	if pdr == nil {
 		return 0, false
@@ -273,6 +314,12 @@ func localTEIDOf(pdr *ie.IE) (uint32, bool) {
 		ies, err = pdr.CreatePDR()
 	case ie.UpdatePDR:
 		ies, err = pdr.UpdatePDR()
+	case ie.CreateTrafficEndpoint, ie.UpdateTrafficEndpoint:
+		fteid, fteidErr := pdr.FTEID()
+		if fteidErr != nil {
+			return 0, false
+		}
+		return fteid.TEID, true
 	default:
 		return 0, false
 	}

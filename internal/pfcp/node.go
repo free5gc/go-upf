@@ -23,7 +23,8 @@ const (
 type PDRInfo struct {
 	RelatedURRIDs map[uint32]struct{}
 	UEIPv4        string
-	LocalTEID     uint32 // the TEID of the PDI's Local F-TEID, 0 for none
+	LocalTEID     uint32       // the TEID of the PDI's Local F-TEID, 0 for none
+	endpoint      *endpointRef // the Traffic Endpoint that the PDI refers to, nil for none
 }
 
 type URRInfo struct {
@@ -52,6 +53,8 @@ type Sess struct {
 	q          map[uint16]chan []byte // key: PDR_ID
 	qlen       int
 	log        *logrus.Entry
+
+	trafficEndpoints map[uint8]*trafficEndpoint // key: Traffic Endpoint ID
 }
 
 var (
@@ -150,6 +153,9 @@ func (s *Sess) Close() []report.USAReport {
 		usars = append(usars, execResult.USAReports...)
 	}
 
+	for _, te := range s.trafficEndpoints {
+		s.rnode.local.fteids.drop(te.localTEID())
+	}
 	for _, q := range s.q {
 		close(q)
 	}
@@ -307,8 +313,15 @@ func (s *Sess) ValidateUpdatePDR(
 		}
 	}
 
-	if err = fteids.checkUpdatePDR(req); err != nil {
+	install, err := fteids.updatePDR(req)
+	if err != nil {
 		return nil, err
+	}
+	if install != req {
+		// With the IEs of the Traffic Endpoint that the PDR refers to
+		if plan, err = s.rnode.driver.BuildUpdatePDRPlan(s.LocalID, install); err != nil {
+			return nil, ErrRuleCreationModificationFailed
+		}
 	}
 	return plan, nil
 }
@@ -904,6 +917,8 @@ func (n *LocalNode) NewSess(rSeid uint64, qlen int) *Sess {
 		BARIDs:     make(map[uint8]struct{}),
 		q:          make(map[uint16]chan []byte),
 		qlen:       qlen,
+
+		trafficEndpoints: make(map[uint8]*trafficEndpoint),
 	}
 	last := len(n.free) - 1
 	if last >= 0 {
