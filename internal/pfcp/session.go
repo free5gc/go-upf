@@ -170,16 +170,32 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	for _, p := range plan.CreatePDRs {
 		sess.ApplyCreatePDR(p)
 
-		ueIPAddress := getUEAddressFromPDR(p.OriginalIE)
-		pdrId := getPDRIDFromPDR(p.OriginalIE)
-
-		if ueIPAddress != nil {
-			ueIPv4 := ueIPAddress.IPv4Address.String()
-			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
-				ie.NewPDRID(pdrId),
-				ie.NewUEIPAddress(2, ueIPv4, "", 0, 0),
-			))
+		ueIPAddrIE := getUEAddressIEFromPDR(p.OriginalIE)
+		if ueIPAddrIE == nil {
+			continue
 		}
+
+		// Created PDR's UE IP Address IE is only included when the CP
+		// delegated address allocation to the UP function (CHV4/CHV6 set,
+		// TS 29.244 5.21). When the CP already supplied a concrete
+		// address, echoing it back here is spec-non-conformant and gets
+		// the response rejected by strict peers (e.g. OAI's SMF).
+		if !ueIPAddrIE.HasCHV4() && !ueIPAddrIE.HasCHV6() {
+			continue
+		}
+
+		pdrId := getPDRIDFromPDR(p.OriginalIE)
+		fields, ueIPErr := ueIPAddrIE.UEIPAddress()
+		if ueIPErr != nil || fields.IPv4Address == nil {
+			sess.log.Warnf("PDR %d delegated UE IP allocation to UP (CHV4/CHV6 set), "+
+				"but UP-side allocation is not implemented; omitting Created PDR", pdrId)
+			continue
+		}
+
+		CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
+			ie.NewPDRID(pdrId),
+			ie.NewUEIPAddress(2, fields.IPv4Address.String(), "", 0, 0),
+		))
 	}
 
 	var v4 net.IP
@@ -719,8 +735,9 @@ func (s *PfcpServer) handleSessionReportRequestTimeout(
 	// TODO?
 }
 
-// getUEAddressFromPDR returns the UEIPaddress() from the PDR IE.
-func getUEAddressFromPDR(pdr *ie.IE) *ie.UEIPAddressFields {
+// getUEAddressIEFromPDR returns the raw UEIPAddress IE from the PDR's PDI,
+// so callers can inspect its CHV4/CHV6 flags before deciding how to use it.
+func getUEAddressIEFromPDR(pdr *ie.IE) *ie.IE {
 	ies, err := pdr.CreatePDR()
 	if err != nil {
 		return nil
@@ -735,11 +752,7 @@ func getUEAddressFromPDR(pdr *ie.IE) *ie.UEIPAddressFields {
 			}
 			for _, x := range ies {
 				if x.Type == ie.UEIPAddress {
-					fields, err := x.UEIPAddress()
-					if err != nil {
-						return nil
-					}
-					return fields
+					return x
 				}
 			}
 		}
