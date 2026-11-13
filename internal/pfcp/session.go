@@ -36,13 +36,13 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 
 	if req.NodeID == nil {
 		s.log.Errorln("not found NodeID")
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
+		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing, ie.NewOffendingIE(ie.NodeID))
 		return
 	}
 	rnodeid, err := req.NodeID.NodeID()
-	if err != nil {
-		s.log.Errorln(err)
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
+	if err != nil || rnodeid == "" {
+		s.log.Errorf("Session Establishment failed: mandatory IE incorrect: NodeID[% x]", req.NodeID.Payload)
+		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEIncorrect, ie.NewOffendingIE(ie.NodeID))
 		return
 	}
 	s.log.Debugf("remote nodeid: %v\n", rnodeid)
@@ -61,13 +61,13 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 
 	if req.CPFSEID == nil {
 		s.log.Errorln("not found CP F-SEID")
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
+		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing, ie.NewOffendingIE(ie.FSEID))
 		return
 	}
 	fseid, err := req.CPFSEID.FSEID()
 	if err != nil {
 		s.log.Errorln(err)
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing)
+		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEIncorrect, ie.NewOffendingIE(ie.FSEID))
 		return
 	}
 	s.log.Debugf("fseid.SEID: %#x\n", fseid.SEID)
@@ -769,6 +769,7 @@ func (s *PfcpServer) sendSessEstFailRsp(
 	req *message.SessionEstablishmentRequest,
 	addr net.Addr,
 	cause uint8,
+	additionalIEs ...*ie.IE,
 ) {
 	var peerSEID uint64
 	if req.CPFSEID != nil {
@@ -776,14 +777,14 @@ func (s *PfcpServer) sendSessEstFailRsp(
 			peerSEID = fseid.SEID
 		}
 	}
+	ies := append([]*ie.IE{newIeNodeID(s.nodeID), ie.NewCause(cause)}, additionalIEs...)
 	rsp := message.NewSessionEstablishmentResponse(
 		0, // mp
 		0, // fo
 		peerSEID,
 		req.Header.SequenceNumber,
 		0, // pri
-		newIeNodeID(s.nodeID),
-		ie.NewCause(cause),
+		ies...,
 	)
 	if err := s.sendRspTo(rsp, addr); err != nil {
 		s.log.Errorln(err)
