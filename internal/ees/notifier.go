@@ -163,6 +163,11 @@ func (notifier *Notifier) NotifyContext(
 	req.Header.Set("User-Agent", notifier.defaultUserAgent)
 	req.Header.Set("X-EES-EventId", string(subscription.Event))
 	req.Header.Set("X-EES-SubscriptionId", subscription.ID)
+	// The TS 29.564 payload has no field for this; with both URRs on, it tells
+	// the consumer which URR this notification measured.
+	if len(measures) > 0 && measures[0].Source != "" {
+		req.Header.Set("X-EES-Source", string(measures[0].Source))
+	}
 
 	resp, err := notifier.httpClient.Do(req)
 	if err != nil {

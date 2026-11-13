@@ -569,7 +569,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
-	for _, r := range usars {
+	for _, r := range s.withoutEESURR(usars) {
 		urrInfo, ok := sess.URRIDs[r.URRID]
 		if !ok {
 			sess.log.Warnf("Sess Mod: URRInfo[%#x] not found", r.URRID)
@@ -640,7 +640,7 @@ func (s *PfcpServer) handleSessionDeletionRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
-	for _, r := range usars {
+	for _, r := range s.withoutEESURR(usars) {
 		urrInfo, ok := sess.URRIDs[r.URRID]
 		if !ok {
 			sess.log.Warnf("Sess Del: URRInfo[%#x] not found", r.URRID)

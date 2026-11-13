@@ -36,7 +36,7 @@ func TestModeOnDemandLifecycle(t *testing.T) {
 	t.Run("OnDemandWithData_ShouldNotifyAndDelete", func(t *testing.T) {
 		// 1. Manually inject data into aggregator buffer
 		aggregator.mu.Lock()
-		aggregator.reportBuffer[id] = map[SessionKey]*UsageMeasures{
+		aggregator.reportBuffer[smfStream(id)] = map[SessionKey]*UsageMeasures{
 			{LocalSEID: 1}: {
 				Key:          SessionKey{LocalSEID: 1},
 				ULBytesDelta: 100,

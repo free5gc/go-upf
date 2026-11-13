@@ -4,6 +4,7 @@
 package ees
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -87,12 +88,32 @@ const (
 	MeasureAppInfo MeasurementType = "APPLICATION_RELATED_INFO"
 )
 
-// TargetScope selects all sessions or sessions with a specific IPv4 address.
+// MeasurementSource says which URRs a subscription takes its usage from. It is
+// fixed when the subscription is created. A subscription that reads both URRs
+// gets one notification stream per URR; the two are never summed.
+type MeasurementSource string
+
+const (
+	// SourceSMFURR uses the SMF-provisioned SingleUPFMAQEURRID (default).
+	SourceSMFURR MeasurementSource = "SMF_URR"
+	// SourceUPFURR uses a URR that the UPF creates and owns for EES in each
+	// matched session (ees.upfUrrEnabled).
+	SourceUPFURR MeasurementSource = "UPF_URR"
+	// SourceBothURRs reports SourceSMFURR and SourceUPFURR side by side.
+	SourceBothURRs MeasurementSource = "SMF_URR+UPF_URR"
+)
+
+// TargetScope selects all sessions or sessions with a specific IPv4 address,
+// optionally narrowed to one DNN.
 type TargetScope struct {
 	AnyUE bool
-	// Future: UEIP, SUPI, DNN, S-NSSAI, app filters...
+	// Future: SUPI, S-NSSAI, app filters...
 	// UeIPAddress allows targeting a specific UE by IP.
 	UeIPAddress string
+	// DNN, when set, excludes sessions whose DNN (PDI Network Instance) is
+	// known and different (case-insensitive). A session with an unknown DNN
+	// is not excluded, so the #79 IPv4 selection is unchanged for it.
+	DNN string
 }
 
 // SessionKey uniquely identifies a session for reporting purposes.
@@ -130,6 +151,9 @@ type UsageMeasures struct {
 
 	// URR measurement period the reports were produced at (0 if not periodic).
 	MeasurePeriod time.Duration
+
+	// Source is the URR these measures came from.
+	Source MeasurementSource
 }
 
 // Subscription holds the in-memory state for a single EES subscription.
@@ -144,9 +168,13 @@ type Subscription struct {
 	Granularity         Granularity
 	Mode                Mode
 	PeriodSec           int
+	Source              MeasurementSource // "" is treated as SourceSMFURR
 
 	// TS 29.564: MeasurementTypes specifies which measurements are requested.
 	MeasurementTypes []MeasurementType
+
+	// Resource is the subscription resource as accepted; PATCH applies to it.
+	Resource UpfEventSubscription
 
 	CreatedAt  time.Time
 	LastNotify time.Time
@@ -170,4 +198,40 @@ type SessionContext struct {
 	// Periodic measurement period of SingleUPFMAQEURRID in this session;
 	// 0 when that URR does not report periodically.
 	MeasurePeriod time.Duration
+	// DNN of the session from its PDI Network Instance; empty when unknown.
+	DNN string
+	// UPFURRID is the URR the UPF created for EES in this session (0: none),
+	// with its measurement period.
+	UPFURRID     uint32
+	UPFURRPeriod time.Duration
+}
+
+// UsesUPFURR reports whether the subscription takes usage from UPF-owned URRs.
+func (s *Subscription) UsesUPFURR() bool {
+	return s.Source == SourceUPFURR || s.Source == SourceBothURRs
+}
+
+// Sources lists the URR sources the subscription reports, one stream each.
+func (s *Subscription) Sources() []MeasurementSource {
+	switch s.Source {
+	case SourceUPFURR:
+		return []MeasurementSource{SourceUPFURR}
+	case SourceBothURRs:
+		return []MeasurementSource{SourceSMFURR, SourceUPFURR}
+	default:
+		return []MeasurementSource{SourceSMFURR}
+	}
+}
+
+// MatchesTarget reports whether a session is in a subscription's target scope.
+// A session without a known UE IPv4 address never matches.
+func MatchesTarget(sub *Subscription, identity SessionContext) bool {
+	if sub.Event != EventUserDataUsageMeasures || sub.Granularity != GranularityPerSession ||
+		identity.UeIPv4Addr == "" {
+		return false
+	}
+	if !sub.Target.AnyUE && (sub.Target.UeIPAddress == "" || sub.Target.UeIPAddress != identity.UeIPv4Addr) {
+		return false
+	}
+	return sub.Target.DNN == "" || identity.DNN == "" || strings.EqualFold(sub.Target.DNN, identity.DNN)
 }

@@ -1856,6 +1856,9 @@ func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResul
 		rs, err := gtp5gnl.RemoveURROID(g.client, g.link.link, p.OID)
 		if err != nil {
 			g.log.Errorf("ExecuteModificationPlan: RemoveURR[%#x] failed: %v", p.URRID, err)
+			if plan.Strict {
+				return result, err
+			}
 		}
 		for _, r := range rs {
 			result.USAReports = append(result.USAReports, g.convertUSAReport(r))
@@ -1909,6 +1912,9 @@ func (g *Gtp5g) ExecuteModificationPlan(plan *ModificationPlan) (*ExecutionResul
 	for _, p := range plan.UpdatePDRs {
 		if err := gtp5gnl.UpdatePDROID(g.client, g.link.link, p.OID, p.Attrs); err != nil {
 			g.log.Errorf("ExecuteModificationPlan: UpdatePDR[%#x] failed: %v", p.PDRID, err)
+			if plan.Strict {
+				return result, err
+			}
 		}
 	}
 

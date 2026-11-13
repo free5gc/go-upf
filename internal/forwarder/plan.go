@@ -98,7 +98,10 @@ type BARPlan struct {
 // ModificationPlan contains all validated rule operations for a session modification
 // Operations should be executed in the order defined here
 type ModificationPlan struct {
-	SEID uint64
+	// Strict propagates errors for EES-owned UpdatePDR/RemoveURR reconciliation.
+	// Ordinary PFCP operations retain the existing best-effort behavior.
+	Strict bool
+	SEID   uint64
 
 	// Create operations - order: FAR -> QER -> URR -> BAR -> PDR
 	CreateFARs []*FARPlan

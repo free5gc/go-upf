@@ -1,14 +1,16 @@
 // Package ees - UPF Event Exposure Service (EES)
-// api.go: minimal REST API for EES subscriptions (create/delete).
+// api.go: minimal REST API for EES subscriptions (create/modify/delete).
 //
 // Endpoints (MVP):
 //   POST   /nupf-ee/v1/ee-subscriptions        -> Create subscription
+//   PATCH  /nupf-ee/v1/ee-subscriptions/{id}   -> Modify subscription (patch.go)
 //   DELETE /nupf-ee/v1/ee-subscriptions/{id}   -> Delete subscription
 //
 // Scope & constraints (MVP):
 // - Only USER_DATA_USAGE_MEASURES + PER_SESSION are accepted.
 // - PERIODIC and ONE_TIME wait for real measurements; no synthetic zero reports.
-// - Uses SMF-provisioned URRs for data collection (no Shadow URR).
+// - Uses the SMF-provisioned URR 2, a UPF-owned URR per matched session, or
+//   both reported separately, as configured with UseMeasurementSource.
 
 package ees
 
@@ -22,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -32,6 +35,8 @@ type Server struct {
 	subscriptionStore *SubscriptionStore
 	logger            *logrus.Entry
 	httpServer        *http.Server
+	source            MeasurementSource // recorded on each new subscription
+	patchMu           sync.Mutex        // serializes PATCH read-modify-write
 }
 
 // NewServer constructs a Server.
@@ -39,6 +44,7 @@ func NewServer(store *SubscriptionStore, logger *logrus.Entry) *Server {
 	server := &Server{
 		subscriptionStore: store,
 		logger:            logger,
+		source:            SourceSMFURR,
 	}
 	server.httpServer = &http.Server{
 		Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, Protocols: Protocols(),
@@ -46,10 +52,16 @@ func NewServer(store *SubscriptionStore, logger *logrus.Entry) *Server {
 	return server
 }
 
+// UseMeasurementSource sets the source recorded on subscriptions created from
+// now on. Call it before serving.
+func (server *Server) UseMeasurementSource(source MeasurementSource) {
+	server.source = source
+}
+
 // Routes registers handlers into the given mux.
 func (server *Server) Routes(mux *http.ServeMux) {
-	mux.HandleFunc("/nupf-ee/v1/ee-subscriptions", server.handleCreateSubscription)      // POST
-	mux.HandleFunc("/nupf-ee/v1/ee-subscriptions/", server.handleDeleteSubscriptionByID) // DELETE /.../{id}
+	mux.HandleFunc("/nupf-ee/v1/ee-subscriptions", server.handleCreateSubscription) // POST
+	mux.HandleFunc("/nupf-ee/v1/ee-subscriptions/", server.handleSubscriptionByID)  // PATCH, DELETE /.../{id}
 }
 
 // Protocols enables HTTP/1.1 and HTTP/2 with prior knowledge (h2c), as used by
@@ -107,6 +119,8 @@ type UpfEventSubscription struct {
 	// Targeting: choose one
 	UeIPAddress *IPAddr `json:"ueIpAddress,omitempty"`
 	AnyUE       bool    `json:"anyUe,omitempty"`
+	// Optional filter on the PDU session DNN.
+	Dnn string `json:"dnn,omitempty"`
 }
 
 // IPv4 is the supported target in this single-UPF MVP. Other IpAddr forms
@@ -166,6 +180,7 @@ func (server *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Re
 		http.Error(w, validationErr.Error(), http.StatusBadRequest)
 		return
 	}
+	subscriptionCandidate.Resource = inboundRequest.Subscription
 
 	id, err := server.subscriptionStore.CreateSubscription(subscriptionCandidate)
 	if err != nil {
@@ -177,8 +192,9 @@ func (server *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Re
 		http.Error(w, err.Error(), status)
 		return
 	}
-	server.logger.Infof("ees subscription created: id=%s nfId=%s trigger=%s",
-		id, inboundRequest.Subscription.NfID, inboundRequest.Subscription.EventReportingMode.Trigger)
+	server.logger.Infof("ees subscription created: id=%s nfId=%s trigger=%s source=%s",
+		id, inboundRequest.Subscription.NfID, inboundRequest.Subscription.EventReportingMode.Trigger,
+		subscriptionCandidate.Source)
 
 	// Do not trust forwarded headers from arbitrary clients. Deployments using
 	// TLS termination must preserve the externally advertised scheme/authority.
@@ -198,9 +214,9 @@ func (server *Server) handleCreateSubscription(w http.ResponseWriter, r *http.Re
 	}
 }
 
-// handleDeleteSubscriptionByID handles DELETE /nupf-ee/v1/ee-subscriptions/{id}
-func (server *Server) handleDeleteSubscriptionByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
+// handleSubscriptionByID handles PATCH and DELETE /nupf-ee/v1/ee-subscriptions/{id}
+func (server *Server) handleSubscriptionByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete && r.Method != http.MethodPatch {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -212,6 +228,10 @@ func (server *Server) handleDeleteSubscriptionByID(w http.ResponseWriter, r *htt
 		return
 	}
 
+	if r.Method == http.MethodPatch {
+		server.handlePatchSubscription(w, r, id)
+		return
+	}
 	if err := server.subscriptionStore.DeleteSubscription(id); err == nil {
 		server.logger.Infof("ees subscription deleted: id=%s", id)
 		w.WriteHeader(http.StatusNoContent)
@@ -303,6 +323,9 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 		}
 		ueIP = ip.To4().String()
 	}
+	if strings.TrimSpace(sub.Dnn) != sub.Dnn {
+		return nil, errors.New("dnn must not have surrounding spaces")
+	}
 
 	return &Subscription{
 		Event:               EventType(e.Type),
@@ -313,9 +336,11 @@ func (server *Server) validateAndMapRequest(req createSubscriptionRequest) (*Sub
 		Mode:                mode,
 		PeriodSec:           sub.EventReportingMode.ReportPeriod,
 		MeasurementTypes:    mTypes,
+		Source:              server.source,
 		Target: TargetScope{
 			UeIPAddress: ueIP,
 			AnyUE:       sub.AnyUE,
+			DNN:         sub.Dnn,
 		},
 	}, nil
 }
