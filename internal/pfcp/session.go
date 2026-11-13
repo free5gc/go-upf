@@ -185,8 +185,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		}
 
 		pdrId := getPDRIDFromPDR(p.OriginalIE)
-		fields, err := ueIPAddrIE.UEIPAddress()
-		if err != nil || fields.IPv4Address == nil {
+		fields, ueIPErr := ueIPAddrIE.UEIPAddress()
+		if ueIPErr != nil || fields.IPv4Address == nil {
 			sess.log.Warnf("PDR %d delegated UE IP allocation to UP (CHV4/CHV6 set), "+
 				"but UP-side allocation is not implemented; omitting Created PDR", pdrId)
 			continue
