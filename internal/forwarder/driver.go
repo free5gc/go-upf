@@ -55,6 +55,20 @@ type Driver interface {
 	ExecuteEstablishmentPlan(plan *ModificationPlan) (*ExecutionResult, error)
 }
 
+// gtpuInterface is the GTP-U address, the MTU and the gtp5g device of the first interface of gtpu.ifList: the
+// device that its ifname names, or DefaultLinkName.
+func gtpuInterface(ifList []factory.IfInfo) (addr string, mtu uint32, linkName string) {
+	linkName = DefaultLinkName
+	if len(ifList) == 0 {
+		return "", 0, linkName
+	}
+	ifInfo := ifList[0]
+	if ifInfo.IfName != "" {
+		linkName = ifInfo.IfName
+	}
+	return fmt.Sprintf("%s:%d", ifInfo.Addr, factory.UpfGtpDefaultPort), ifInfo.MTU, linkName
+}
+
 func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 	cfgGtpu := cfg.Gtpu
 	if cfgGtpu == nil {
@@ -63,18 +77,12 @@ func NewDriver(wg *sync.WaitGroup, cfg *factory.Config) (Driver, error) {
 
 	logger.MainLog.Infof("starting Gtpu Forwarder [%s]", cfgGtpu.Forwarder)
 	if cfgGtpu.Forwarder == "gtp5g" {
-		var gtpuAddr string
-		var mtu uint32
-		for _, ifInfo := range cfgGtpu.IfList {
-			mtu = ifInfo.MTU
-			gtpuAddr = fmt.Sprintf("%s:%d", ifInfo.Addr, factory.UpfGtpDefaultPort)
-			logger.MainLog.Infof("GTP Address: %q", gtpuAddr)
-			break
-		}
+		gtpuAddr, mtu, linkName := gtpuInterface(cfgGtpu.IfList)
 		if gtpuAddr == "" {
 			return nil, errors.Errorf("not found GTP address")
 		}
-		driver, err := OpenGtp5g(wg, gtpuAddr, mtu)
+		logger.MainLog.Infof("GTP Address: %q, gtp5g device %q", gtpuAddr, linkName)
+		driver, err := OpenGtp5g(wg, gtpuAddr, mtu, linkName)
 		if err != nil {
 			return nil, errors.Wrap(err, "open Gtp5g")
 		}

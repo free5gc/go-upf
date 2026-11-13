@@ -46,7 +46,7 @@ func TestGtp5g_CreateRules(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort), 1400)
+	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort), 1400, DefaultLinkName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +307,7 @@ func TestNewFlowDesc(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort), 1400)
+	g, err := OpenGtp5g(&wg, ":"+strconv.Itoa(factory.UpfGtpDefaultPort), 1400, DefaultLinkName)
 	if err != nil {
 		t.Fatal(err)
 	}
