@@ -82,7 +82,49 @@ func (s *PfcpServer) handleAssociationUpdateRequest(
 	req *message.AssociationUpdateRequest,
 	addr net.Addr,
 ) {
-	s.log.Infoln("handleAssociationUpdateRequest not supported")
+	s.log.Infoln("handleAssociationUpdateRequest")
+
+	if req.NodeID == nil {
+		s.log.Errorf("Association Update failed: mandatory IE missing: NodeID")
+		s.sendAssociationUpdateResponse(req, addr, ie.CauseMandatoryIEMissing, ie.NewOffendingIE(ie.NodeID))
+		return
+	}
+	rnodeid, err := req.NodeID.NodeID()
+	if err != nil || rnodeid == "" {
+		s.log.Errorf("Association Update failed: mandatory IE incorrect: NodeID[% x]", req.NodeID.Payload)
+		s.sendAssociationUpdateResponse(req, addr, ie.CauseMandatoryIEIncorrect, ie.NewOffendingIE(ie.NodeID))
+		return
+	}
+
+	node, ok := s.rnodes[rnodeid]
+	if !ok {
+		s.log.Warnf("Association Update rejected: no association with Node ID %q", rnodeid)
+		s.sendAssociationUpdateResponse(req, addr, ie.CauseNoEstablishedPFCPAssociation)
+		return
+	}
+	// A peer updates its own association only
+	if !node.matchesPeer(addr) {
+		s.log.Warnf("Association Update rejected: peer %v does not match Node ID %q", addr, rnodeid)
+		s.sendAssociationUpdateResponse(req, addr, ie.CauseRequestRejected)
+		return
+	}
+	// The UP function keeps no feature of the CP function, nor any other information that the request updates
+	s.sendAssociationUpdateResponse(req, addr, ie.CauseRequestAccepted)
+}
+
+func (s *PfcpServer) sendAssociationUpdateResponse(
+	req *message.AssociationUpdateRequest,
+	addr net.Addr,
+	cause uint8,
+	ies ...*ie.IE,
+) {
+	rsp := message.NewAssociationUpdateResponse(
+		req.Header.SequenceNumber,
+		append([]*ie.IE{newIeNodeID(s.nodeID), ie.NewCause(cause)}, ies...)...,
+	)
+	if err := s.sendRspTo(rsp, addr); err != nil {
+		s.log.Errorln(err)
+	}
 }
 
 func (s *PfcpServer) handleAssociationReleaseRequest(
