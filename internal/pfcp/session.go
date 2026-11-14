@@ -74,6 +74,8 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 
 	// allocate a session
 	sess := rnode.NewSess(fseid.SEID)
+	fteids := sess.newFTEIDRequest(req.PFCPSEReqFlags != nil && req.PFCPSEReqFlags.HasRESTI(), req.CreatePDR)
+	defer fteids.release()
 
 	// ========================================================================
 	// PHASE 1: Validation - Build all plans and validate without execution
@@ -129,7 +131,7 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 	}
 
 	for _, i := range req.CreatePDR {
-		p, err1 := sess.ValidateCreatePDR(i, plan)
+		p, err1 := sess.ValidateCreatePDR(i, plan, fteids)
 		if err1 != nil {
 			sess.log.Errorf("Est ValidateCreatePDR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
@@ -173,12 +175,16 @@ func (s *PfcpServer) handleSessionEstablishmentRequest(
 		ueIPAddress := getUEAddressFromPDR(p.OriginalIE)
 		pdrId := getPDRIDFromPDR(p.OriginalIE)
 
+		createdPDR := []*ie.IE{ie.NewPDRID(pdrId)}
+		if teid, ok := fteids.created[pdrId]; ok {
+			createdPDR = append(createdPDR, fteids.fteid(teid))
+		}
 		if ueIPAddress != nil {
 			ueIPv4 := ueIPAddress.IPv4Address.String()
-			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(
-				ie.NewPDRID(pdrId),
-				ie.NewUEIPAddress(2, ueIPv4, "", 0, 0),
-			))
+			createdPDR = append(createdPDR, ie.NewUEIPAddress(2, ueIPv4, "", 0, 0))
+		}
+		if len(createdPDR) > 1 {
+			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(createdPDR...))
 		}
 	}
 
@@ -281,6 +287,8 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	// PHASE 1: Validation - Build all plans and validate without execution
 	// ========================================================================
 	plan := forwarder.NewModificationPlan(sess.LocalID)
+	fteids := sess.newFTEIDRequest(false, req.CreatePDR, req.UpdatePDR)
+	defer fteids.release()
 
 	for _, i := range req.CreateFAR {
 		p, err1 := sess.ValidateCreateFAR(i)
@@ -327,7 +335,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.CreatePDR {
-		p, err1 := sess.ValidateCreatePDR(i, plan)
+		p, err1 := sess.ValidateCreatePDR(i, plan, fteids)
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateCreatePDR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
@@ -382,7 +390,7 @@ func (s *PfcpServer) handleSessionModificationRequest(
 	}
 
 	for _, i := range req.UpdatePDR {
-		p, err1 := sess.ValidateUpdatePDR(i, plan)
+		p, err1 := sess.ValidateUpdatePDR(i, plan, fteids)
 		if err1 != nil {
 			sess.log.Errorf("Mod ValidateUpdatePDR error: %v", err1)
 			cause := pfcpCauseFromError(err1)
@@ -569,6 +577,11 @@ func (s *PfcpServer) handleSessionModificationRequest(
 		0, // pri
 		ie.NewCause(ie.CauseRequestAccepted),
 	)
+	for _, p := range plan.CreatePDRs {
+		if teid, ok := fteids.created[p.PDRID]; ok {
+			rsp.CreatedPDR = append(rsp.CreatedPDR, ie.NewCreatedPDR(ie.NewPDRID(p.PDRID), fteids.fteid(teid)))
+		}
+	}
 	for _, r := range usars {
 		urrInfo, ok := sess.URRIDs[r.URRID]
 		if !ok {
@@ -831,6 +844,12 @@ func pfcpCauseFromError(err error) uint8 {
 
 	case errors.Is(err, ErrMissingConditionalIE):
 		return ie.CauseConditionalIEMissing
+
+	case errors.Is(err, ErrInvalidFTEIDAllocation):
+		return ie.CauseInvalidFTEIDAllocationOption
+
+	case errors.Is(err, ErrFTEIDInUse):
+		return ie.CauseRequestRejected
 
 	case errors.Is(err, ErrRuleNotFound) ||
 		errors.Is(err, ErrRuleCreationModificationFailed) ||

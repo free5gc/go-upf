@@ -57,7 +57,7 @@ func TestValidateCreatePDR_DanglingFARIDRejected(t *testing.T) {
 		ie.NewQERID(1010),
 	)
 
-	plan, err := sess.ValidateCreatePDR(req, modPlan)
+	plan, err := sess.ValidateCreatePDR(req, modPlan, sess.newFTEIDRequest(false))
 	require.Error(t, err)
 	assert.Nil(t, plan)
 	assert.Equal(t, ie.CauseRuleCreationModificationFailure, pfcpCauseFromError(err))
@@ -82,7 +82,7 @@ func TestValidateCreatePDR_DanglingQERIDRejected(t *testing.T) {
 		ie.NewQERID(999), // never created in this request or session state
 	)
 
-	plan, err := sess.ValidateCreatePDR(req, modPlan)
+	plan, err := sess.ValidateCreatePDR(req, modPlan, sess.newFTEIDRequest(false))
 	require.Error(t, err)
 	assert.Nil(t, plan)
 	assert.Equal(t, ie.CauseRuleCreationModificationFailure, pfcpCauseFromError(err))
@@ -105,7 +105,7 @@ func TestValidateCreatePDR_ValidReferencesAccepted(t *testing.T) {
 		ie.NewQERID(5),
 	)
 
-	plan, err := sess.ValidateCreatePDR(req, modPlan)
+	plan, err := sess.ValidateCreatePDR(req, modPlan, sess.newFTEIDRequest(false))
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	assert.Equal(t, uint16(1), plan.PDRID)
@@ -124,7 +124,7 @@ func TestValidateUpdatePDR_DanglingFARIDRejected(t *testing.T) {
 		ie.NewFARID(10), // never created
 	)
 
-	plan, err := sess.ValidateUpdatePDR(req, modPlan)
+	plan, err := sess.ValidateUpdatePDR(req, modPlan, sess.newFTEIDRequest(false))
 	require.Error(t, err)
 	assert.Nil(t, plan)
 	assert.Equal(t, ie.CauseRuleCreationModificationFailure, pfcpCauseFromError(err))
@@ -144,7 +144,7 @@ func TestValidateUpdatePDR_DanglingQERIDRejected(t *testing.T) {
 		ie.NewQERID(999), // never created
 	)
 
-	plan, err := sess.ValidateUpdatePDR(req, modPlan)
+	plan, err := sess.ValidateUpdatePDR(req, modPlan, sess.newFTEIDRequest(false))
 	require.Error(t, err)
 	assert.Nil(t, plan)
 	assert.Equal(t, ie.CauseRuleCreationModificationFailure, pfcpCauseFromError(err))
@@ -165,7 +165,7 @@ func TestValidateUpdatePDR_ValidReferencesAccepted(t *testing.T) {
 		ie.NewQERID(5),
 	)
 
-	plan, err := sess.ValidateUpdatePDR(req, modPlan)
+	plan, err := sess.ValidateUpdatePDR(req, modPlan, sess.newFTEIDRequest(false))
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	assert.Equal(t, uint16(1), plan.PDRID)

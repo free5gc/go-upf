@@ -30,6 +30,9 @@ type Pfcp struct {
 	NodeID         string        `yaml:"nodeID"         valid:"required,host"`
 	RetransTimeout time.Duration `yaml:"retransTimeout" valid:"required"`
 	MaxRetrans     uint8         `yaml:"maxRetrans"     valid:"optional"`
+	// StrictFTEIDAllocation rejects a new PDR whose Local F-TEID the SMF allocated (TS 29.244 clause 5.5.1).
+	// It is off while free5GC's SMF allocates the F-TEIDs itself.
+	StrictFTEIDAllocation bool `yaml:"strictFTEIDAllocation" valid:"optional"`
 }
 
 type Gtpu struct {
