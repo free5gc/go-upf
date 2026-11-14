@@ -2,6 +2,7 @@ package pfcp
 
 import (
 	"net"
+	"slices"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
@@ -19,26 +21,48 @@ const (
 	fteidChID = 0x08
 )
 
-// fteidDriver keeps the PDRs given to the forwarder.
+// fteidDriver keeps the PDRs given to the forwarder, and the IDs of those that it removes. Like gtp5g, it gives a
+// PDR plan the URR IDs of the PDR, and a usage report for each URR queried.
 type fteidDriver struct {
 	forwarder.Empty
-	pdrs map[uint16]*ie.IE
+	pdrs    map[uint16]*ie.IE
+	removed []uint16
+}
+
+func urrIDs(pdr *ie.IE) []uint32 {
+	var ids []uint32
+	for _, i := range pdr.ChildIEs {
+		if id, err := i.URRID(); i.Type == ie.URRID && err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 func (d *fteidDriver) BuildCreatePDRPlan(_ uint64, req *ie.IE) (*forwarder.PDRPlan, error) {
 	id, err := req.PDRID()
 	d.pdrs[id] = req
-	return &forwarder.PDRPlan{Op: forwarder.OpCreate, OriginalIE: req, PDRID: id}, err
+	return &forwarder.PDRPlan{Op: forwarder.OpCreate, OriginalIE: req, PDRID: id, URRIDs: urrIDs(req)}, err
 }
 
 func (d *fteidDriver) BuildUpdatePDRPlan(_ uint64, req *ie.IE) (*forwarder.PDRPlan, error) {
 	id, err := req.PDRID()
 	d.pdrs[id] = req
-	return &forwarder.PDRPlan{Op: forwarder.OpUpdate, OriginalIE: req, PDRID: id}, err
+	return &forwarder.PDRPlan{Op: forwarder.OpUpdate, OriginalIE: req, PDRID: id, URRIDs: urrIDs(req)}, err
+}
+
+func (d *fteidDriver) BuildCreateURRPlan(_ uint64, req *ie.IE) (*forwarder.URRPlan, error) {
+	id, err := req.URRID()
+	return &forwarder.URRPlan{OriginalIE: req, URRID: id}, err
+}
+
+func (d *fteidDriver) QueryURR(_ uint64, id uint32) ([]report.USAReport, error) {
+	return []report.USAReport{{URRID: id}}, nil
 }
 
 func (d *fteidDriver) BuildRemovePDRPlan(_ uint64, req *ie.IE) (*forwarder.PDRPlan, error) {
 	id, err := req.PDRID()
+	d.removed = append(d.removed, id)
 	return &forwarder.PDRPlan{Op: forwarder.OpRemove, OriginalIE: req, PDRID: id}, err
 }
 
@@ -151,7 +175,11 @@ func createdFTEIDs(t *testing.T, pdrs []*ie.IE) map[uint16]*ie.FTEIDFields {
 
 func installedFTEID(t *testing.T, d *fteidDriver, id uint16) *ie.FTEIDFields {
 	t.Helper()
-	children, err := d.pdrs[id].CreatePDR()
+	pdr := d.pdrs[id]
+	children, err := pdr.CreatePDR()
+	if pdr.Type == ie.UpdatePDR {
+		children, err = pdr.UpdatePDR()
+	}
 	require.NoError(t, err)
 	for _, child := range children {
 		if child.Type == ie.PDI {
@@ -164,16 +192,34 @@ func installedFTEID(t *testing.T, d *fteidDriver, id uint16) *ie.FTEIDFields {
 	return nil
 }
 
+func installedNetworkInstance(t *testing.T, d *fteidDriver, id uint16) string {
+	t.Helper()
+	pdi, err := d.pdrs[id].PDI()
+	require.NoError(t, err)
+	at := slices.IndexFunc(pdi, func(i *ie.IE) bool { return i.Type == ie.NetworkInstance })
+	require.GreaterOrEqual(t, at, 0, "PDR %d has no Network Instance", id)
+	instance, err := pdi[at].NetworkInstance()
+	require.NoError(t, err)
+	return instance
+}
+
 func TestAssociationSetupAdvertisesFTUP(t *testing.T) {
-	s, _, peer := newFTEIDFixture(t, false)
-	req := message.NewAssociationSetupRequest(1,
-		ie.NewNodeID("127.0.0.2", "", ""), ie.NewRecoveryTimeStamp(time.Now()))
-	msg := exchangePeerGuardRequest(t, s, peer, req)
-	rsp, ok := msg.(*message.AssociationSetupResponse)
-	require.True(t, ok)
-	requireCause(t, ie.CauseRequestAccepted, rsp.Cause)
-	require.NotNil(t, rsp.UPFunctionFeatures)
-	require.True(t, rsp.UPFunctionFeatures.HasFTUP())
+	// FTUP with an IPv4 GTP-U address; PDIU, the Traffic Endpoints, without one too.
+	for _, gtpu := range []bool{true, false} {
+		s, _, peer := newFTEIDFixture(t, false)
+		if !gtpu {
+			s.lnode.fteids.addr = nil
+		}
+		req := message.NewAssociationSetupRequest(1,
+			ie.NewNodeID("127.0.0.2", "", ""), ie.NewRecoveryTimeStamp(time.Now()))
+		msg := exchangePeerGuardRequest(t, s, peer, req)
+		rsp, ok := msg.(*message.AssociationSetupResponse)
+		require.True(t, ok)
+		requireCause(t, ie.CauseRequestAccepted, rsp.Cause)
+		require.NotNil(t, rsp.UPFunctionFeatures)
+		require.Equal(t, gtpu, rsp.UPFunctionFeatures.HasFTUP())
+		require.True(t, rsp.UPFunctionFeatures.HasPDIU())
+	}
 }
 
 func TestSessionEstablishmentChoosesFTEID(t *testing.T) {
@@ -331,4 +377,191 @@ func TestLenientFTEIDAllocation(t *testing.T) {
 	mod := modify(t, s, peer, upSEID(t, rsp), 4, uplinkPDR(4, cpFTEID(chosen)))
 	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
 	require.Equal(t, 2, s.lnode.fteids.teids[chosen].pdrs)
+}
+
+func endpointPDR(id uint16, te *ie.IE) *ie.IE {
+	return ie.NewCreatePDR(ie.NewPDRID(id), ie.NewPrecedence(255),
+		ie.NewPDI(ie.NewSourceInterface(ie.SrcInterfaceAccess), te), ie.NewFARID(1))
+}
+
+// createdEndpoints gives the Local F-TEID of each Created Traffic Endpoint, by Traffic Endpoint ID.
+func createdEndpoints(t *testing.T, endpoints []*ie.IE) map[uint8]*ie.FTEIDFields {
+	t.Helper()
+	fteids := make(map[uint8]*ie.FTEIDFields)
+	for _, endpoint := range endpoints {
+		id, err := endpoint.TrafficEndpointID()
+		require.NoError(t, err)
+		fteids[id], err = endpoint.LocalFTEID()
+		require.NoError(t, err)
+	}
+	return fteids
+}
+
+func TestTrafficEndpoints(t *testing.T) {
+	// A strict UP function: no PDR has an F-TEID of the CP function, the Traffic Endpoint has it.
+	s, d, peer := newFTEIDFixture(t, true)
+	alloc := &s.lnode.fteids
+	te1 := ie.NewTrafficEndpointID(1)
+	rsp := establish(t, s, peer, 0x10,
+		ie.NewCreateTrafficEndpoint(te1, chooseFTEID(0), ie.NewNetworkInstance("internet")),
+		endpointPDR(1, te1), endpointPDR(2, te1),
+	)
+	requireCause(t, ie.CauseRequestAccepted, rsp.Cause)
+	require.Empty(t, rsp.CreatedPDR)
+	endpoint := createdEndpoints(t, rsp.CreatedTrafficEndpoint)[1]
+	require.NotNil(t, endpoint)
+	require.Equal(t, "127.0.0.8", endpoint.IPv4Address.String())
+	for _, id := range []uint16{1, 2} {
+		require.Equal(t, endpoint, installedFTEID(t, d, id), "PDR %d", id)
+	}
+	seid := upSEID(t, rsp)
+
+	// A PDR that a later request creates or updates refers to it, and has its F-TEID.
+	update := ie.NewUpdatePDR(ie.NewPDRID(1), ie.NewPrecedence(100),
+		ie.NewPDI(ie.NewSourceInterface(ie.SrcInterfaceAccess), te1))
+	mod := modify(t, s, peer, seid, 2, endpointPDR(3, te1), update)
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	require.Empty(t, mod.CreatedPDR)
+	require.Equal(t, ie.UpdatePDR, d.pdrs[1].Type)
+	for _, id := range []uint16{1, 3} {
+		require.Equal(t, endpoint, installedFTEID(t, d, id), "PDR %d", id)
+	}
+	require.Equal(t, 4, alloc.teids[endpoint.TEID].pdrs, "three PDRs and the Traffic Endpoint")
+
+	// A PDR cannot refer to a Traffic Endpoint that does not exist, or by an ID that does not parse.
+	for seq, te := range []*ie.IE{ie.NewTrafficEndpointID(9), ie.New(ie.TrafficEndpointID, nil)} {
+		mod = modify(t, s, peer, seid, uint32(3+seq), endpointPDR(4, te))
+		requireCause(t, ie.CauseRuleCreationModificationFailure, mod.Cause)
+	}
+
+	// An updated Traffic Endpoint updates the PDRs that refer to it (TS 29.244 clause 5.2.1A.2).
+	mod = modify(t, s, peer, seid, 5, ie.NewUpdateTrafficEndpoint(te1, chooseFTEID(0)))
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	updated := createdEndpoints(t, mod.CreatedUpdatedTrafficEndpoint)[1]
+	require.NotNil(t, updated)
+	require.NotEqual(t, endpoint.TEID, updated.TEID)
+	for _, id := range []uint16{1, 2, 3} {
+		require.Equal(t, ie.UpdatePDR, d.pdrs[id].Type, "PDR %d", id)
+		require.Equal(t, updated, installedFTEID(t, d, id), "PDR %d", id)
+		// with the IEs that the update does not replace (Table 7.5.4.13-1 NOTE 1)
+		require.Equal(t, "internet", installedNetworkInstance(t, d, id), "PDR %d", id)
+	}
+	require.NotContains(t, alloc.teids, endpoint.TEID)
+
+	// A removed Traffic Endpoint removes its PDRs, and frees its F-TEID.
+	mod = modify(t, s, peer, seid, 6, ie.NewRemoveTrafficEndpoint(te1))
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	require.ElementsMatch(t, []uint16{1, 2, 3}, d.removed)
+	require.Empty(t, alloc.teids)
+	session, err := s.lnode.Sess(seid)
+	require.NoError(t, err)
+	require.Empty(t, session.trafficEndpoints)
+	require.Empty(t, session.PDRIDs)
+
+	// The deletion of the session frees the F-TEID of a Traffic Endpoint.
+	mod = modify(t, s, peer, seid, 7, ie.NewCreateTrafficEndpoint(ie.NewTrafficEndpointID(2), chooseFTEID(0)))
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	require.Len(t, alloc.teids, 1)
+	del := exchangePeerGuardRequest(t, s, peer, message.NewSessionDeletionRequest(0, 0, seid, 8, 0))
+	requireCause(t, ie.CauseRequestAccepted, del.(*message.SessionDeletionResponse).Cause)
+	require.Empty(t, alloc.teids)
+}
+
+func TestTrafficEndpointsAndPDRsOfOneRequest(t *testing.T) {
+	s, d, peer := newFTEIDFixture(t, false)
+	alloc := &s.lnode.fteids
+	alloc.last = 99
+	te1 := ie.NewTrafficEndpointID(1)
+
+	// The UP function never chooses for a PDR the TEID of the CP function in a Traffic Endpoint of the request.
+	rsp := establish(t, s, peer, 0x10,
+		ie.NewCreateTrafficEndpoint(te1, cpFTEID(100)), uplinkPDR(1, chooseFTEID(0)), endpointPDR(2, te1))
+	requireCause(t, ie.CauseRequestAccepted, rsp.Cause)
+	require.Empty(t, rsp.CreatedTrafficEndpoint)
+	require.Equal(t, uint32(101), createdFTEIDs(t, rsp.CreatedPDR)[1].TEID)
+	seid := upSEID(t, rsp)
+	mod := modify(t, s, peer, seid, 2, ie.NewUpdateTrafficEndpoint(te1, cpFTEID(102)), uplinkPDR(3, chooseFTEID(0)))
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	require.Equal(t, uint32(103), createdFTEIDs(t, mod.CreatedPDR)[3].TEID)
+	require.Equal(t, uint32(102), installedFTEID(t, d, 2).TEID)
+
+	// A PDR updated without a PDI keeps its Traffic Endpoint, as the request updates it.
+	keep := ie.NewUpdatePDR(ie.NewPDRID(2), ie.NewPrecedence(100))
+	mod = modify(t, s, peer, seid, 3, ie.NewUpdateTrafficEndpoint(te1, chooseFTEID(0)), keep)
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	updated := createdEndpoints(t, mod.CreatedUpdatedTrafficEndpoint)[1]
+	require.NotNil(t, updated)
+	require.Equal(t, updated, installedFTEID(t, d, 2))
+	require.NotContains(t, alloc.teids, uint32(102))
+
+	// A request cannot both remove a Traffic Endpoint, which removes its PDRs, and update one of them.
+	mod = modify(t, s, peer, seid, 4, ie.NewRemoveTrafficEndpoint(te1), keep)
+	requireCause(t, ie.CauseRuleCreationModificationFailure, mod.Cause)
+	session, err := s.lnode.Sess(seid)
+	require.NoError(t, err)
+	require.Contains(t, session.trafficEndpoints, uint8(1))
+	require.Contains(t, session.PDRIDs, uint16(2))
+
+	// A rejected request frees the TEID that it chose for a Traffic Endpoint.
+	held := len(alloc.teids)
+	mod = modify(t, s, peer, seid, 5,
+		ie.NewCreateTrafficEndpoint(ie.NewTrafficEndpointID(2), chooseFTEID(0)), endpointPDR(4, ie.NewTrafficEndpointID(9)))
+	requireCause(t, ie.CauseRuleCreationModificationFailure, mod.Cause)
+	require.Len(t, alloc.teids, held)
+
+	// Rejected: a Create Traffic Endpoint of an ID in use, an Update or Remove Traffic Endpoint of an unknown ID, a
+	// Remove Traffic Endpoint of one that the request creates or updates (TS 29.244 clause 6.3.3.2), and a PDI with
+	// both a Traffic Endpoint ID and a Local F-TEID (Table 7.5.2.2-2).
+	te2 := ie.NewTrafficEndpointID(2)
+	for seq, ies := range [][]*ie.IE{
+		{ie.NewCreateTrafficEndpoint(te1, chooseFTEID(0))},
+		{ie.NewUpdateTrafficEndpoint(te2, chooseFTEID(0))},
+		{ie.NewRemoveTrafficEndpoint(te2)},
+		{ie.NewCreateTrafficEndpoint(te2, chooseFTEID(0)), ie.NewRemoveTrafficEndpoint(te2)},
+		{ie.NewUpdateTrafficEndpoint(te1, chooseFTEID(0)), ie.NewRemoveTrafficEndpoint(te1)},
+		{ie.NewCreatePDR(ie.NewPDRID(4), ie.NewPrecedence(255),
+			ie.NewPDI(ie.NewSourceInterface(ie.SrcInterfaceAccess), te1, chooseFTEID(0)), ie.NewFARID(1))},
+	} {
+		mod = modify(t, s, peer, seid, uint32(6+seq), ies...)
+		requireCause(t, ie.CauseRuleCreationModificationFailure, mod.Cause)
+	}
+	require.Len(t, alloc.teids, held)
+	require.Len(t, session.trafficEndpoints, 1)
+	require.Len(t, session.PDRIDs, 3)
+
+	// A PDR updated with a PDI of its own no longer refers to its Traffic Endpoint, in the request that updates
+	// that Traffic Endpoint and in a later one.
+	own := ie.NewUpdatePDR(ie.NewPDRID(2), ie.NewPDI(ie.NewSourceInterface(ie.SrcInterfaceAccess), cpFTEID(0x2001)))
+	mod = modify(t, s, peer, seid, 12, ie.NewUpdateTrafficEndpoint(te1, chooseFTEID(0)), own)
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	require.Equal(t, uint32(0x2001), installedFTEID(t, d, 2).TEID)
+	mod = modify(t, s, peer, seid, 13, ie.NewUpdateTrafficEndpoint(te1, chooseFTEID(0)))
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	require.Equal(t, uint32(0x2001), installedFTEID(t, d, 2).TEID)
+}
+
+func TestTrafficEndpointUsageReports(t *testing.T) {
+	s, d, peer := newFTEIDFixture(t, false)
+	te1 := ie.NewTrafficEndpointID(1)
+	rsp := establish(t, s, peer, 0x10,
+		ie.NewCreateURR(ie.NewURRID(1), ie.NewMeasurementMethod(0, 1, 0), ie.NewReportingTriggers(0, 0, 0)),
+		ie.NewCreateTrafficEndpoint(te1, chooseFTEID(0)),
+		ie.NewCreatePDR(ie.NewPDRID(1), ie.NewPrecedence(255),
+			ie.NewPDI(ie.NewSourceInterface(ie.SrcInterfaceAccess), te1), ie.NewFARID(1), ie.NewURRID(1)),
+		endpointPDR(2, te1),
+	)
+	requireCause(t, ie.CauseRequestAccepted, rsp.Cause)
+	seid := upSEID(t, rsp)
+
+	// An updated Traffic Endpoint leaves the URRs of its PDRs as they are: no usage report.
+	mod := modify(t, s, peer, seid, 2, ie.NewUpdateTrafficEndpoint(te1, ie.NewNetworkInstance("internet")))
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	require.Empty(t, mod.UsageReport)
+
+	// A removed one deletes its PDRs, each once when the request removes one of them too, and the last PDR of the
+	// URR, which reports its usage (TS 29.244 clause 5.2.1A.2 NOTE 1).
+	mod = modify(t, s, peer, seid, 3, ie.NewRemovePDR(ie.NewPDRID(2)), ie.NewRemoveTrafficEndpoint(te1))
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	require.ElementsMatch(t, []uint16{1, 2}, d.removed)
+	require.Len(t, mod.UsageReport, 1)
 }
