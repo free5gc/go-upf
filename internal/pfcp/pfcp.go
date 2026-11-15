@@ -10,6 +10,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/ees"
@@ -127,10 +128,13 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 				return
 			}
 
-			msg, err := message.Parse(rcvPkt.Buf)
-			if err != nil {
-				s.log.Errorln(err)
-				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
+			// TS 29.244 clause 7.6.2: a message of another PFCP version is answered and discarded
+			// (a Version Not Supported Response is not answered, so that two peers cannot loop)
+			if len(rcvPkt.Buf) >= 8 && rcvPkt.Buf[0]>>5 != 1 {
+				s.log.Warnf("PFCP version %d from %s not supported", rcvPkt.Buf[0]>>5, rcvPkt.RemoteAddr)
+				if rcvPkt.Buf[1] != message.MsgTypeVersionNotSupportedResponse {
+					s.sendVersionNotSupportedRsp(rcvPkt.RemoteAddr)
+				}
 				continue
 			}
 
@@ -138,6 +142,14 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 			if err = validatePfcpPacketLength(rcvPkt.Buf); err != nil {
 				s.log.Warnf("Invalid PFCP packet from %s: %v", rcvPkt.RemoteAddr, err)
 				s.log.Tracef("Rejected packet:\n%+v", hex.Dump(rcvPkt.Buf))
+				s.sendInvalidLengthRsp(rcvPkt.Buf, rcvPkt.RemoteAddr)
+				continue
+			}
+
+			msg, err := message.Parse(rcvPkt.Buf)
+			if err != nil {
+				s.log.Errorln(err)
+				s.log.Tracef("ignored undecodable message:\n%+v", hex.Dump(rcvPkt.Buf))
 				continue
 			}
 
@@ -346,6 +358,55 @@ func (s *PfcpServer) sendRspTo(msg message.Message, addr net.Addr) error {
 	}
 
 	return rxtr.send(msg)
+}
+
+func (s *PfcpServer) sendVersionNotSupportedRsp(addr net.Addr) {
+	rsp := message.NewVersionNotSupportedResponse(0)
+	b := make([]byte, rsp.MarshalLen())
+	err := rsp.MarshalTo(b)
+	if err == nil {
+		_, err = s.conn.WriteTo(b, addr)
+	}
+	if err != nil {
+		s.log.Errorln(err)
+	}
+}
+
+// sendInvalidLengthRsp answers a request whose datagram length disagrees with
+// its header with the Cause "Invalid length" (TS 29.244 clause 7.6.3)
+func (s *PfcpServer) sendInvalidLengthRsp(buf []byte, addr net.Addr) {
+	h, err := message.ParseHeader(buf)
+	if err != nil {
+		// too short to contain the PFCP header: silently discarded
+		return
+	}
+	cause := ie.NewCause(ie.CauseInvalidLength)
+	var rsp message.Message
+	switch h.Type {
+	case message.MsgTypeAssociationSetupRequest:
+		rsp = message.NewAssociationSetupResponse(h.SequenceNumber, newIeNodeID(s.nodeID), cause)
+	case message.MsgTypeAssociationUpdateRequest:
+		rsp = message.NewAssociationUpdateResponse(h.SequenceNumber, newIeNodeID(s.nodeID), cause)
+	case message.MsgTypeAssociationReleaseRequest:
+		rsp = message.NewAssociationReleaseResponse(h.SequenceNumber, newIeNodeID(s.nodeID), cause)
+	case message.MsgTypeSessionEstablishmentRequest:
+		rsp = message.NewSessionEstablishmentResponse(0, 0, 0, h.SequenceNumber, 0, newIeNodeID(s.nodeID), cause)
+	case message.MsgTypeSessionModificationRequest:
+		rsp = message.NewSessionModificationResponse(0, 0, 0, h.SequenceNumber, 0, cause)
+	case message.MsgTypeSessionDeletionRequest:
+		rsp = message.NewSessionDeletionResponse(0, 0, 0, h.SequenceNumber, 0, cause)
+	default:
+		// a Heartbeat Response has no Cause, and the UPF handles no other request
+		return
+	}
+	b := make([]byte, rsp.MarshalLen())
+	err = rsp.MarshalTo(b)
+	if err == nil {
+		_, err = s.conn.WriteTo(b, addr)
+	}
+	if err != nil {
+		s.log.Errorln(err)
+	}
 }
 
 func (s *PfcpServer) stopTrTimers() {
