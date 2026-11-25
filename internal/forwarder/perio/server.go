@@ -94,12 +94,19 @@ type Server struct {
 
 	handler  report.Handler
 	queryURR func(map[uint64][]uint32) (map[uint64][]report.USAReport, error)
+
+	// done is closed when Serve() returns.
+	done chan struct{}
 }
+
+// closeTimeout bounds how long Close() waits for Serve() to return.
+const closeTimeout = 5 * time.Second
 
 func OpenServer(wg *sync.WaitGroup) (*Server, error) {
 	s := &Server{
 		evtCh:     make(chan Event, EVENT_CHANNEL_LEN),
 		perioList: make(map[time.Duration]*PERIOGroup),
+		done:      make(chan struct{}),
 	}
 
 	wg.Add(1)
@@ -108,8 +115,18 @@ func OpenServer(wg *sync.WaitGroup) (*Server, error) {
 	return s, nil
 }
 
+// Close stops the server and waits until Serve() has returned, so that no
+// usage-report query is in flight when the caller removes the gtp5g link.
 func (s *Server) Close() {
 	s.evtCh <- Event{eType: TYPE_SERVER_CLOSE}
+	if s.done == nil {
+		return
+	}
+	select {
+	case <-s.done:
+	case <-time.After(closeTimeout):
+		logger.PerioLog.Warnf("perio server did not stop within %v", closeTimeout)
+	}
 }
 
 func (s *Server) Handle(
@@ -125,6 +142,9 @@ func (s *Server) Serve(wg *sync.WaitGroup) {
 	defer func() {
 		logger.PerioLog.Infof("perio server stopped")
 		close(s.evtCh)
+		if s.done != nil {
+			close(s.done)
+		}
 		wg.Done()
 	}()
 

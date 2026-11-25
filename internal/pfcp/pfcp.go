@@ -62,7 +62,13 @@ type PfcpServer struct {
 	rxTrans      map[string]*RxTransaction // key: RemoteAddr-Sequence
 	txSeq        uint32
 	log          *logrus.Entry
+	// done is closed when main() returns; Stop() waits for it so that no
+	// PFCP message is still being applied to the forwarder afterwards.
+	done chan struct{}
 }
+
+// stopTimeout bounds how long Stop() waits for the main loop.
+const stopTimeout = 5 * time.Second
 
 func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 	listen := fmt.Sprintf("%s:%d", cfg.Pfcp.Addr, factory.UpfPfcpDefaultPort)
@@ -76,6 +82,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		recoveryTime: time.Now(),
 		driver:       driver,
 		lnode:        LocalNode{fteids: newFTEIDAllocator(cfg)},
+		done:         make(chan struct{}),
 		rnodes:       make(map[string]*RemoteNode),
 		txTrans:      make(map[string]*TxTransaction),
 		rxTrans:      make(map[string]*RxTransaction),
@@ -93,8 +100,13 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 		s.log.Infoln("pfcp server stopped")
 		s.stopTrTimers()
 		close(s.rcvCh)
-		close(s.srCh)
+		// srCh is not closed: the forwarder's report servers may still call
+		// NotifySessReport() until the driver is closed; done tells them we
+		// are gone instead.
 		close(s.trToCh)
+		if s.done != nil {
+			close(s.done)
+		}
 		wg.Done()
 	}()
 
@@ -245,6 +257,15 @@ func (s *PfcpServer) Stop() {
 		if err != nil {
 			s.log.Errorf("Stop pfcp server err: %+v", err)
 		}
+		// wait until the message being handled, if any, is applied, so the
+		// caller can close the forwarder afterwards
+		if s.done != nil {
+			select {
+			case <-s.done:
+			case <-time.After(stopTimeout):
+				s.log.Warnf("pfcp server did not stop within %v", stopTimeout)
+			}
+		}
 	}
 }
 
@@ -274,7 +295,10 @@ func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
 			handler(sr, identity)
 		}
 	}
-	s.srCh <- sr
+	select {
+	case s.srCh <- sr:
+	case <-s.done: // stopped: nobody reads srCh any more
+	}
 }
 
 // RegisterEESReportHandler installs a buffer-only callback, never a PFCP queue

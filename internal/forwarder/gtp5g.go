@@ -126,6 +126,16 @@ func (g *Gtp5g) Close() {
 			logger.MainLog.Warnf("iptables cleanup err: %+v", err)
 		}
 	}
+	// Stop everything that can still send genl requests for the link, and
+	// only then remove it: gtp5g (up to at least v0.10.3) frees its rule
+	// tables in dellink while requests already in flight can still reach
+	// them. ps.Close() waits for the usage-report poller to return.
+	if g.ps != nil {
+		g.ps.Close()
+	}
+	if g.bsnl != nil {
+		g.bsnl.Close()
+	}
 	if g.conn != nil {
 		g.conn.Close()
 	}
@@ -137,12 +147,6 @@ func (g *Gtp5g) Close() {
 	}
 	if g.mux != nil {
 		g.mux.Close()
-	}
-	if g.bsnl != nil {
-		g.bsnl.Close()
-	}
-	if g.ps != nil {
-		g.ps.Close()
 	}
 }
 
