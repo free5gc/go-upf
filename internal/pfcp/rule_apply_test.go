@@ -2,6 +2,7 @@ package pfcp
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,6 +63,47 @@ func TestRuleTransactionPublishesOnlyAfterCompleteSuccess(t *testing.T) {
 	require.Equal(t, 2, d.calls, "invalid references must fail before execution")
 }
 
+func TestRuleTransactionRejectsURRReferenceUnderflow(t *testing.T) {
+	s := newRuleStateTestSession()
+	s.URRIDs[3].refPdrNum = 0
+	datapath := &transactionDatapath{apply: func(*rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+		return &forwarder.ApplyResult{}, nil
+	}}
+	s.datapath = datapath
+
+	reports, err := s.applyRuleChanges(&rules.RuleChangeSet{RemovePDRs: []uint16{11}}, false, nil)
+	require.ErrorIs(t, err, ErrRuleCreationModificationFailed)
+	require.ErrorContains(t, err, "URR 3: invalid PDR reference count 0 + (-1)")
+	require.Zero(t, datapath.calls)
+	require.Empty(t, reports)
+	require.Zero(t, s.URRIDs[3].refPdrNum)
+	require.Contains(t, s.PDRIDs, uint16(11))
+}
+
+func TestRuleTransactionURRReferenceCountAtPDRLimit(t *testing.T) {
+	s := newRuleStateTestSession()
+	s.URRIDs[3].refPdrNum = math.MaxUint16
+	datapath := &transactionDatapath{apply: func(*rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+		return &forwarder.ApplyResult{}, nil
+	}}
+	s.datapath = datapath
+
+	_, err := s.applyRuleChanges(&rules.RuleChangeSet{
+		CreatePDRs: []rules.PDRConfig{{PDRID: 0, URRIDs: []uint32{3}}},
+	}, false, nil)
+	require.NoError(t, err)
+	require.Equal(t, math.MaxUint16+1, s.URRIDs[3].refPdrNum)
+
+	_, err = s.applyRuleChanges(&rules.RuleChangeSet{
+		CreatePDRs: []rules.PDRConfig{{PDRID: 12, URRIDs: []uint32{3}}},
+	}, false, nil)
+	require.ErrorIs(t, err, ErrRuleCreationModificationFailed)
+	require.ErrorContains(t, err, "URR 3: invalid PDR reference count 65536 + (1)")
+	require.Equal(t, 1, datapath.calls)
+	require.Equal(t, math.MaxUint16+1, s.URRIDs[3].refPdrNum)
+	require.NotContains(t, s.PDRIDs, uint16(12))
+}
+
 func TestRuleTransactionTerminalReporting(t *testing.T) {
 	for _, tc := range []struct {
 		name                string
@@ -81,7 +123,7 @@ func TestRuleTransactionTerminalReporting(t *testing.T) {
 			returned := &forwarder.ApplyResult{USAReports: []report.USAReport{{URRID: 3}}}
 			s.datapath = &transactionDatapath{apply: func(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
 				require.Contains(t, s.PDRIDs, uint16(11))
-				require.Equal(t, uint16(1), s.URRIDs[3].refPdrNum)
+				require.Equal(t, 1, s.URRIDs[3].refPdrNum)
 				if tc.removeURR {
 					require.Empty(t, c.QueryURRs)
 				} else {
@@ -114,7 +156,7 @@ func TestTerminalQueryFailureDoesNotPublish(t *testing.T) {
 	_, err := s.applyRuleChanges(&rules.RuleChangeSet{RemovePDRs: []uint16{11}}, false, nil)
 	require.ErrorIs(t, err, failure)
 	require.Contains(t, s.PDRIDs, uint16(11))
-	require.Equal(t, uint16(1), s.URRIDs[3].refPdrNum)
+	require.Equal(t, 1, s.URRIDs[3].refPdrNum)
 }
 
 func TestRuleTransactionTransferDoesNotTerminateURR(t *testing.T) {
@@ -127,5 +169,5 @@ func TestRuleTransactionTransferDoesNotTerminateURR(t *testing.T) {
 		RemovePDRs: []uint16{11}, CreatePDRs: []rules.PDRConfig{{PDRID: 12, URRIDs: []uint32{3, 3}}},
 	}, false, nil)
 	require.NoError(t, err)
-	require.Equal(t, uint16(1), s.URRIDs[3].refPdrNum)
+	require.Equal(t, 1, s.URRIDs[3].refPdrNum)
 }

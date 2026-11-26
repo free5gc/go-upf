@@ -1,6 +1,7 @@
 package pfcp
 
 import (
+	"math"
 	"sort"
 
 	"github.com/pkg/errors"
@@ -14,7 +15,7 @@ import (
 // against other changes to the same session.
 type RuleState struct {
 	sess         *Session
-	urrRefDeltas map[uint32]int
+	urrRefCounts map[uint32]int
 	pdrOverrides map[uint16]*rules.PDRConfig
 	removedPDRs  map[uint16]struct{}
 	farOverrides map[uint32]*rules.FARConfig
@@ -44,7 +45,9 @@ func (s *Session) ValidateRuleState(changes *rules.RuleChangeSet) (*RuleState, e
 	if err := state.validateReferences(); err != nil {
 		return nil, err
 	}
-	state.buildURRReferenceDeltas()
+	if err := state.buildURRReferenceCounts(); err != nil {
+		return nil, err
+	}
 	return state, nil
 }
 
@@ -393,19 +396,19 @@ func (state *RuleState) validateReferences() error {
 	return nil
 }
 
-// buildURRReferenceDeltas compares old and final relationships once per changed
-// PDR. Repeated URR IDs count as one reference; transfers have a net zero delta.
-func (state *RuleState) buildURRReferenceDeltas() {
-	state.urrRefDeltas = make(map[uint32]int)
+// buildURRReferenceCounts stages the final counts for URRs whose references
+// changed. Repeated URR IDs count as one reference per PDR.
+func (state *RuleState) buildURRReferenceCounts() error {
+	deltas := make(map[uint32]int)
 	accumulate := func(id uint16) {
 		if old := state.sess.PDRIDs[id]; old != nil {
 			for uid := range uint32Set(old.URRIDs) {
-				state.urrRefDeltas[uid]--
+				deltas[uid]--
 			}
 		}
 		if next, exists := state.PDR(id); exists {
 			for uid := range uint32Set(next.URRIDs) {
-				state.urrRefDeltas[uid]++
+				deltas[uid]++
 			}
 		}
 	}
@@ -417,13 +420,30 @@ func (state *RuleState) buildURRReferenceDeltas() {
 			accumulate(id)
 		}
 	}
+	state.urrRefCounts = make(map[uint32]int, len(deltas))
+	for id, delta := range deltas {
+		if delta == 0 {
+			continue
+		}
+		current := 0
+		if info := state.sess.URRIDs[id]; info != nil {
+			current = info.refPdrNum
+		}
+		next := current + delta
+		// PDR IDs range from 0 through MaxUint16, inclusive.
+		if next < 0 || next > math.MaxUint16+1 {
+			return errors.Wrapf(ErrRuleCreationModificationFailed,
+				"URR %d: invalid PDR reference count %d + (%d)", id, current, delta)
+		}
+		state.urrRefCounts[id] = next
+	}
+	return nil
 }
 
 func (state *RuleState) terminalURRIDs() []uint32 {
 	var ids []uint32
-	for id, delta := range state.urrRefDeltas {
-		current := state.sess.URRIDs[id]
-		if current != nil && current.refPdrNum > 0 && int(current.refPdrNum)+delta == 0 {
+	for id, count := range state.urrRefCounts {
+		if count == 0 {
 			ids = append(ids, id)
 		}
 	}

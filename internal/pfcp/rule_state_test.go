@@ -298,7 +298,7 @@ func TestRuleStateMergesQERPatchAndCommits(t *testing.T) {
 	if sess.QERIDs[7].MBR != nil {
 		t.Fatal("validation mutated session")
 	}
-	if len(state.urrRefDeltas) != 0 {
+	if len(state.urrRefCounts) != 0 {
 		t.Fatal("QER-only update must not change URR references")
 	}
 	// Candidate owns patch values, and commit publishes that candidate, not a

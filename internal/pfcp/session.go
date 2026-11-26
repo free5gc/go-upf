@@ -20,7 +20,7 @@ type URRInfo struct {
 	Config    rules.URRConfig
 	removed   bool
 	SEQN      uint32
-	refPdrNum uint16
+	refPdrNum int
 }
 
 type Session struct {

@@ -98,9 +98,9 @@ func (state *RuleState) Commit() {
 		}
 		info.Config = c.Clone()
 	}
-	for id, delta := range state.urrRefDeltas {
+	for id, count := range state.urrRefCounts {
 		if info := s.URRIDs[id]; info != nil {
-			info.refPdrNum = uint16(int(info.refPdrNum) + delta)
+			info.refPdrNum = count
 		}
 	}
 	for id, c := range state.pdrOverrides {

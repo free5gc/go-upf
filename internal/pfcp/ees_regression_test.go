@@ -72,12 +72,12 @@ func TestEESIdentityTrackingKeepsPartialPDRURRs(t *testing.T) {
 		CreateURRs: []rules.URRConfig{{URRID: 2, MeasureMethod: &measurement, ReportingTriggers: &triggers}},
 	}
 	require.NoError(t, applyEESRules(s, &create, true))
-	require.Equal(t, uint16(1), s.URRIDs[2].refPdrNum)
+	require.Equal(t, 1, s.URRIDs[2].refPdrNum)
 	patch := rules.PDRPatch(eesPDR(1, "10.0.0.2"))
 	update := rules.RuleChangeSet{SEID: s.LocalID, UpdatePDRs: []rules.PDRPatch{patch}}
 	require.NoError(t, applyEESRules(s, &update, false))
 	require.Equal(t, []uint32{2}, s.PDRIDs[1].URRIDs)
-	require.Equal(t, uint16(1), s.URRIDs[2].refPdrNum)
+	require.Equal(t, 1, s.URRIDs[2].refPdrNum)
 	require.Equal(t, "10.0.0.2", s.identitySnapshot().UeIPv4Addr)
 }
 
