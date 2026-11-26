@@ -14,6 +14,9 @@ import (
 	"github.com/free5gc/go-gtp5gnl"
 )
 
+// DefaultLinkName is the gtp5g device of a UPF whose gtpu.ifList names none.
+const DefaultLinkName = "upfgtp"
+
 type Gtp5gLink struct {
 	mux    *nl.Mux
 	rtconn *nl.Conn
@@ -24,7 +27,7 @@ type Gtp5gLink struct {
 	log    *logrus.Entry
 }
 
-func OpenGtp5gLink(mux *nl.Mux, addr string, mtu uint32, log *logrus.Entry) (*Gtp5gLink, error) {
+func OpenGtp5gLink(mux *nl.Mux, addr string, mtu uint32, name string, log *logrus.Entry) (*Gtp5gLink, error) {
 	g := &Gtp5gLink{
 		log: log,
 	}
@@ -89,17 +92,17 @@ func OpenGtp5gLink(mux *nl.Mux, addr string, mtu uint32, log *logrus.Entry) (*Gt
 		})
 	}
 
-	err = rtnllink.Create(g.client, "upfgtp", attrs...)
+	err = rtnllink.Create(g.client, name, attrs...)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "create")
 	}
-	err = rtnllink.Up(g.client, "upfgtp")
+	err = rtnllink.Up(g.client, name)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "up")
 	}
-	link, err := gtp5gnl.GetLink("upfgtp")
+	link, err := gtp5gnl.GetLink(name)
 	if err != nil {
 		g.Close()
 		return nil, errors.Wrap(err, "get link")
@@ -122,7 +125,7 @@ func (g *Gtp5gLink) Close() {
 		}
 	}
 	if g.link != nil {
-		err := rtnllink.Remove(g.client, "upfgtp")
+		err := rtnllink.Remove(g.client, g.link.Name)
 		if err != nil {
 			g.log.Warnf("rtnllink remove err: %+v", err)
 		}

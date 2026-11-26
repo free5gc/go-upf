@@ -27,3 +27,15 @@ func newPFCPAssociation(
 		log:        log,
 	}
 }
+
+func (n *PFCPAssociation) matchesPeer(addr net.Addr) bool {
+	if n == nil {
+		return false
+	}
+	peer, ok := addr.(*net.UDPAddr)
+	if !ok || peer == nil || len(peer.IP) == 0 {
+		return false
+	}
+	bound, ok := n.peerAddr.(*net.UDPAddr)
+	return ok && bound != nil && len(bound.IP) != 0 && bound.IP.Equal(peer.IP) && bound.Zone == peer.Zone
+}

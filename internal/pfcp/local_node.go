@@ -3,11 +3,13 @@ package pfcp
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 	logger_util "github.com/free5gc/util/logger"
@@ -19,11 +21,13 @@ type LocalNode struct {
 	NodeID       string
 	RecoveryTime time.Time
 
-	associations map[string]*PFCPAssociation // key: peer Node ID
-	sessions     *SessionStore
+	associations  map[string]*PFCPAssociation // key: peer Node ID
+	sessions      *SessionStore
+	eesIdentities sync.Map // Local SEID to immutable ees.SessionContext
 
-	datapath forwarder.Driver
-	log      *logrus.Entry
+	fteids      fteidAllocator
+	newDatapath func(uint64) forwarder.SessionDatapath
+	log         *logrus.Entry
 }
 
 func NewLocalNode(
@@ -37,8 +41,10 @@ func NewLocalNode(
 		RecoveryTime: recoveryTime,
 		associations: make(map[string]*PFCPAssociation),
 		sessions:     &SessionStore{},
-		datapath:     datapath,
-		log:          log,
+		newDatapath: func(seid uint64) forwarder.SessionDatapath {
+			return forwarder.NewSessionDatapath(datapath, seid)
+		},
+		log: log,
 	}
 }
 
@@ -132,9 +138,12 @@ func (n *LocalNode) CreateSession(
 	association *PFCPAssociation,
 	remoteSEID uint64,
 ) *Session {
-	sess := n.sessions.Create(remoteSEID, BUFFQ_LEN, n.datapath)
+	sess := n.sessions.Create(remoteSEID, BUFFQ_LEN, n.newDatapath)
 	association.sessionIDs[sess.LocalID] = struct{}{}
 	sess.association = association
+	sess.fteids = &n.fteids
+	sess.trafficEndpoints = make(map[uint8]*trafficEndpoint)
+	sess.endpointRefs = make(map[uint16]*endpointRef)
 	sess.log = association.log.WithFields(
 		logrus.Fields{
 			logger_util.FieldUserPlaneSEID:    fmt.Sprintf("%#x", sess.LocalID),
@@ -165,6 +174,7 @@ func (n *LocalNode) deleteSession(localSEID uint64) ([]report.USAReport, error) 
 	if err != nil {
 		return nil, err
 	}
+	n.eesIdentities.Delete(localSEID)
 	if sess.association != nil {
 		delete(sess.association.sessionIDs, localSEID)
 	}
@@ -175,4 +185,18 @@ func (n *LocalNode) deleteAssociationSessions(association *PFCPAssociation) {
 	for localSEID := range association.sessionIDs {
 		n.DeleteSession(localSEID)
 	}
+}
+
+// publishEESIdentity runs on the PFCP loop. Forwarder report producers read
+// the published value without accessing mutable session rules.
+func (n *LocalNode) publishEESIdentity(sess *Session) {
+	n.eesIdentities.Store(sess.LocalID, sess.identitySnapshot())
+}
+
+func (n *LocalNode) eesIdentity(seid uint64) (ees.SessionContext, bool) {
+	value, ok := n.eesIdentities.Load(seid)
+	if !ok {
+		return ees.SessionContext{}, false
+	}
+	return value.(ees.SessionContext), true
 }

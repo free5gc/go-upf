@@ -6,6 +6,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/message"
+
+	"github.com/free5gc/go-upf/internal/ees"
+	"github.com/free5gc/go-upf/internal/report"
 )
 
 type messageTransport interface {
@@ -17,9 +20,10 @@ type messageTransport interface {
 // Request, response and report handlers are called synchronously by PfcpServer's
 // event loop; they are not a concurrent Session API.
 type Dispatcher struct {
-	node      *LocalNode
-	transport messageTransport
-	log       *logrus.Entry
+	eesHandler func() func(report.SessReport, ees.SessionContext)
+	node       *LocalNode
+	transport  messageTransport
+	log        *logrus.Entry
 }
 
 func newDispatcher(

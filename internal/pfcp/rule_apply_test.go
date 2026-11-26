@@ -45,7 +45,7 @@ func TestRuleTransactionPublishesOnlyAfterCompleteSuccess(t *testing.T) {
 	changes := &rules.RuleChangeSet{
 		UpdateQERs: []rules.QERPatch{{QERID: 7, MBR: &rules.DirectionalBitRate{UplinkBps: 1000}}},
 	}
-	reports, err := s.applyRuleChanges(changes, false)
+	reports, err := s.applyRuleChanges(changes, false, nil)
 	require.ErrorIs(t, err, failed)
 	require.Nil(t, reports)
 	require.Equal(t, ie.CauseRuleCreationModificationFailure, pfcpCauseFromError(err))
@@ -54,10 +54,10 @@ func TestRuleTransactionPublishesOnlyAfterCompleteSuccess(t *testing.T) {
 		require.Same(t, original, s.QERIDs[7])
 		return &forwarder.ApplyResult{}, nil
 	}
-	_, err = s.applyRuleChanges(changes, false)
+	_, err = s.applyRuleChanges(changes, false, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1000), s.QERIDs[7].MBR.UplinkBps)
-	_, err = s.applyRuleChanges(&rules.RuleChangeSet{RemoveQERs: []uint32{7}}, false)
+	_, err = s.applyRuleChanges(&rules.RuleChangeSet{RemoveQERs: []uint32{7}}, false, nil)
 	require.Error(t, err)
 	require.Equal(t, 2, d.calls, "invalid references must fail before execution")
 }
@@ -89,7 +89,7 @@ func TestRuleTransactionTerminalReporting(t *testing.T) {
 				}
 				return returned, nil
 			}}
-			reports, err := s.applyRuleChanges(changes, false)
+			reports, err := s.applyRuleChanges(changes, false, nil)
 			require.NoError(t, err)
 			require.NotContains(t, s.PDRIDs, uint16(11))
 			require.Zero(t, s.URRIDs[3].refPdrNum)
@@ -111,7 +111,7 @@ func TestTerminalQueryFailureDoesNotPublish(t *testing.T) {
 		require.Equal(t, []uint32{3}, c.QueryURRs)
 		return nil, failure
 	}}
-	_, err := s.applyRuleChanges(&rules.RuleChangeSet{RemovePDRs: []uint16{11}}, false)
+	_, err := s.applyRuleChanges(&rules.RuleChangeSet{RemovePDRs: []uint16{11}}, false, nil)
 	require.ErrorIs(t, err, failure)
 	require.Contains(t, s.PDRIDs, uint16(11))
 	require.Equal(t, uint16(1), s.URRIDs[3].refPdrNum)
@@ -125,7 +125,7 @@ func TestRuleTransactionTransferDoesNotTerminateURR(t *testing.T) {
 	}}
 	_, err := s.applyRuleChanges(&rules.RuleChangeSet{
 		RemovePDRs: []uint16{11}, CreatePDRs: []rules.PDRConfig{{PDRID: 12, URRIDs: []uint32{3, 3}}},
-	}, false)
+	}, false, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint16(1), s.URRIDs[3].refPdrNum)
 }

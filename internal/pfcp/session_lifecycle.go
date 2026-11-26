@@ -87,6 +87,10 @@ func (s *Session) Close() ([]report.USAReport, error) {
 		s.cleanupRetryAt = time.Now().Add(s.cleanupRetryDelay)
 		return nil, err
 	}
+	for id, endpoint := range s.trafficEndpoints {
+		s.fteids.drop(endpoint.localTEID())
+		delete(s.trafficEndpoints, id)
+	}
 	s.cleanupRetryAt = time.Time{}
 	reports := s.cleanupReports
 	s.cleanupReports = nil

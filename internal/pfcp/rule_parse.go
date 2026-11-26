@@ -162,13 +162,15 @@ func parsePDI(i *ie.IE) (*rules.PDI, error) {
 					IPv6PrefixLength:         v.IPv6PrefixLength,
 				}
 			}
+		case ie.NetworkInstance:
+			p.NetworkInstance, err = x.NetworkInstance()
 		case ie.SDFFilter:
 			var v rules.SDFFilter
 			v, err = parseSDFFilter(x)
 			if err == nil {
 				p.SDFFilters = append(p.SDFFilters, v)
 			}
-			// NetworkInstance and ApplicationID were ignored by the existing PDI builder.
+			// ApplicationID was ignored by the existing PDI builder.
 		}
 		if err != nil {
 			return nil, err

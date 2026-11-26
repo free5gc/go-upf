@@ -16,12 +16,13 @@ const (
 )
 
 type Config struct {
-	Version     string    `yaml:"version"     valid:"required,in(1.0.3)"`
-	Description string    `yaml:"description" valid:"optional"`
-	Pfcp        *Pfcp     `yaml:"pfcp"        valid:"required"`
-	Gtpu        *Gtpu     `yaml:"gtpu"        valid:"required"`
-	DnnList     []DnnList `yaml:"dnnList"     valid:"required"`
-	Logger      *Logger   `yaml:"logger"      valid:"required"`
+	Version     string     `yaml:"version"     valid:"required,in(1.0.3)"`
+	Description string     `yaml:"description" valid:"optional"`
+	Pfcp        *Pfcp      `yaml:"pfcp"        valid:"required"`
+	Gtpu        *Gtpu      `yaml:"gtpu"        valid:"required"`
+	DnnList     []DnnList  `yaml:"dnnList"     valid:"required"`
+	Logger      *Logger    `yaml:"logger"      valid:"required"`
+	EES         *EESConfig `yaml:"ees"        valid:"optional"`
 }
 
 type Pfcp struct {
@@ -29,6 +30,9 @@ type Pfcp struct {
 	NodeID         string        `yaml:"nodeID"         valid:"required,host"`
 	RetransTimeout time.Duration `yaml:"retransTimeout" valid:"required"`
 	MaxRetrans     uint8         `yaml:"maxRetrans"     valid:"optional"`
+	// StrictFTEIDAllocation rejects a new PDR whose Local F-TEID the SMF allocated (TS 29.244 clause 5.5.1).
+	// It is off while free5GC's SMF allocates the F-TEIDs itself.
+	StrictFTEIDAllocation bool `yaml:"strictFTEIDAllocation" valid:"optional"`
 }
 
 type Gtpu struct {
@@ -57,6 +61,15 @@ type Logger struct {
 	Enable       bool   `yaml:"enable"       valid:"optional"`
 	Level        string `yaml:"level"        valid:"required,in(trace|debug|info|warn|error|fatal|panic)"`
 	ReportCaller bool   `yaml:"reportCaller" valid:"optional"`
+}
+
+// EESConfig enables the embedded Nupf_EventExposure service. It is disabled by
+// default and supports only the free5GC single-UPF scenario; keep it disabled
+// in ULCL deployments.
+type EESConfig struct {
+	Enabled bool   `yaml:"enabled" valid:"optional"`
+	IP      string `yaml:"ip"      valid:"optional"` // empty listens on all interfaces
+	Port    int    `yaml:"port"    valid:"optional"` // 0 uses 8088
 }
 
 func (c *Config) GetVersion() string {

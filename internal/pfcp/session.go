@@ -5,6 +5,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
 	"github.com/free5gc/go-upf/internal/rules"
@@ -28,6 +29,11 @@ type Session struct {
 	cleanupRetryAt    time.Time
 	cleanupRetryDelay time.Duration
 	cleanupReports    []report.USAReport
+
+	fteids           *fteidAllocator
+	trafficEndpoints map[uint8]*trafficEndpoint
+	endpointRefs     map[uint16]*endpointRef
+	generation       uint64
 
 	association *PFCPAssociation // remote PFCP association that owns this session
 
@@ -97,4 +103,24 @@ func (s *Session) URRSeq(urrid uint32) uint32 {
 	seq := info.SEQN
 	info.SEQN++
 	return seq
+}
+
+func (s *Session) identitySnapshot() ees.SessionContext {
+	identity := ees.SessionContext{RemoteSEID: s.RemoteID, Generation: s.generation}
+	var selected uint16
+	for id, pdr := range s.PDRIDs {
+		if pdr.PDI == nil || pdr.PDI.UEIPAddress == nil {
+			continue
+		}
+		if ip := pdr.PDI.UEIPAddress.IPv4Address.To4(); ip != nil &&
+			(identity.UeIPv4Addr == "" || id < selected) {
+			identity.UeIPv4Addr, selected = ip.String(), id
+		}
+	}
+	if info := s.URRIDs[ees.SingleUPFMAQEURRID]; info != nil && !info.removed &&
+		info.Config.ReportingTriggers != nil && *info.Config.ReportingTriggers&report.RPT_TRIG_PERIO != 0 &&
+		info.Config.MeasurePeriod != nil {
+		identity.MeasurePeriod = *info.Config.MeasurePeriod
+	}
+	return identity
 }

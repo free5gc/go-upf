@@ -12,7 +12,9 @@ import (
 // loop owns Session: request validation, execution, publication and response
 // assembly run synchronously before the next request/report/timeout is handled.
 // Do not invoke this method concurrently with Session reads or writes.
-func (s *Session) applyRuleChanges(changes *rules.RuleChangeSet, establish bool) ([]report.USAReport, error) {
+func (s *Session) applyRuleChanges(
+	changes *rules.RuleChangeSet, establish bool, fteids *fteidRequest,
+) ([]report.USAReport, error) {
 	if s.closing {
 		return nil, fmt.Errorf("%w: session cleanup pending", ErrRuleCreationModificationFailed)
 	}
@@ -47,7 +49,13 @@ func (s *Session) applyRuleChanges(changes *rules.RuleChangeSet, establish bool)
 	}
 	// Every required query is part of execution. A query error therefore reaches
 	// the normal rollback path, before any Session state is published.
+	if fteids != nil {
+		fteids.commitTEIDs(state)
+	}
 	state.Commit()
+	if fteids != nil {
+		fteids.commitEndpoints()
+	}
 	if result == nil {
 		return nil, nil
 	}
@@ -100,6 +108,7 @@ func (state *RuleState) Commit() {
 		s.PDRIDs[id] = &n
 	}
 	for id := range state.removedPDRs {
+		delete(s.endpointRefs, id)
 		delete(s.PDRIDs, id)
 	}
 	for id := range state.removedFARs {
@@ -126,6 +135,10 @@ func (s *Session) ApplyRemovePDR(id uint16) {
 			}
 		}
 	}
+	if s.fteids != nil {
+		s.fteids.drop(pdrLocalTEID(s.PDRIDs[id]))
+	}
+	delete(s.endpointRefs, id)
 	delete(s.PDRIDs, id)
 }
 

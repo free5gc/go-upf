@@ -25,6 +25,7 @@ type PDRPatch PDRConfig
 
 type PDI struct {
 	SourceInterface uint8
+	NetworkInstance string
 	FTEID           *FTEID
 	UEIPAddress     *UEIPAddress
 	SDFFilters      []SDFFilter

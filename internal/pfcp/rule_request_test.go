@@ -70,7 +70,7 @@ func TestTypedEstablishmentAndResponseMetadata(t *testing.T) {
 	for i := range req.CreatePDR[0].Payload {
 		req.CreatePDR[0].Payload[i] = 0
 	}
-	response := createdPDRResponseIEs(changes)
+	response := createdPDRResponseIEs(changes, nil)
 	require.Len(t, response, 1)
 	id, err := response[0].PDRID()
 	require.NoError(t, err)

@@ -70,7 +70,7 @@ func TestCleanupRetainsOnlyPendingRulesAndSEID(t *testing.T) {
 	_, ok = <-queue
 	require.False(t, ok)
 	require.NotPanics(t, func() { s.Push(11, []byte{2}) })
-	_, err = s.applyRuleChanges(&rules.RuleChangeSet{SEID: s.LocalID}, false)
+	_, err = s.applyRuleChanges(&rules.RuleChangeSet{SEID: s.LocalID}, false, nil)
 	require.Error(t, err, "closing sessions cannot resume modification")
 	other := node.CreateSession(s.association, 101)
 	require.NotEqual(t, s.LocalID, other.LocalID)

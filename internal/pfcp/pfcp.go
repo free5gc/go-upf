@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/wmnsk/go-pfcp/message"
 
+	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
@@ -44,6 +45,8 @@ type TransactionTimeout struct {
 }
 
 type PfcpServer struct {
+	eesMu      sync.RWMutex
+	eesReport  func(report.SessReport, ees.SessionContext)
 	cfg        *factory.Config
 	listen     string
 	dispatcher *Dispatcher
@@ -61,6 +64,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 	listen := fmt.Sprintf("%s:%d", cfg.Pfcp.Addr, factory.UpfPfcpDefaultPort)
 	log := logger.PfcpLog.WithField(logger_util.FieldListenAddr, listen)
 	localNode := NewLocalNode(cfg.Pfcp.NodeID, time.Now(), driver, log)
+	localNode.fteids = newFTEIDAllocator(cfg)
 	server := &PfcpServer{
 		cfg:     cfg,
 		listen:  listen,
@@ -72,6 +76,7 @@ func NewPfcpServer(cfg *factory.Config, driver forwarder.Driver) *PfcpServer {
 		log:     log,
 	}
 	server.dispatcher = newDispatcher(localNode, server, log)
+	server.dispatcher.eesHandler = server.eesHandler
 	return server
 }
 
@@ -122,7 +127,7 @@ func (s *PfcpServer) main(wg *sync.WaitGroup) {
 			s.dispatcher.ServeReport(&sr)
 		case rcvPkt := <-s.rcvCh:
 			s.log.Tracef("receive buf(len=%d) from rcvCh", len(rcvPkt.Buf))
-			if len(rcvPkt.Buf) == 0 {
+			if rcvPkt.RemoteAddr == nil {
 				// receiver closed
 				return
 			}
@@ -214,6 +219,9 @@ func (s *PfcpServer) receiver(wg *sync.WaitGroup) {
 		n, addr, err := s.conn.ReadFrom(buf)
 		if err != nil {
 			s.log.Errorf("%+v", err)
+			// RemoteAddr is nil only here, to notify main() that the
+			// receiver has stopped. A received packet always carries a
+			// remote address, so it can never be mistaken for this signal.
 			s.rcvCh <- ReceivePacket{}
 			break
 		}
@@ -246,7 +254,43 @@ func (s *PfcpServer) Stop() {
 }
 
 func (s *PfcpServer) NotifySessReport(sr report.SessReport) {
+	if handler := s.eesHandler(); handler != nil {
+		if identity, ok := s.dispatcher.node.eesIdentity(sr.SEID); ok {
+			handler(sr, identity)
+		}
+	}
 	s.srCh <- sr
+}
+
+// RegisterEESReportHandler installs a buffer-only callback, never a PFCP queue
+// writer or network notifier. It is safe to register while the server runs.
+func (s *PfcpServer) RegisterEESReportHandler(handler func(report.SessReport, ees.SessionContext)) {
+	s.eesMu.Lock()
+	defer s.eesMu.Unlock()
+	s.eesReport = handler
+}
+
+// eesHandler returns the registered EES callback, or nil when EES is disabled.
+func (s *PfcpServer) eesHandler() func(report.SessReport, ees.SessionContext) {
+	s.eesMu.RLock()
+	defer s.eesMu.RUnlock()
+	return s.eesReport
+}
+
+// deliverEESUsage hands usage already carried in a PFCP response to EES only.
+// It never writes srCh, so the usage is not reported to the SMF again and the
+// PFCP loop cannot block on its own queue.
+func deliverEESUsage(handler func(report.SessReport, ees.SessionContext),
+	lSeid uint64, identity ees.SessionContext, usages []report.USAReport,
+) {
+	if handler == nil || len(usages) == 0 {
+		return
+	}
+	reports := make([]report.Report, len(usages))
+	for i := range usages {
+		reports[i] = usages[i]
+	}
+	handler(report.SessReport{SEID: lSeid, Reports: reports}, identity)
 }
 
 func (s *PfcpServer) NotifyTransTimeout(trType TransType, trID string) {

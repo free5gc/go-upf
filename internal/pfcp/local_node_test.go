@@ -23,7 +23,7 @@ func TestNewLocalNode(t *testing.T) {
 	assert.NotNil(t, node.associations)
 	assert.Empty(t, node.associations)
 	assert.NotNil(t, node.sessions)
-	assert.Equal(t, datapath, node.datapath)
+	assert.NotNil(t, node.newDatapath(1))
 	assert.Same(t, log, node.log)
 }
 

@@ -9,6 +9,8 @@ import (
 )
 
 var (
+	ErrInvalidFTEIDAllocation         = errors.New("invalid F-TEID allocation option")
+	ErrFTEIDInUse                     = errors.New("F-TEID in use by another session")
 	ErrMissingMandatoryIE             = errors.New("mandatory IE missing or incorrect")
 	ErrMissingConditionalIE           = errors.New("conditional IE missing or incorrect")
 	ErrRuleNotFound                   = errors.New("rule not found")

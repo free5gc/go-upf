@@ -57,7 +57,7 @@ func TestNewPfcpServerInitializesDispatcher(t *testing.T) {
 	assert.False(t, s.dispatcher.node.RecoveryTime.IsZero())
 	assert.NotNil(t, s.dispatcher.node.associations)
 	assert.NotNil(t, s.dispatcher.node.sessions)
-	assert.Equal(t, forwarder.Empty{}, s.dispatcher.node.datapath)
+	assert.NotNil(t, s.dispatcher.node.newDatapath(1))
 	assert.Same(t, s.log, s.dispatcher.log)
 	assert.Same(t, s.log, s.dispatcher.node.log)
 }

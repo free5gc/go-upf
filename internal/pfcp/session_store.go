@@ -12,8 +12,9 @@ import (
 
 // SessionStore owns the UPF-wide Local SEID namespace and canonical Session objects.
 type SessionStore struct {
-	sessions  []*Session
-	freeSEIDs []uint64
+	generation uint64
+	sessions   []*Session
+	freeSEIDs  []uint64
 }
 
 func (s *SessionStore) Get(localSEID uint64) (*Session, error) {
@@ -70,10 +71,12 @@ func (s *SessionStore) FindByRemoteSEID(
 func (s *SessionStore) Create(
 	remoteSEID uint64,
 	queueLen int,
-	driver forwarder.Driver,
+	newDatapath func(uint64) forwarder.SessionDatapath,
 ) *Session {
+	s.generation++
 	sess := &Session{
-		RemoteID: remoteSEID,
+		generation: s.generation,
+		RemoteID:   remoteSEID,
 
 		PDRIDs: make(map[uint16]*rules.PDRConfig),
 		FARIDs: make(map[uint32]*rules.FARConfig),
@@ -92,7 +95,7 @@ func (s *SessionStore) Create(
 		s.sessions = append(s.sessions, sess)
 		sess.LocalID = uint64(len(s.sessions))
 	}
-	sess.datapath = forwarder.NewSessionDatapath(driver, sess.LocalID)
+	sess.datapath = newDatapath(sess.LocalID)
 	return sess
 }
 
