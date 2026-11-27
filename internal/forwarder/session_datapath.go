@@ -91,8 +91,8 @@ func (s *sessionDatapath) executeModificationPlan(plan *modificationPlan) (*exec
 	execution := *plan
 	execution.Rollback = before
 	result, err := s.backend.executeModificationPlan(&execution)
-	// The existing executor compensates failures before returning. Accounting
-	// restoration and rollback-failure reconciliation remain documented limitations.
+	// The executor attempts compensation before returning the original error.
+	// It logs compensation failures. URR compensation restores configuration only.
 	if err == nil {
 		s.publish(result)
 	}

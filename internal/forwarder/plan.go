@@ -180,8 +180,9 @@ func newSuccessfulExecutionResult(plan *modificationPlan) *executionResult {
 // TODO: URR rollback restores configuration only. Remove-and-recreate does not
 // preserve kernel accounting runtime; full restoration requires gtp5g support.
 //
-// TODO: Return and reconcile rollback failures. For now they are logged and the
-// caller assumes the pre-request kernel state was restored.
+// Failed compensation is logged. The caller returns the original execution
+// error and leaves the published session rules at their pre-request state.
+// Kernel rules can differ from that state after a failed compensation.
 func (g *Gtp5g) rollbackApplied(request, applied *modificationPlan) {
 	if applied == nil {
 		return
@@ -189,7 +190,7 @@ func (g *Gtp5g) rollbackApplied(request, applied *modificationPlan) {
 
 	logFailure := func(operation string, err error) {
 		if err != nil {
-			g.log.Errorf("Rollback %s failed: %v", operation, err)
+			g.log.Errorf("Rollback %s failed for SEID %#x: %v", operation, request.SEID, err)
 		}
 	}
 	before := request.Rollback
