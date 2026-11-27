@@ -24,6 +24,8 @@ type Dispatcher struct {
 	node       *LocalNode
 	transport  messageTransport
 	log        *logrus.Entry
+
+	completedDeletions map[uint64]completedDeletion
 }
 
 func newDispatcher(
@@ -32,9 +34,10 @@ func newDispatcher(
 	log *logrus.Entry,
 ) *Dispatcher {
 	return &Dispatcher{
-		node:      node,
-		transport: transport,
-		log:       log,
+		node:               node,
+		transport:          transport,
+		log:                log,
+		completedDeletions: make(map[uint64]completedDeletion),
 	}
 }
 

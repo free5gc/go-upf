@@ -103,14 +103,15 @@ func TestCleanupRejectsUnconfirmedSuccessAndBacksOff(t *testing.T) {
 	due := s.cleanupRetryAt
 	d.retrySessionCleanup(due.Add(-time.Nanosecond))
 	require.Equal(t, 1, backend.calls)
+	secondAttempt := time.Now()
 	d.retrySessionCleanup(due)
 	require.Equal(t, 2, backend.calls)
-	require.Equal(t, 2*time.Second, s.cleanupRetryDelay)
-	for i := 0; i < 8; i++ {
-		_, err = node.deleteSession(s.LocalID)
-		require.Error(t, err)
-	}
-	require.Equal(t, time.Minute, s.cleanupRetryDelay)
+	require.WithinDuration(t, secondAttempt.Add(2*time.Second), s.cleanupRetryAt, time.Second)
+	d.retrySessionCleanup(s.cleanupRetryAt)
+	require.Equal(t, 3, backend.calls)
+	require.True(t, s.cleanupRetryAt.IsZero())
+	d.retrySessionCleanup(time.Now().Add(time.Hour))
+	require.Equal(t, 3, backend.calls)
 	require.Empty(t, node.sessions.freeSEIDs)
 }
 
@@ -148,25 +149,70 @@ func TestDeletionFailureAndRetryFinalReport(t *testing.T) {
 	}
 	transport := &messageTransportMock{}
 	d := newDispatcher(node, transport, node.log)
-	req := message.NewSessionDeletionRequest(0, 0, s.LocalID, 1, 0)
-	d.handleSessionDeletionRequest(req, s.association.peerAddr)
-	rsp := transport.rsp.(*message.SessionDeletionResponse)
-	cause, err := rsp.Cause.Cause()
-	require.NoError(t, err)
-	require.Equal(t, ie.CauseSystemFailure, cause)
-	require.Empty(t, rsp.UsageReport)
-	backend.run = func(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
-		return &forwarder.ApplyResult{
-			Removed: forwarder.RemovedRules{QERs: c.RemoveQERs},
-		}, nil
+	deleteRequest := func(seq uint32, addr net.Addr, want uint8) *message.SessionDeletionResponse {
+		t.Helper()
+		d.handleSessionDeletionRequest(message.NewSessionDeletionRequest(0, 0, s.LocalID, seq, 0), addr)
+		rsp := transport.rsp.(*message.SessionDeletionResponse)
+		cause, err := rsp.Cause.Cause()
+		require.NoError(t, err)
+		require.Equal(t, want, cause)
+		return rsp
 	}
-	d.retrySessionCleanup(s.cleanupRetryAt)
-	final := transport.req.(*sessionReportRequest)
-	require.Equal(t, s.RemoteID, final.SEID())
-	require.Len(t, final.UsageReport, 1)
-	require.Empty(t, s.cleanupReports)
+	peer := s.association.peerAddr
+	failed := deleteRequest(1, peer, ie.CauseSystemFailure)
+	require.Empty(t, failed.UsageReport)
 	d.retrySessionCleanup(time.Now().Add(time.Hour))
-	require.Equal(t, 2, backend.calls)
+	require.Equal(t, 1, backend.calls, "SMF owns the retries")
+
+	backend.run = func(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+		require.Empty(t, c.RemovePDRs)
+		require.Empty(t, c.RemoveURRs)
+		require.Equal(t, []uint32{7}, c.RemoveQERs)
+		return &forwarder.ApplyResult{Removed: forwarder.RemovedRules{QERs: c.RemoveQERs}}, nil
+	}
+	accepted := deleteRequest(2, peer, ie.CauseRequestAccepted)
+	require.Equal(t, s.RemoteID, accepted.SEID())
+	require.Len(t, accepted.UsageReport, 1)
+	require.True(t, accepted.UsageReport[0].HasTERMR())
+	require.Nil(t, transport.req, "usage is delivered in the response")
+	_, err := node.Session(s.LocalID)
+	require.Error(t, err)
+	otherPeer := &net.UDPAddr{IP: net.ParseIP("127.0.0.99"), Port: 8805}
+	otherAssoc := node.EstablishAssociation("127.0.0.99", otherPeer)
+	other := node.CreateSession(otherAssoc, 999)
+	require.NotEqual(t, s.LocalID, other.LocalID)
+	require.Empty(t, deleteRequest(3, otherPeer, ie.CauseRequestRejected).UsageReport)
+	replayed := deleteRequest(4, peer, ie.CauseRequestAccepted)
+	require.Equal(t, uint32(4), replayed.Sequence())
+	require.Equal(t, accepted.UsageReport, replayed.UsageReport)
+	require.Equal(t, 2, backend.calls, "replaying success must not touch the datapath")
+
+	d.retrySessionCleanup(d.completedDeletions[s.LocalID].expiresAt)
+	deleteRequest(5, peer, ie.CauseSessionContextNotFound)
+	reused := node.CreateSession(s.association, 120)
+	require.Equal(t, s.LocalID, reused.LocalID)
+}
+
+func TestDeletionRequestsStopAfterThreeCleanupAttempts(t *testing.T) {
+	node, s, backend := cleanupSession(t)
+	backend.run = func(*rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+		return nil, errors.New("kernel cleanup failed")
+	}
+	transport := &messageTransportMock{}
+	d := newDispatcher(node, transport, node.log)
+	for seq := uint32(1); seq <= 4; seq++ {
+		req := message.NewSessionDeletionRequest(0, 0, s.LocalID, seq, 0)
+		d.handleSessionDeletionRequest(req, s.association.peerAddr)
+		cause, err := transport.rsp.(*message.SessionDeletionResponse).Cause.Cause()
+		require.NoError(t, err)
+		require.Equal(t, ie.CauseSystemFailure, cause)
+	}
+	d.retrySessionCleanup(time.Now().Add(time.Hour))
+	require.Equal(t, 3, backend.calls)
+	retained, err := node.Session(s.LocalID)
+	require.NoError(t, err)
+	require.Same(t, s, retained)
+	require.Empty(t, node.sessions.freeSEIDs)
 }
 
 func TestCleanupLateReportResponseDoesNotDeleteReplacement(t *testing.T) {

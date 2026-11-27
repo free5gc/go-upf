@@ -126,9 +126,17 @@ func (s *SessionStore) Delete(localSEID uint64) ([]report.USAReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.sessions[index].log.Infoln("session deleted")
-	s.sessions[index] = nil
-	s.freeSEIDs = append(s.freeSEIDs, localSEID)
+	s.detach(s.sessions[index])
+	s.recycleSEID(localSEID)
 
 	return reports, nil
+}
+
+func (s *SessionStore) detach(sess *Session) {
+	sess.log.Infoln("session deleted")
+	s.sessions[sess.LocalID-1] = nil
+}
+
+func (s *SessionStore) recycleSEID(localSEID uint64) {
+	s.freeSEIDs = append(s.freeSEIDs, localSEID)
 }

@@ -2,6 +2,7 @@ package pfcp
 
 import (
 	"net"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/wmnsk/go-pfcp/ie"
@@ -24,7 +25,10 @@ func (d *Dispatcher) hasPeerAssociation(addr net.Addr) bool {
 }
 
 func (d *Dispatcher) ownsSession(sess *Session, addr net.Addr) bool {
-	association := sess.association
+	return d.ownsAssociation(sess.association, addr)
+}
+
+func (d *Dispatcher) ownsAssociation(association *PFCPAssociation, addr net.Addr) bool {
 	return association.matchesPeer(addr) && d.node.associations[association.PeerNodeID] == association
 }
 
@@ -258,6 +262,32 @@ func (d *Dispatcher) handleSessionModificationRequest(
 	}
 }
 
+// Retain completed deletions longer than the SMF's overall retry deadline.
+const deletionReplayWindow = time.Minute
+
+type completedDeletion struct {
+	association *PFCPAssociation
+	remoteSEID  uint64
+	reports     []*ie.IE
+	expiresAt   time.Time
+}
+
+func (d *Dispatcher) replaySessionDeletion(
+	req *message.SessionDeletionRequest, addr net.Addr, deletion completedDeletion,
+) {
+	if !d.ownsAssociation(deletion.association, addr) {
+		d.sendSessDelFailRsp(req, addr, ie.CauseRequestRejected)
+		return
+	}
+	rsp := message.NewSessionDeletionResponse(
+		0, 0, deletion.remoteSEID, req.Sequence(), 0, ie.NewCause(ie.CauseRequestAccepted),
+	)
+	rsp.UsageReport = deletion.reports
+	if err := d.transport.sendRspTo(rsp, addr); err != nil {
+		d.log.Errorln(err)
+	}
+}
+
 func (d *Dispatcher) handleSessionDeletionRequest(
 	req *message.SessionDeletionRequest,
 	addr net.Addr,
@@ -269,6 +299,10 @@ func (d *Dispatcher) handleSessionDeletionRequest(
 	}
 
 	lSeid := req.SEID()
+	if deletion, ok := d.completedDeletions[lSeid]; ok {
+		d.replaySessionDeletion(req, addr, deletion)
+		return
+	}
 	sess, err := d.node.Session(lSeid)
 	if err != nil {
 		d.log.Errorf("handleSessionDeletionRequest: %v", err)
@@ -281,7 +315,7 @@ func (d *Dispatcher) handleSessionDeletionRequest(
 	}
 
 	eesHandler, identity := d.eesSnapshot(sess)
-	usars, cleanupErr := d.node.deleteSession(lSeid)
+	usars, cleanupErr := d.node.deleteSessionByRequest(sess)
 	cause := ie.CauseRequestAccepted
 	if cleanupErr != nil {
 		cause = ie.CauseSystemFailure
@@ -316,7 +350,15 @@ func (d *Dispatcher) handleSessionDeletionRequest(
 		}
 	}
 
-	deliverEESUsage(eesHandler, lSeid, identity, usars)
+	if cleanupErr == nil {
+		d.completedDeletions[lSeid] = completedDeletion{
+			association: sess.association,
+			remoteSEID:  sess.RemoteID,
+			reports:     rsp.UsageReport,
+			expiresAt:   time.Now().Add(deletionReplayWindow),
+		}
+		deliverEESUsage(eesHandler, lSeid, identity, usars)
+	}
 
 	err = d.transport.sendRspTo(rsp, addr)
 	if err != nil {

@@ -174,15 +174,35 @@ func (n *LocalNode) deleteSession(localSEID uint64) ([]report.USAReport, error) 
 	if err != nil {
 		return nil, err
 	}
-	n.eesIdentities.Delete(localSEID)
-	if sess.association != nil {
-		delete(sess.association.sessionIDs, localSEID)
-	}
+	n.detachSessionMembership(sess)
 	return reports, nil
+}
+
+// deleteSessionByRequest leaves the Local SEID reserved while the dispatcher
+// can replay the completed deletion response.
+func (n *LocalNode) deleteSessionByRequest(sess *Session) ([]report.USAReport, error) {
+	reports, err := sess.closeByRequest()
+	if err != nil {
+		return nil, err
+	}
+	n.sessions.detach(sess)
+	n.detachSessionMembership(sess)
+	return reports, nil
+}
+
+func (n *LocalNode) detachSessionMembership(sess *Session) {
+	n.eesIdentities.Delete(sess.LocalID)
+	if sess.association != nil {
+		delete(sess.association.sessionIDs, sess.LocalID)
+	}
 }
 
 func (n *LocalNode) deleteAssociationSessions(association *PFCPAssociation) {
 	for localSEID := range association.sessionIDs {
+		if sess, err := n.sessions.Get(localSEID); err == nil {
+			// The peer can no longer drive cleanup. Use any remaining attempts.
+			sess.deletionRequested = false
+		}
 		n.DeleteSession(localSEID)
 	}
 }

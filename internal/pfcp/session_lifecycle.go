@@ -10,12 +10,42 @@ import (
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
-// Close retries only outstanding removals. Failed cleanup retains the Session,
+const maxSessionCleanupAttempts = 3
+
+// Close handles UPF-initiated cleanup. An active peer drives retries for its
+// own Session Deletion Request.
+func (s *Session) Close() ([]report.USAReport, error) {
+	if s.deletionRequested {
+		return nil, fmt.Errorf("cleanup is waiting for the next Session Deletion Request")
+	}
+	return s.attemptCleanup()
+}
+
+func (s *Session) closeByRequest() ([]report.USAReport, error) {
+	s.deletionRequested = true
+	return s.attemptCleanup()
+}
+
+func (s *Session) attemptCleanup() ([]report.USAReport, error) {
+	s.cleanupRetryAt = time.Time{}
+	if s.cleanupAttempts >= maxSessionCleanupAttempts {
+		return nil, fmt.Errorf("session cleanup exhausted %d attempts", maxSessionCleanupAttempts)
+	}
+	s.cleanupAttempts++
+	reports, err := s.cleanup()
+	if err != nil && !s.deletionRequested && s.cleanupAttempts < maxSessionCleanupAttempts {
+		delay := time.Second << (s.cleanupAttempts - 1)
+		s.cleanupRetryAt = time.Now().Add(delay)
+	}
+	return reports, err
+}
+
+// cleanup retries only outstanding removals. Failed cleanup retains the Session,
 // its datapath handle, report metadata and Local SEID until a later attempt.
 // Cleanup is best-effort deletion, not a rollback transaction: a failed attempt
 // may already have removed some rules. Retries run only while PFCP is running;
 // persistent failures retain the SEID rather than recycling it over stale rules.
-func (s *Session) Close() ([]report.USAReport, error) {
+func (s *Session) cleanup() ([]report.USAReport, error) {
 	if !s.closing {
 		s.closing = true
 		for _, q := range s.q {
@@ -76,22 +106,12 @@ func (s *Session) Close() ([]report.USAReport, error) {
 		err = fmt.Errorf("cleanup left %d unconfirmed rules", pending)
 	}
 	if err != nil {
-		if s.cleanupRetryDelay == 0 {
-			s.cleanupRetryDelay = time.Second
-		} else if s.cleanupRetryDelay < time.Minute {
-			s.cleanupRetryDelay *= 2
-			if s.cleanupRetryDelay > time.Minute {
-				s.cleanupRetryDelay = time.Minute
-			}
-		}
-		s.cleanupRetryAt = time.Now().Add(s.cleanupRetryDelay)
 		return nil, err
 	}
 	for id, endpoint := range s.trafficEndpoints {
 		s.fteids.drop(endpoint.localTEID())
 		delete(s.trafficEndpoints, id)
 	}
-	s.cleanupRetryAt = time.Time{}
 	reports := s.cleanupReports
 	s.cleanupReports = nil
 	return reports, nil
@@ -99,6 +119,12 @@ func (s *Session) Close() ([]report.USAReport, error) {
 
 // Called by the existing PFCP event loop; no worker, extra registry or goroutine.
 func (d *Dispatcher) retrySessionCleanup(now time.Time) {
+	for seid, deletion := range d.completedDeletions {
+		if !now.Before(deletion.expiresAt) {
+			delete(d.completedDeletions, seid)
+			d.node.sessions.recycleSEID(seid)
+		}
+	}
 	for _, sess := range d.node.sessions.sessions {
 		if sess == nil || !sess.closing || sess.cleanupRetryAt.IsZero() || now.Before(sess.cleanupRetryAt) {
 			continue

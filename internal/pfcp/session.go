@@ -26,8 +26,9 @@ type URRInfo struct {
 type Session struct {
 	// Cleanup state is owned by this Session and the PFCP event loop.
 	closing           bool
+	cleanupAttempts   int
+	deletionRequested bool
 	cleanupRetryAt    time.Time
-	cleanupRetryDelay time.Duration
 	cleanupReports    []report.USAReport
 
 	fteids           *fteidAllocator
