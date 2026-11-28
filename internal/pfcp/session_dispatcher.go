@@ -108,7 +108,8 @@ func (d *Dispatcher) handleSessionEstablishmentRequest(
 	}
 	if err1 != nil {
 		sess.log.Errorf("Establishment rules: %v", err1)
-		d.sendSessEstFailRsp(req, addr, pfcpCauseFromError(err1))
+		cause, additionalIEs := ruleErrorResponse(err1)
+		d.sendSessEstFailRsp(req, addr, cause, additionalIEs...)
 		d.node.DeleteSession(sess.LocalID)
 		return
 	}
@@ -214,7 +215,8 @@ func (d *Dispatcher) handleSessionModificationRequest(
 	}
 	if err1 != nil {
 		sess.log.Errorf("Modification rules: %v", err1)
-		d.sendSessModFailRsp(req, sess, addr, pfcpCauseFromError(err1))
+		cause, additionalIEs := ruleErrorResponse(err1)
+		d.sendSessModFailRsp(req, sess, addr, cause, additionalIEs...)
 		return
 	}
 
@@ -508,26 +510,30 @@ func (d *Dispatcher) sendSessModFailRsp(
 	}
 }
 
-func pfcpCauseFromError(err error) uint8 {
+func ruleErrorResponse(err error) (uint8, []*ie.IE) {
+	var ieErr *ruleIEError
 	switch {
+	case errors.As(err, &ieErr):
+		return ieErr.cause, []*ie.IE{ie.NewOffendingIE(ieErr.ieType)}
+
 	case errors.Is(err, ErrMissingMandatoryIE):
-		return ie.CauseMandatoryIEMissing
+		return ie.CauseMandatoryIEMissing, nil
 
 	case errors.Is(err, ErrMissingConditionalIE):
-		return ie.CauseConditionalIEMissing
+		return ie.CauseConditionalIEMissing, nil
 
 	case errors.Is(err, ErrInvalidFTEIDAllocation):
-		return ie.CauseInvalidFTEIDAllocationOption
+		return ie.CauseInvalidFTEIDAllocationOption, nil
 
 	case errors.Is(err, ErrFTEIDInUse):
-		return ie.CauseRequestRejected
+		return ie.CauseRequestRejected, nil
 
 	case errors.Is(err, ErrRuleNotFound) ||
 		errors.Is(err, ErrRuleCreationModificationFailed) ||
 		errors.Is(err, ErrMutualExclusionConflict):
-		return ie.CauseRuleCreationModificationFailure
+		return ie.CauseRuleCreationModificationFailure, nil
 
 	default:
-		return ie.CauseSystemFailure
+		return ie.CauseSystemFailure, nil
 	}
 }

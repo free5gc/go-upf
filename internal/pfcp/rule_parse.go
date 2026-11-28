@@ -93,7 +93,7 @@ func parsePDR(i *ie.IE, create bool) (rules.PDRConfig, error) {
 		case ie.PDI:
 			p.PDI, err = parsePDI(x)
 		case ie.OuterHeaderRemoval:
-			p.OuterHeaderRemoval, err = valueOf(x.OuterHeaderRemovalDescription())
+			p.OuterHeaderRemoval, err = parseOuterHeaderRemoval(x)
 		case ie.FARID:
 			p.FARID, err = valueOf(x.FARID())
 		case ie.QERID:
@@ -121,6 +121,33 @@ func parsePDR(i *ie.IE, create bool) (rules.PDRConfig, error) {
 		}
 	}
 	return p, nil
+}
+
+func parseOuterHeaderRemoval(i *ie.IE) (*uint8, error) {
+	if int(i.Length) != len(i.Payload) {
+		return nil, &ruleIEError{
+			cause:  ie.CauseInvalidLength,
+			ieType: i.Type,
+			err:    fmt.Errorf("outer header removal declares length %d, received %d", i.Length, len(i.Payload)),
+		}
+	}
+	description, err := i.OuterHeaderRemovalDescription()
+	if err != nil {
+		return nil, &ruleIEError{
+			cause:  ie.CauseMandatoryIEIncorrect,
+			ieType: i.Type,
+			err:    fmt.Errorf("outer header removal description: %w", err),
+		}
+	}
+	// TS 29.244 Table 8.2.64-1 Note 7 requires rejecting unknown values.
+	if description > 8 {
+		return nil, &ruleIEError{
+			cause:  ie.CauseMandatoryIEIncorrect,
+			ieType: i.Type,
+			err:    fmt.Errorf("unknown Outer Header Removal description %d", description),
+		}
+	}
+	return &description, nil
 }
 
 func parsePDI(i *ie.IE) (*rules.PDI, error) {

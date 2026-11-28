@@ -49,7 +49,9 @@ func TestRuleTransactionPublishesOnlyAfterCompleteSuccess(t *testing.T) {
 	reports, err := s.applyRuleChanges(changes, false, nil)
 	require.ErrorIs(t, err, failed)
 	require.Nil(t, reports)
-	require.Equal(t, ie.CauseRuleCreationModificationFailure, pfcpCauseFromError(err))
+	cause, additionalIEs := ruleErrorResponse(err)
+	require.Equal(t, ie.CauseRuleCreationModificationFailure, cause)
+	require.Empty(t, additionalIEs)
 	require.Same(t, original, s.QERIDs[7])
 	d.apply = func(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
 		require.Same(t, original, s.QERIDs[7])

@@ -18,12 +18,25 @@ var (
 	ErrMutualExclusionConflict        = errors.New("conflicting operations on same rule")
 )
 
+type ruleIEError struct {
+	cause  uint8
+	ieType uint16
+	err    error
+}
+
+func (e *ruleIEError) Error() string { return e.err.Error() }
+func (e *ruleIEError) Unwrap() error { return e.err }
+
 func appendRuleChanges[P any](destination *[]P, operation string, ies []*ie.IE,
 	parse func(*ie.IE) (P, error), failure error,
 ) error {
 	for _, i := range ies {
 		p, err := parse(i)
 		if err != nil {
+			var ieErr *ruleIEError
+			if errors.As(err, &ieErr) {
+				return errors.Wrap(err, operation)
+			}
 			if errors.Is(err, ErrMissingMandatoryIE) {
 				failure = ErrMissingMandatoryIE
 			}
