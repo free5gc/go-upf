@@ -2,7 +2,6 @@ package pfcp
 
 import (
 	"net"
-	"slices"
 	"testing"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/internal/rules"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
@@ -24,68 +24,52 @@ const (
 // fteidDriver keeps the PDRs given to the forwarder, and the IDs of those that it removes. Like gtp5g, it gives a
 // PDR plan the URR IDs of the PDR, and a usage report for each URR queried.
 type fteidDriver struct {
-	forwarder.Empty
-	pdrs    map[uint16]*ie.IE
+	forwarder.SessionDatapath
+	pdrs    map[uint16]rules.PDRConfig
+	updated map[uint16]bool
 	removed []uint16
 }
 
-func urrIDs(pdr *ie.IE) []uint32 {
-	var ids []uint32
-	for _, i := range pdr.ChildIEs {
-		if id, err := i.URRID(); i.Type == ie.URRID && err == nil {
-			ids = append(ids, id)
-		}
+func (d *fteidDriver) Establish(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+	return d.Modify(c)
+}
+
+func (d *fteidDriver) Modify(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+	for _, pdr := range c.CreatePDRs {
+		d.pdrs[pdr.PDRID] = pdr
 	}
-	return ids
+	for _, pdr := range c.UpdatePDRs {
+		d.pdrs[pdr.PDRID] = d.pdrs[pdr.PDRID].Merge(pdr)
+		d.updated[pdr.PDRID] = true
+	}
+	for _, id := range c.RemovePDRs {
+		delete(d.pdrs, id)
+		d.removed = append(d.removed, id)
+	}
+	result := removedRules(c)
+	for _, id := range c.QueryURRs {
+		result.USAReports = append(result.USAReports, report.USAReport{URRID: id})
+	}
+	return result, nil
 }
 
-func (d *fteidDriver) BuildCreatePDRPlan(_ uint64, req *ie.IE) (*forwarder.PDRPlan, error) {
-	id, err := req.PDRID()
-	d.pdrs[id] = req
-	return &forwarder.PDRPlan{Op: forwarder.OpCreate, OriginalIE: req, PDRID: id, URRIDs: urrIDs(req)}, err
-}
-
-func (d *fteidDriver) BuildUpdatePDRPlan(_ uint64, req *ie.IE) (*forwarder.PDRPlan, error) {
-	id, err := req.PDRID()
-	d.pdrs[id] = req
-	return &forwarder.PDRPlan{Op: forwarder.OpUpdate, OriginalIE: req, PDRID: id, URRIDs: urrIDs(req)}, err
-}
-
-func (d *fteidDriver) BuildCreateURRPlan(_ uint64, req *ie.IE) (*forwarder.URRPlan, error) {
-	id, err := req.URRID()
-	return &forwarder.URRPlan{OriginalIE: req, URRID: id}, err
-}
-
-func (d *fteidDriver) QueryURR(_ uint64, id uint32) ([]report.USAReport, error) {
-	return []report.USAReport{{URRID: id}}, nil
-}
-
-func (d *fteidDriver) BuildRemovePDRPlan(_ uint64, req *ie.IE) (*forwarder.PDRPlan, error) {
-	id, err := req.PDRID()
-	d.removed = append(d.removed, id)
-	return &forwarder.PDRPlan{Op: forwarder.OpRemove, OriginalIE: req, PDRID: id}, err
-}
-
-func (d *fteidDriver) ExecuteEstablishmentPlan(*forwarder.ModificationPlan) (*forwarder.ExecutionResult, error) {
-	return forwarder.NewExecutionResult(), nil
-}
-
-func (d *fteidDriver) ExecuteModificationPlan(*forwarder.ModificationPlan) (*forwarder.ExecutionResult, error) {
-	return forwarder.NewExecutionResult(), nil
+func (d *fteidDriver) Cleanup(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+	return d.Modify(c)
 }
 
 // newFTEIDFixture is a UPF of Node ID 127.0.0.1 and GTP-U address 127.0.0.8, associated with the SMF 127.0.0.2,
 // that chooses TEIDs from 1.
 func newFTEIDFixture(t *testing.T, strict bool) (*PfcpServer, *fteidDriver, *net.UDPConn) {
 	t.Helper()
-	d := &fteidDriver{pdrs: make(map[uint16]*ie.IE)}
+	d := &fteidDriver{pdrs: make(map[uint16]rules.PDRConfig), updated: make(map[uint16]bool)}
 	s := NewPfcpServer(&factory.Config{
 		Pfcp: &factory.Pfcp{
 			Addr: "127.0.0.1", NodeID: "127.0.0.1", RetransTimeout: time.Minute, StrictFTEIDAllocation: strict,
 		},
 		Gtpu: &factory.Gtpu{Forwarder: "gtp5g", IfList: []factory.IfInfo{{Addr: "127.0.0.8", Type: "N3"}}},
-	}, d)
-	s.lnode.fteids.last = 0
+	}, forwarder.Empty{})
+	s.dispatcher.node.newDatapath = func(uint64) forwarder.SessionDatapath { return d }
+	s.dispatcher.node.fteids.last = 0
 	var err error
 	s.conn, err = net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
@@ -94,8 +78,7 @@ func newFTEIDFixture(t *testing.T, strict bool) (*PfcpServer, *fteidDriver, *net
 	peer, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.2")})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, peer.Close()) })
-	smf := s.NewNode("127.0.0.2", &net.UDPAddr{IP: net.ParseIP("127.0.0.2"), Port: 8805}, d)
-	s.rnodes[smf.ID] = smf
+	s.dispatcher.node.EstablishAssociation("127.0.0.2", &net.UDPAddr{IP: net.ParseIP("127.0.0.2"), Port: 8805})
 	return s, d, peer
 }
 
@@ -176,31 +159,18 @@ func createdFTEIDs(t *testing.T, pdrs []*ie.IE) map[uint16]*ie.FTEIDFields {
 func installedFTEID(t *testing.T, d *fteidDriver, id uint16) *ie.FTEIDFields {
 	t.Helper()
 	pdr := d.pdrs[id]
-	children, err := pdr.CreatePDR()
-	if pdr.Type == ie.UpdatePDR {
-		children, err = pdr.UpdatePDR()
-	}
+	require.NotNil(t, pdr.PDI)
+	fteid := pdr.PDI.FTEID
+	require.NotNil(t, fteid)
+	value, err := ie.NewFTEID(fteid.Flags, fteid.TEID, fteid.IPv4Address, fteid.IPv6Address, fteid.ChooseID).FTEID()
 	require.NoError(t, err)
-	for _, child := range children {
-		if child.Type == ie.PDI {
-			fteid, fteidErr := child.FTEID()
-			require.NoError(t, fteidErr)
-			return fteid
-		}
-	}
-	t.Fatalf("PDR %d has no PDI", id)
-	return nil
+	return value
 }
 
 func installedNetworkInstance(t *testing.T, d *fteidDriver, id uint16) string {
 	t.Helper()
-	pdi, err := d.pdrs[id].PDI()
-	require.NoError(t, err)
-	at := slices.IndexFunc(pdi, func(i *ie.IE) bool { return i.Type == ie.NetworkInstance })
-	require.GreaterOrEqual(t, at, 0, "PDR %d has no Network Instance", id)
-	instance, err := pdi[at].NetworkInstance()
-	require.NoError(t, err)
-	return instance
+	require.NotNil(t, d.pdrs[id].PDI)
+	return d.pdrs[id].PDI.NetworkInstance
 }
 
 func TestAssociationSetupAdvertisesFTUP(t *testing.T) {
@@ -208,7 +178,7 @@ func TestAssociationSetupAdvertisesFTUP(t *testing.T) {
 	for _, gtpu := range []bool{true, false} {
 		s, _, peer := newFTEIDFixture(t, false)
 		if !gtpu {
-			s.lnode.fteids.addr = nil
+			s.dispatcher.node.fteids.addr = nil
 		}
 		req := message.NewAssociationSetupRequest(1,
 			ie.NewNodeID("127.0.0.2", "", ""), ie.NewRecoveryTimeStamp(time.Now()))
@@ -251,7 +221,7 @@ func TestSessionEstablishmentChoosesFTEID(t *testing.T) {
 	require.Equal(t, created[1].TEID, created[2].TEID)
 	require.NotEqual(t, created[1].TEID, created[3].TEID)
 
-	alloc := &s.lnode.fteids
+	alloc := &s.dispatcher.node.fteids
 	require.Equal(t, 2, alloc.teids[created[1].TEID].pdrs)
 	require.Equal(t, 1, alloc.teids[created[3].TEID].pdrs)
 
@@ -263,7 +233,7 @@ func TestSessionEstablishmentChoosesFTEID(t *testing.T) {
 
 func TestSessionModificationChoosesFTEID(t *testing.T) {
 	s, d, peer := newFTEIDFixture(t, false)
-	alloc := &s.lnode.fteids
+	alloc := &s.dispatcher.node.fteids
 	est := establish(t, s, peer, 0x10, uplinkPDR(1, chooseFTEID(0)))
 	requireCause(t, ie.CauseRequestAccepted, est.Cause)
 	first := createdFTEIDs(t, est.CreatedPDR)[1]
@@ -294,7 +264,7 @@ func TestSessionModificationChoosesFTEID(t *testing.T) {
 
 func TestStrictFTEIDAllocation(t *testing.T) {
 	s, _, peer := newFTEIDFixture(t, true)
-	alloc := &s.lnode.fteids
+	alloc := &s.dispatcher.node.fteids
 
 	// A new PDR with an F-TEID of the SMF is rejected (TS 29.244 clause 5.5.1), and the F-TEID chosen for
 	// another PDR of the request is freed.
@@ -342,8 +312,8 @@ func TestRestorationFTEIDInUse(t *testing.T) {
 				requireCause(t, ie.CauseRequestRejected, rsp.Cause)
 				require.Nil(t, rsp.UPFSEID)
 			}
-			require.Equal(t, 1, s.lnode.fteids.teids[chosen].pdrs)
-			require.Equal(t, 2, s.lnode.fteids.teids[0x2001].pdrs)
+			require.Equal(t, 1, s.dispatcher.node.fteids.teids[chosen].pdrs)
+			require.Equal(t, 2, s.dispatcher.node.fteids.teids[0x2001].pdrs)
 		})
 	}
 }
@@ -376,7 +346,7 @@ func TestLenientFTEIDAllocation(t *testing.T) {
 	// Its session can, for a PDR that it adds.
 	mod := modify(t, s, peer, upSEID(t, rsp), 4, uplinkPDR(4, cpFTEID(chosen)))
 	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
-	require.Equal(t, 2, s.lnode.fteids.teids[chosen].pdrs)
+	require.Equal(t, 2, s.dispatcher.node.fteids.teids[chosen].pdrs)
 }
 
 func endpointPDR(id uint16, te *ie.IE) *ie.IE {
@@ -400,7 +370,7 @@ func createdEndpoints(t *testing.T, endpoints []*ie.IE) map[uint8]*ie.FTEIDField
 func TestTrafficEndpoints(t *testing.T) {
 	// A strict UP function: no PDR has an F-TEID of the CP function, the Traffic Endpoint has it.
 	s, d, peer := newFTEIDFixture(t, true)
-	alloc := &s.lnode.fteids
+	alloc := &s.dispatcher.node.fteids
 	te1 := ie.NewTrafficEndpointID(1)
 	rsp := establish(t, s, peer, 0x10,
 		ie.NewCreateTrafficEndpoint(te1, chooseFTEID(0), ie.NewNetworkInstance("internet")),
@@ -422,7 +392,7 @@ func TestTrafficEndpoints(t *testing.T) {
 	mod := modify(t, s, peer, seid, 2, endpointPDR(3, te1), update)
 	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
 	require.Empty(t, mod.CreatedPDR)
-	require.Equal(t, ie.UpdatePDR, d.pdrs[1].Type)
+	require.True(t, d.updated[1])
 	for _, id := range []uint16{1, 3} {
 		require.Equal(t, endpoint, installedFTEID(t, d, id), "PDR %d", id)
 	}
@@ -441,7 +411,7 @@ func TestTrafficEndpoints(t *testing.T) {
 	require.NotNil(t, updated)
 	require.NotEqual(t, endpoint.TEID, updated.TEID)
 	for _, id := range []uint16{1, 2, 3} {
-		require.Equal(t, ie.UpdatePDR, d.pdrs[id].Type, "PDR %d", id)
+		require.True(t, d.updated[id], "PDR %d", id)
 		require.Equal(t, updated, installedFTEID(t, d, id), "PDR %d", id)
 		// with the IEs that the update does not replace (Table 7.5.4.13-1 NOTE 1)
 		require.Equal(t, "internet", installedNetworkInstance(t, d, id), "PDR %d", id)
@@ -453,7 +423,7 @@ func TestTrafficEndpoints(t *testing.T) {
 	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
 	require.ElementsMatch(t, []uint16{1, 2, 3}, d.removed)
 	require.Empty(t, alloc.teids)
-	session, err := s.lnode.Sess(seid)
+	session, err := s.dispatcher.node.Session(seid)
 	require.NoError(t, err)
 	require.Empty(t, session.trafficEndpoints)
 	require.Empty(t, session.PDRIDs)
@@ -469,7 +439,7 @@ func TestTrafficEndpoints(t *testing.T) {
 
 func TestTrafficEndpointsAndPDRsOfOneRequest(t *testing.T) {
 	s, d, peer := newFTEIDFixture(t, false)
-	alloc := &s.lnode.fteids
+	alloc := &s.dispatcher.node.fteids
 	alloc.last = 99
 	te1 := ie.NewTrafficEndpointID(1)
 
@@ -497,7 +467,7 @@ func TestTrafficEndpointsAndPDRsOfOneRequest(t *testing.T) {
 	// A request cannot both remove a Traffic Endpoint, which removes its PDRs, and update one of them.
 	mod = modify(t, s, peer, seid, 4, ie.NewRemoveTrafficEndpoint(te1), keep)
 	requireCause(t, ie.CauseRuleCreationModificationFailure, mod.Cause)
-	session, err := s.lnode.Sess(seid)
+	session, err := s.dispatcher.node.Session(seid)
 	require.NoError(t, err)
 	require.Contains(t, session.trafficEndpoints, uint8(1))
 	require.Contains(t, session.PDRIDs, uint16(2))
@@ -564,4 +534,28 @@ func TestTrafficEndpointUsageReports(t *testing.T) {
 	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
 	require.ElementsMatch(t, []uint16{1, 2}, d.removed)
 	require.Len(t, mod.UsageReport, 1)
+}
+
+func removedRules(c *rules.RuleChangeSet) *forwarder.ApplyResult {
+	return &forwarder.ApplyResult{Removed: forwarder.RemovedRules{
+		PDRs: c.RemovePDRs, FARs: c.RemoveFARs, QERs: c.RemoveQERs, URRs: c.RemoveURRs, BARs: c.RemoveBARs,
+	}}
+}
+
+func TestMovingFTEIDToTrafficEndpointKeepsAllocationOwner(t *testing.T) {
+	s, _, peer := newFTEIDFixture(t, false)
+	rsp := establish(t, s, peer, 0x10, uplinkPDR(1, chooseFTEID(0)))
+	requireCause(t, ie.CauseRequestAccepted, rsp.Cause)
+	teid := createdFTEIDs(t, rsp.CreatedPDR)[1].TEID
+	seid := upSEID(t, rsp)
+	mod := modify(t, s, peer, seid, 2,
+		ie.NewCreateTrafficEndpoint(ie.NewTrafficEndpointID(1), cpFTEID(teid)),
+		ie.NewRemovePDR(ie.NewPDRID(1)))
+	requireCause(t, ie.CauseRequestAccepted, mod.Cause)
+	session, err := s.dispatcher.node.Session(seid)
+	require.NoError(t, err)
+	use := s.dispatcher.node.fteids.teids[teid]
+	require.NotNil(t, use)
+	require.Same(t, session, use.owner)
+	require.Equal(t, 1, use.pdrs)
 }

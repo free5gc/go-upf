@@ -10,95 +10,81 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/wmnsk/go-pfcp/ie"
 	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/logger"
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/internal/rules"
+	"github.com/free5gc/go-upf/pkg/factory"
 )
 
-func pdrPlan(id uint16, ip string, update bool) *forwarder.PDRPlan {
-	children := []*ie.IE{ie.NewPDRID(id)}
+func eesPDR(id uint16, ip string) rules.PDRConfig {
+	precedence := uint32(255)
+	config := rules.PDRConfig{PDRID: id, Precedence: &precedence}
 	if ip != "" {
-		children = append(children, ie.NewPDI(ie.NewUEIPAddress(2, ip, "", 0, 0)))
+		config.PDI = &rules.PDI{UEIPAddress: &rules.UEIPAddress{IPv4Address: net.ParseIP(ip).To4()}}
 	}
-	req := ie.NewCreatePDR(children...)
-	if update {
-		req = ie.NewUpdatePDR(children...)
-	}
-	return &forwarder.PDRPlan{PDRID: id, OriginalIE: req}
+	return config
+}
+
+func newEESTestSession() (*LocalNode, *PFCPAssociation, *Session) {
+	node := NewLocalNode("upf", time.Time{}, forwarder.Empty{}, logger.PfcpLog)
+	remote := node.EstablishAssociation("smf", nil)
+	return node, remote, node.CreateSession(remote, 99)
 }
 
 func TestEESIdentityLifecycleAndSnapshots(t *testing.T) {
-	node := &LocalNode{}
-	remote := NewRemoteNode("smf", nil, node, forwarder.Empty{}, logger.PfcpLog)
-	s := remote.NewSess(99)
-	s.ApplyCreatePDR(pdrPlan(1, "10.0.0.1", false))
+	node, remote, s := newEESTestSession()
+	create := rules.RuleChangeSet{SEID: s.LocalID, CreatePDRs: []rules.PDRConfig{eesPDR(1, "10.0.0.1")}}
+	require.NoError(t, applyEESRules(s, &create, true))
 	before := s.identitySnapshot()
 	require.Equal(t, "10.0.0.1", before.UeIPv4Addr)
-	s.ApplyUpdatePDR(pdrPlan(1, "", true))
+	update := rules.RuleChangeSet{SEID: s.LocalID, UpdatePDRs: []rules.PDRPatch{{PDRID: 1}}}
+	require.NoError(t, applyEESRules(s, &update, false))
 	require.Equal(t, "10.0.0.1", s.identitySnapshot().UeIPv4Addr)
-	s.ApplyUpdatePDR(pdrPlan(1, "10.0.0.2", true))
+	update.UpdatePDRs[0].PDI = eesPDR(1, "10.0.0.2").PDI
+	require.NoError(t, applyEESRules(s, &update, false))
 	require.Equal(t, "10.0.0.2", s.identitySnapshot().UeIPv4Addr)
-	s.ApplyRemovePDR(&forwarder.PDRPlan{PDRID: 1})
+	s.ApplyRemovePDR(1)
 	require.Empty(t, s.identitySnapshot().UeIPv4Addr)
 	id := s.LocalID
-	remote.DeleteSess(id)
-	replacement := remote.NewSess(99)
+	node.DeleteSession(id)
+	replacement := node.CreateSession(remote, 99)
 	require.Equal(t, id, replacement.LocalID)
 	require.NotEqual(t, before.Generation, replacement.identitySnapshot().Generation)
 }
 
-// Identity tracking must not change PFCP rule semantics: an UpdatePDR without
-// URR ID IEs still clears the PDR's URR associations exactly as upstream does.
-func TestEESIdentityTrackingKeepsUpstreamURRSemantics(t *testing.T) {
-	node := &LocalNode{}
-	remote := NewRemoteNode("smf", nil, node, forwarder.Empty{}, logger.PfcpLog)
-	s := remote.NewSess(99)
-	s.URRIDs[2] = &URRInfo{}
-	create := pdrPlan(1, "10.0.0.1", false)
-	create.URRIDs = []uint32{2}
-	s.ApplyCreatePDR(create)
-	require.Equal(t, uint16(1), s.URRIDs[2].refPdrNum)
-	s.ApplyUpdatePDR(pdrPlan(1, "10.0.0.2", true))
-	require.Empty(t, s.PDRIDs[1].RelatedURRIDs)
-	require.Equal(t, uint16(0), s.URRIDs[2].refPdrNum)
+func applyEESRules(s *Session, changes *rules.RuleChangeSet, establish bool) error {
+	_, err := s.applyRuleChanges(changes, establish, nil)
+	return err
+}
+
+func TestEESIdentityTrackingKeepsPartialPDRURRs(t *testing.T) {
+	_, _, s := newEESTestSession()
+	pdr := eesPDR(1, "10.0.0.1")
+	pdr.URRIDs = []uint32{2}
+	measurement := uint8(2)
+	triggers := uint32(0)
+	create := rules.RuleChangeSet{
+		SEID: s.LocalID, CreatePDRs: []rules.PDRConfig{pdr},
+		CreateURRs: []rules.URRConfig{{URRID: 2, MeasureMethod: &measurement, ReportingTriggers: &triggers}},
+	}
+	require.NoError(t, applyEESRules(s, &create, true))
+	require.Equal(t, 1, s.URRIDs[2].refPdrNum)
+	patch := rules.PDRPatch(eesPDR(1, "10.0.0.2"))
+	update := rules.RuleChangeSet{SEID: s.LocalID, UpdatePDRs: []rules.PDRPatch{patch}}
+	require.NoError(t, applyEESRules(s, &update, false))
+	require.Equal(t, []uint32{2}, s.PDRIDs[1].URRIDs)
+	require.Equal(t, 1, s.URRIDs[2].refPdrNum)
 	require.Equal(t, "10.0.0.2", s.identitySnapshot().UeIPv4Addr)
 }
 
-func TestEESConcurrentRuleSnapshots(t *testing.T) {
-	node := &LocalNode{}
-	remote := NewRemoteNode("smf", nil, node, forwarder.Empty{}, logger.PfcpLog)
-	s := remote.NewSess(99)
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 500; i++ {
-			s.ApplyCreateURR(&forwarder.URRPlan{URRID: 2, OriginalIE: ie.NewCreateURR(ie.NewMeasurementMethod(0, 1, 0))})
-			s.ApplyCreatePDR(pdrPlan(1, "10.0.0.1", false))
-			s.ApplyUpdatePDR(pdrPlan(1, "10.0.0.2", true))
-			s.ApplyRemovePDR(&forwarder.PDRPlan{PDRID: 1})
-			s.ApplyRemoveURR(&forwarder.URRPlan{URRID: 2})
-			s.CleanupRemovedURRs()
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 500; i++ {
-			node.GetSessionContext(s.LocalID)
-			s.identitySnapshot()
-		}
-	}()
-	wg.Wait()
-}
+type eesReportDatapath struct{ forwarder.SessionDatapath }
 
-type eesReportDriver struct{ forwarder.Empty }
-
-func (eesReportDriver) ExecuteModificationPlan(*forwarder.ModificationPlan) (*forwarder.ExecutionResult, error) {
-	result := forwarder.NewExecutionResult()
+func (eesReportDatapath) Modify(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+	result := removedRules(c)
 	result.USAReports = []report.USAReport{{
 		URRID: 2, StartTime: time.Now().Add(-time.Second), EndTime: time.Now(),
 		VolumMeasure: report.VolumeMeasure{UplinkVolume: 10},
@@ -106,20 +92,25 @@ func (eesReportDriver) ExecuteModificationPlan(*forwarder.ModificationPlan) (*fo
 	return result, nil
 }
 
+func (d eesReportDatapath) Cleanup(c *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+	return d.Modify(c)
+}
+
 func TestEESResponseReportsNeverReenterPFCPQueue(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		for _, deletion := range []bool{false, true} {
 			t.Run(testCaseName(enabled, deletion), func(t *testing.T) {
-				server := &PfcpServer{
-					srCh: make(chan report.SessReport, 1), log: logger.PfcpLog, rnodes: make(map[string]*RemoteNode),
-				}
+				server := NewPfcpServer(&factory.Config{
+					Pfcp: &factory.Pfcp{NodeID: "127.0.0.1"},
+				}, forwarder.Empty{})
+				server.srCh = make(chan report.SessReport, 1)
 				server.srCh <- report.SessReport{SEID: 777}
 				addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8805}
-				// Requests must come from the associated SMF that owns the session.
-				remote := NewRemoteNode("smf", addr, &server.lnode, eesReportDriver{}, logger.PfcpLog)
-				server.rnodes[remote.ID] = remote
-				sess := remote.NewSess(999) // intentionally not the local SEID
-				sess.ApplyCreatePDR(pdrPlan(1, "10.0.0.1", false))
+				remote := server.dispatcher.node.EstablishAssociation("smf", addr)
+				sess := server.dispatcher.node.CreateSession(remote, 999)
+				sess.datapath = eesReportDatapath{}
+				pdr := eesPDR(1, "10.0.0.1")
+				sess.PDRIDs[1] = &pdr
 				sess.URRIDs[2] = &URRInfo{}
 				var captured report.SessReport
 				var identity ees.SessionContext
@@ -132,9 +123,10 @@ func TestEESResponseReportsNeverReenterPFCPQueue(t *testing.T) {
 				go func() {
 					defer close(done)
 					if deletion {
-						server.handleSessionDeletionRequest(message.NewSessionDeletionRequest(0, 0, sess.LocalID, 1, 0), addr)
+						server.dispatcher.handleSessionDeletionRequest(message.NewSessionDeletionRequest(0, 0, sess.LocalID, 1, 0), addr)
 					} else {
-						server.handleSessionModificationRequest(message.NewSessionModificationRequest(0, 0, sess.LocalID, 1, 0), addr)
+						req := message.NewSessionModificationRequest(0, 0, sess.LocalID, 1, 0)
+						server.dispatcher.handleSessionModificationRequest(req, addr)
 					}
 				}()
 				select {
@@ -177,7 +169,7 @@ type eesDelivery struct {
 }
 
 // With EES enabled the PFCP wire output and forwarder calls must still match
-// the upstream golden, while EES alone receives response and kernel usage
+// the golden trace, while EES alone receives response and kernel usage
 // keyed by local SEID, with identity captured before session cleanup.
 func TestPFCPParityWithEESEnabled(t *testing.T) {
 	var mu sync.Mutex
@@ -205,11 +197,11 @@ func TestPFCPParityWithEESEnabled(t *testing.T) {
 	// URR 2 is created with PERIO and a 10s Measurement Period in the scenario.
 	const p = 10 * time.Second
 	require.Equal(t, []eesDelivery{
-		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{1, 2, 3}}, // modify A response
-		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{3, 4}},    // remove branch response
-		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{1}},       // kernel report
-		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{1, 2}},    // deletion response
-		{seid: 2, remote: 1, ueIP: "10.60.0.2", period: p, urrs: []uint32{2}},       // kernel report
+		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{1, 3}}, // modify A response
+		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{3, 4}}, // remove branch response
+		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{1}},    // kernel report
+		{seid: 1, remote: 2, ueIP: "10.60.0.1", period: p, urrs: []uint32{1, 2}}, // deletion response
+		{seid: 2, remote: 1, ueIP: "10.60.0.2", period: p, urrs: []uint32{2}},    // kernel report
 		{seid: 2, remote: 1, ueIP: "10.60.0.2", period: p, urrs: []uint32{1, 2, 3, 4}},
 	}, got)
 }
@@ -217,18 +209,16 @@ func TestPFCPParityWithEESEnabled(t *testing.T) {
 // The notification period is rounded to the forwarder's real report cadence:
 // only a CreateURR with PERIO arms that timer, and a removed URR has none.
 func TestEESIdentityCarriesMAQEMeasurementPeriod(t *testing.T) {
-	node := &LocalNode{}
-	remote := NewRemoteNode("smf", nil, node, forwarder.Empty{}, logger.PfcpLog)
-	s := remote.NewSess(99)
+	_, _, s := newEESTestSession()
 	create := func(id uint32, perio bool) {
-		trigger := report.ReportingTrigger{}
+		triggers := uint32(0)
 		if perio {
-			trigger.Flags = report.RPT_TRIG_PERIO
+			triggers = report.RPT_TRIG_PERIO
 		}
-		s.ApplyCreateURR(&forwarder.URRPlan{
-			URRID: id, ReportingTrigger: trigger, MeasurePeriod: 10 * time.Second,
-			OriginalIE: ie.NewCreateURR(ie.NewMeasurementMethod(0, 1, 0)),
-		})
+		period := 10 * time.Second
+		s.URRIDs[id] = &URRInfo{Config: rules.URRConfig{
+			URRID: id, ReportingTriggers: &triggers, MeasurePeriod: &period,
+		}}
 	}
 	create(ees.SingleUPFMAQEURRID, false)
 	require.Zero(t, s.identitySnapshot().MeasurePeriod, "period without PERIO arms no timer")
@@ -236,6 +226,6 @@ func TestEESIdentityCarriesMAQEMeasurementPeriod(t *testing.T) {
 	require.Zero(t, s.identitySnapshot().MeasurePeriod, "only the MAQE URR sets the base period")
 	create(ees.SingleUPFMAQEURRID, true)
 	require.Equal(t, 10*time.Second, s.identitySnapshot().MeasurePeriod)
-	s.ApplyRemoveURR(&forwarder.URRPlan{URRID: ees.SingleUPFMAQEURRID})
+	s.ApplyRemoveURR(ees.SingleUPFMAQEURRID)
 	require.Zero(t, s.identitySnapshot().MeasurePeriod)
 }

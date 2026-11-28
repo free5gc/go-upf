@@ -5,8 +5,7 @@ import (
 	"slices"
 
 	"github.com/wmnsk/go-pfcp/ie"
-
-	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/wmnsk/go-pfcp/message"
 )
 
 // Traffic Endpoints, the PDI optimization (TS 29.244 clause 5.2.1A.2): the PDI IEs that several PDRs of a
@@ -128,7 +127,7 @@ func (r *fteidRequest) referTo(ies []*ie.IE, at int, pdrID uint16, ref *endpoint
 // those of an Update Traffic Endpoint and those of old that they do not replace (Table 7.5.4.13-1 NOTE 1). Its
 // Local F-TEID is taken as that of a PDR.
 func (r *fteidRequest) setEndpoint(id uint8, old *trafficEndpoint, ies []*ie.IE) error {
-	ies = slices.DeleteFunc(ies, isTrafficEndpointID)
+	ies = slices.DeleteFunc(slices.Clone(ies), isTrafficEndpointID)
 	teid, err := r.localFTEID(ies, old.localTEID(), old == nil)
 	if err != nil {
 		return err
@@ -153,61 +152,47 @@ func (r *fteidRequest) setEndpoint(id uint8, old *trafficEndpoint, ies []*ie.IE)
 	return nil
 }
 
-// endpointPDRPlans are the plans that the request's Traffic Endpoints bring to the PDRs that refer to them and
+// expandEndpointChanges are the changes that the request's Traffic Endpoints bring to the PDRs that refer to them and
 // that the request leaves as they are: the removal of those of a removed Traffic Endpoint, an Update PDR with the
 // IEs of an updated one.
-func (r *fteidRequest) endpointPDRPlans(plan *forwarder.ModificationPlan) error {
+func (r *fteidRequest) expandEndpointChanges(req *message.SessionModificationRequest) {
 	touched := make(map[uint16]bool)
-	for _, plans := range [][]*forwarder.PDRPlan{plan.CreatePDRs, plan.UpdatePDRs, plan.RemovePDRs} {
-		for _, p := range plans {
-			touched[p.PDRID] = true
+	for _, list := range [][]*ie.IE{req.CreatePDR, req.UpdatePDR, req.RemovePDR} {
+		for _, item := range list {
+			if item != nil {
+				if id, err := item.PDRID(); err == nil {
+					touched[id] = true
+				}
+			}
 		}
 	}
-	for _, pdrID := range slices.Sorted(maps.Keys(r.sess.PDRIDs)) {
-		ref := r.sess.PDRIDs[pdrID].endpoint
-		if ref == nil || touched[pdrID] {
+	for _, id := range slices.Sorted(maps.Keys(r.sess.endpointRefs)) {
+		ref := r.sess.endpointRefs[id]
+		if touched[id] {
 			continue
 		}
 		if _, removed := r.removedEndpoints[ref.id]; removed {
-			p, err := r.sess.rnode.driver.BuildRemovePDRPlan(r.sess.LocalID, ie.NewRemovePDR(ie.NewPDRID(pdrID)))
-			if err != nil {
-				return ErrRuleCreationModificationFailed
-			}
-			plan.RemovePDRs = append(plan.RemovePDRs, p)
-			continue
+			req.RemovePDR = append(req.RemovePDR, ie.NewRemovePDR(ie.NewPDRID(id)))
+		} else if endpoint, updated := r.endpoints[ref.id]; updated {
+			req.UpdatePDR = append(req.UpdatePDR, ie.NewUpdatePDR(ie.NewPDRID(id), endpoint.pdi(ref)))
 		}
-		// An existing Traffic Endpoint in the request is an updated one.
-		te, updated := r.endpoints[ref.id]
-		if !updated {
-			continue
-		}
-		update := ie.NewUpdatePDR(ie.NewPDRID(pdrID), te.pdi(ref))
-		p, err := r.sess.rnode.driver.BuildUpdatePDRPlan(r.sess.LocalID, update)
-		if err != nil {
-			return ErrRuleCreationModificationFailed
-		}
-		// The PDR keeps its URRs, which a plan without URR IDs dissociates.
-		p.URRIDs = slices.Collect(maps.Keys(r.sess.PDRIDs[pdrID].RelatedURRIDs))
-		plan.UpdatePDRs = append(plan.UpdatePDRs, p)
 	}
-	return nil
 }
 
 // commitEndpoints applies the request's Traffic Endpoints to the session once its rules are applied, and keeps the
 // Traffic Endpoint that each PDR refers to, for the requests that update it.
 func (r *fteidRequest) commitEndpoints() {
 	for id, te := range r.endpoints {
-		r.alloc.hold(te.localTEID())
-		r.alloc.drop(r.sess.trafficEndpoints[id].localTEID())
 		r.sess.trafficEndpoints[id] = te
 	}
 	for id := range r.removedEndpoints {
-		r.alloc.drop(r.sess.trafficEndpoints[id].localTEID())
 		delete(r.sess.trafficEndpoints, id)
 	}
 	for pdrID, ref := range r.endpointRefs {
-		if info, ok := r.sess.PDRIDs[pdrID]; ok {
-			info.endpoint = ref
+		if _, ok := r.sess.PDRIDs[pdrID]; ok && ref != nil {
+			r.sess.endpointRefs[pdrID] = ref
+		} else {
+			delete(r.sess.endpointRefs, pdrID)
 		}
 	}
 }

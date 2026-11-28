@@ -1,1050 +1,127 @@
 package pfcp
 
 import (
-	"net"
+	"time"
 
-	"github.com/pkg/errors"
-	"github.com/wmnsk/go-pfcp/ie"
-	"github.com/wmnsk/go-pfcp/message"
+	"github.com/sirupsen/logrus"
 
 	"github.com/free5gc/go-upf/internal/ees"
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/internal/rules"
 )
 
-// hasPeerAssociation checks the current association records using the
-// transport address instead of trusting the Node ID supplied by a request.
-func (s *PfcpServer) hasPeerAssociation(addr net.Addr) bool {
-	for _, node := range s.rnodes {
-		if node.matchesPeer(addr) {
-			return true
-		}
-	}
-	return false
+const (
+	BUFFQ_LEN = 512
+)
+
+// URRInfo separates shared rule configuration from PFCP reporting runtime.
+type URRInfo struct {
+	Config    rules.URRConfig
+	removed   bool
+	SEQN      uint32
+	refPdrNum int
 }
 
-func (s *PfcpServer) handleSessionEstablishmentRequest(
-	req *message.SessionEstablishmentRequest,
-	addr net.Addr,
-) {
-	s.log.Infoln("handleSessionEstablishmentRequest")
+type Session struct {
+	// Cleanup state is owned by this Session and the PFCP event loop.
+	closing           bool
+	cleanupAttempts   int
+	deletionRequested bool
+	cleanupRetryAt    time.Time
+	cleanupReports    []report.USAReport
 
-	if !s.hasPeerAssociation(addr) {
-		s.sendSessEstFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
+	fteids           *fteidAllocator
+	trafficEndpoints map[uint8]*trafficEndpoint
+	endpointRefs     map[uint16]*endpointRef
+	generation       uint64
+
+	association *PFCPAssociation // remote PFCP association that owns this session
+
+	datapath forwarder.SessionDatapath // execution handle owned by this session
+	LocalID  uint64
+	RemoteID uint64
+	PDRIDs   map[uint16]*rules.PDRConfig // key: PDR_ID
+	FARIDs   map[uint32]*rules.FARConfig // key: FAR_ID
+	QERIDs   map[uint32]*rules.QERConfig // key: QER_ID
+	URRIDs   map[uint32]*URRInfo         // key: URR_ID
+	BARIDs   map[uint8]*rules.BARConfig  // key: BAR_ID
+	q        map[uint16]chan []byte
+	qlen     int
+	log      *logrus.Entry
+}
+
+func (s *Session) Push(pdrid uint16, p []byte) {
+	if s.closing {
 		return
 	}
-
-	if req.NodeID == nil {
-		s.log.Errorln("not found NodeID")
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing, ie.NewOffendingIE(ie.NodeID))
-		return
-	}
-	rnodeid, err := req.NodeID.NodeID()
-	if err != nil || rnodeid == "" {
-		s.log.Errorf("Session Establishment failed: mandatory IE incorrect: NodeID[% x]", req.NodeID.Payload)
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEIncorrect, ie.NewOffendingIE(ie.NodeID))
-		return
-	}
-	s.log.Debugf("remote nodeid: %v\n", rnodeid)
-
-	rnode, ok := s.rnodes[rnodeid]
+	pkt := make([]byte, len(p))
+	copy(pkt, p)
+	q, ok := s.q[pdrid]
 	if !ok {
-		s.log.Errorf("not found NodeID %v\n", rnodeid)
-		s.sendSessEstFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
-		return
-	}
-	if !rnode.matchesPeer(addr) {
-		s.log.Warnf("Session Establishment rejected: peer %v does not match Node ID %q", addr, rnodeid)
-		s.sendSessEstFailRsp(req, addr, ie.CauseRequestRejected)
-		return
+		s.q[pdrid] = make(chan []byte, s.qlen)
+		q = s.q[pdrid]
 	}
 
-	if req.CPFSEID == nil {
-		s.log.Errorln("not found CP F-SEID")
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEMissing, ie.NewOffendingIE(ie.FSEID))
-		return
-	}
-	fseid, err := req.CPFSEID.FSEID()
-	if err != nil {
-		s.log.Errorln(err)
-		s.sendSessEstFailRsp(req, addr, ie.CauseMandatoryIEIncorrect, ie.NewOffendingIE(ie.FSEID))
-		return
-	}
-	s.log.Debugf("fseid.SEID: %#x\n", fseid.SEID)
-
-	// allocate a session
-	sess := rnode.NewSess(fseid.SEID)
-	fteids := sess.newFTEIDRequest(req.PFCPSEReqFlags != nil && req.PFCPSEReqFlags.HasRESTI(),
-		req.CreatePDR, req.CreateTrafficEndpoint)
-	defer fteids.release()
-
-	// ========================================================================
-	// PHASE 1: Validation - Build all plans and validate without execution
-	// ========================================================================
-	plan := forwarder.NewModificationPlan(sess.LocalID)
-
-	for _, i := range req.CreateFAR {
-		p, err1 := sess.ValidateCreateFAR(i)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreateFAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
-			return
-		}
-		plan.CreateFARs = append(plan.CreateFARs, p)
-	}
-
-	for _, i := range req.CreateQER {
-		p, err1 := sess.ValidateCreateQER(i)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreateQER error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
-			return
-		}
-		plan.CreateQERs = append(plan.CreateQERs, p)
-	}
-
-	for _, i := range req.CreateURR {
-		p, err1 := sess.ValidateCreateURR(i)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreateURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
-			return
-		}
-		plan.CreateURRs = append(plan.CreateURRs, p)
-	}
-
-	if req.CreateBAR != nil {
-		p, err1 := sess.ValidateCreateBAR(req.CreateBAR)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreateBAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
-			return
-		}
-		plan.CreateBARs = append(plan.CreateBARs, p)
-	}
-
-	if err1 := fteids.takeEndpoints(req.CreateTrafficEndpoint, nil, nil); err1 != nil {
-		sess.log.Errorf("Est Traffic Endpoint error: %v", err1)
-		s.sendSessEstFailRsp(req, addr, pfcpCauseFromError(err1))
-		rnode.DeleteSess(sess.LocalID)
-		return
-	}
-
-	for _, i := range req.CreatePDR {
-		p, err1 := sess.ValidateCreatePDR(i, plan, fteids)
-		if err1 != nil {
-			sess.log.Errorf("Est ValidateCreatePDR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessEstFailRsp(req, addr, cause)
-			rnode.DeleteSess(sess.LocalID)
-			return
-		}
-		plan.CreatePDRs = append(plan.CreatePDRs, p)
-	}
-
-	// ========================================================================
-	// PHASE 2: Execution - Execute all Create operations (fail-fast)
-	// ========================================================================
-	if _, err1 := sess.rnode.driver.ExecuteEstablishmentPlan(plan); err1 != nil {
-		sess.log.Errorf("Est execution error: %v", err1)
-		s.sendSessEstFailRsp(req, addr, ie.CauseRuleCreationModificationFailure)
-		rnode.DeleteSess(sess.LocalID)
-		return
-	}
-
-	// ========================================================================
-	// PHASE 3: Apply - Update session internal state
-	// ========================================================================
-	for _, p := range plan.CreateFARs {
-		sess.ApplyCreateFAR(p)
-	}
-	for _, p := range plan.CreateQERs {
-		sess.ApplyCreateQER(p)
-	}
-	for _, p := range plan.CreateURRs {
-		sess.ApplyCreateURR(p)
-	}
-	for _, p := range plan.CreateBARs {
-		sess.ApplyCreateBAR(p)
-	}
-
-	CreatedPDRList := make([]*ie.IE, 0)
-	for _, p := range plan.CreatePDRs {
-		sess.ApplyCreatePDR(p)
-
-		ueIPAddress := getUEAddressFromPDR(p.OriginalIE)
-		pdrId := getPDRIDFromPDR(p.OriginalIE)
-
-		createdPDR := []*ie.IE{ie.NewPDRID(pdrId)}
-		if teid, ok := fteids.created[pdrId]; ok {
-			createdPDR = append(createdPDR, fteids.fteid(teid))
-		}
-		if ueIPAddress != nil {
-			ueIPv4 := ueIPAddress.IPv4Address.String()
-			createdPDR = append(createdPDR, ie.NewUEIPAddress(2, ueIPv4, "", 0, 0))
-		}
-		if len(createdPDR) > 1 {
-			CreatedPDRList = append(CreatedPDRList, ie.NewCreatedPDR(createdPDR...))
-		}
-	}
-	fteids.commitEndpoints()
-
-	var v4 net.IP
-	addrv4, err := net.ResolveIPAddr("ip4", s.nodeID)
-	if err == nil {
-		v4 = addrv4.IP.To4()
-	}
-	// TODO: support v6
-	var v6 net.IP
-
-	ies := make([]*ie.IE, 0)
-	ies = append(ies, CreatedPDRList...)
-	ies = append(ies, fteids.createdEndpoints()...)
-	ies = append(ies,
-		newIeNodeID(s.nodeID),
-		ie.NewCause(ie.CauseRequestAccepted),
-		ie.NewFSEID(sess.LocalID, v4, v6))
-
-	rsp := message.NewSessionEstablishmentResponse(
-		0,             // mp
-		0,             // fo
-		sess.RemoteID, // seid
-		req.Header.SequenceNumber,
-		0, // pri
-		ies...,
-	)
-
-	err = s.sendRspTo(rsp, addr)
-	if err != nil {
-		s.log.Errorln(err)
-		return
+	select {
+	case q <- pkt:
+		s.log.Debugf("Push bufPkt to q[%d](len:%d)", pdrid, len(q))
+	default:
+		s.log.Debugf("q[%d](len:%d) is full, drop it", pdrid, len(q))
 	}
 }
 
-func (s *PfcpServer) handleSessionModificationRequest(
-	req *message.SessionModificationRequest,
-	addr net.Addr,
-) {
-	s.log.Infoln("handleSessionModificationRequest")
-
-	// TS 29.244 clause 5.8.3: check the sender's association before
-	// looking up a session, including when the requested SEID is unknown.
-	if !s.hasPeerAssociation(addr) {
-		s.log.Warnf("Session Modification rejected: no PFCP association for peer %v", addr)
-		s.sendSessModFailRsp(req, nil, addr, ie.CauseNoEstablishedPFCPAssociation)
-		return
-	}
-
-	sess, err := s.lnode.Sess(req.SEID())
-	if err != nil {
-		s.log.Errorf("handleSessionModificationRequest: %v", err)
-		rsp := message.NewSessionModificationResponse(
-			0, // mp
-			0, // fo
-			0, // seid
-			req.Header.SequenceNumber,
-			0, // pri
-			ie.NewCause(ie.CauseSessionContextNotFound),
-		)
-
-		err1 := s.sendRspTo(rsp, addr)
-		if err1 != nil {
-			s.log.Errorln(err1)
-			return
-		}
-		return
-	}
-
-	// A SEID identifies a session; it does not authorize the sender to modify it.
-	// Check the bound, active association before touching any session or node state.
-	if !sess.rnode.matchesPeer(addr) || s.rnodes[sess.rnode.ID] != sess.rnode {
-		s.log.Warnf("Session Modification rejected: peer %v does not own SEID %#x", addr, req.SEID())
-		s.sendSessModFailRsp(req, nil, addr, ie.CauseRequestRejected)
-		return
-	}
-
-	// EES only (nil when disabled): keep identity for final reports of
-	// removed/replaced PDRs.
-	eesHandler := s.eesHandler()
-	var eesIdentity ees.SessionContext
-	if eesHandler != nil {
-		eesIdentity = sess.identitySnapshot()
-	}
-	if req.NodeID != nil {
-		nodeID, err1 := req.NodeID.NodeID()
-		if err1 != nil || nodeID == "" {
-			s.log.Warnf("Session Modification rejected: invalid Node ID for SEID %#x", req.SEID())
-			s.sendSessModFailRsp(req, sess, addr, ie.CauseMandatoryIEIncorrect, ie.NewOffendingIE(ie.NodeID))
-			return
-		}
-		// SMF Set membership is not tracked, so a claimed Node ID cannot
-		// authorize takeover or rename an association shared by other sessions.
-		if nodeID != sess.rnode.ID {
-			s.sendSessModFailRsp(req, sess, addr, ie.CauseRequestRejected)
-			return
-		}
-	}
-
-	// ========================================================================
-	// PHASE 1: Validation - Build all plans and validate without execution
-	// ========================================================================
-	plan := forwarder.NewModificationPlan(sess.LocalID)
-	fteids := sess.newFTEIDRequest(false,
-		req.CreatePDR, req.UpdatePDR, req.CreateTrafficEndpoint, req.UpdateTrafficEndpoint)
-	defer fteids.release()
-
-	for _, i := range req.CreateFAR {
-		p, err1 := sess.ValidateCreateFAR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreateFAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreateFARs = append(plan.CreateFARs, p)
-	}
-
-	for _, i := range req.CreateQER {
-		p, err1 := sess.ValidateCreateQER(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreateQER error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreateQERs = append(plan.CreateQERs, p)
-	}
-
-	for _, i := range req.CreateURR {
-		p, err1 := sess.ValidateCreateURR(i)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreateURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreateURRs = append(plan.CreateURRs, p)
-	}
-
-	if req.CreateBAR != nil {
-		p, err1 := sess.ValidateCreateBAR(req.CreateBAR)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreateBAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreateBARs = append(plan.CreateBARs, p)
-	}
-
-	err = fteids.takeEndpoints(req.CreateTrafficEndpoint, req.UpdateTrafficEndpoint, req.RemoveTrafficEndpoint)
-	if err != nil {
-		sess.log.Errorf("Mod Traffic Endpoint error: %v", err)
-		s.sendSessModFailRsp(req, sess, addr, pfcpCauseFromError(err))
-		return
-	}
-
-	for _, i := range req.CreatePDR {
-		p, err1 := sess.ValidateCreatePDR(i, plan, fteids)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateCreatePDR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.CreatePDRs = append(plan.CreatePDRs, p)
-	}
-
-	for _, i := range req.UpdateFAR {
-		p, err1 := sess.ValidateUpdateFAR(i, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdateFAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdateFARs = append(plan.UpdateFARs, p)
-	}
-
-	for _, i := range req.UpdateQER {
-		p, err1 := sess.ValidateUpdateQER(i, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdateQER error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdateQERs = append(plan.UpdateQERs, p)
-	}
-
-	for _, i := range req.UpdateURR {
-		p, err1 := sess.ValidateUpdateURR(i, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdateURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdateURRs = append(plan.UpdateURRs, p)
-	}
-
-	if req.UpdateBAR != nil {
-		p, err1 := sess.ValidateUpdateBAR(req.UpdateBAR, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdateBAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdateBARs = append(plan.UpdateBARs, p)
-	}
-
-	for _, i := range req.UpdatePDR {
-		p, err1 := sess.ValidateUpdatePDR(i, plan, fteids)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateUpdatePDR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.UpdatePDRs = append(plan.UpdatePDRs, p)
-	}
-
-	for _, i := range req.QueryURR {
-		p, err1 := sess.ValidateQueryURR(i, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateQueryURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.QueryURRs = append(plan.QueryURRs, p)
-	}
-
-	for _, i := range req.RemoveFAR {
-		p, err1 := sess.ValidateRemoveFAR(i, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemoveFAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemoveFARs = append(plan.RemoveFARs, p)
-	}
-
-	for _, i := range req.RemoveQER {
-		p, err1 := sess.ValidateRemoveQER(i, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemoveQER error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemoveQERs = append(plan.RemoveQERs, p)
-	}
-
-	for _, i := range req.RemoveURR {
-		p, err1 := sess.ValidateRemoveURR(i, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemoveURR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemoveURRs = append(plan.RemoveURRs, p)
-	}
-
-	if req.RemoveBAR != nil {
-		p, err1 := sess.ValidateRemoveBAR(req.RemoveBAR, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemoveBAR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemoveBARs = append(plan.RemoveBARs, p)
-	}
-
-	for _, i := range req.RemovePDR {
-		p, err1 := sess.ValidateRemovePDR(i, plan)
-		if err1 != nil {
-			sess.log.Errorf("Mod ValidateRemovePDR error: %v", err1)
-			cause := pfcpCauseFromError(err1)
-			s.sendSessModFailRsp(req, sess, addr, cause)
-			return
-		}
-		plan.RemovePDRs = append(plan.RemovePDRs, p)
-	}
-	// The PDRs that refer to an updated or removed Traffic Endpoint
-	if err = fteids.endpointPDRPlans(plan); err != nil {
-		sess.log.Errorf("Mod Traffic Endpoint PDRs error: %v", err)
-		s.sendSessModFailRsp(req, sess, addr, pfcpCauseFromError(err))
-		return
-	}
-	// Validate mutual exclusion across operations
-	if err1 := validateMutualExclusion(plan); err1 != nil {
-		sess.log.Errorf("Mod mutual exclusion validation error: %v", err1)
-		cause := pfcpCauseFromError(err1)
-		s.sendSessModFailRsp(req, sess, addr, cause)
-		return
-	}
-
-	// ========================================================================
-	// PHASE 2: Execution - Execute all operations via gtp5gnl
-	// Create operations are fail-fast: an error here means a rule creation
-	// failed and the rules created by this plan were rolled back. Remove/Update
-	// operations are best-effort and never surface an error.
-	// ========================================================================
-	execResult, err1 := sess.rnode.driver.ExecuteModificationPlan(plan)
-	if err1 != nil {
-		// A Create operation failed and was rolled back, so the session state
-		// must not be updated: reject the request instead of reporting success
-		// for rules that were not installed.
-		sess.log.Errorf("Mod execution error: %v", err1)
-		s.sendSessModFailRsp(req, sess, addr, ie.CauseRuleCreationModificationFailure)
-		return
-	}
-
-	// ========================================================================
-	// PHASE 3: Apply - Update session internal state
-	// ========================================================================
-	var usars []report.USAReport
-
-	// Apply Create operations
-	for _, p := range plan.CreateFARs {
-		sess.ApplyCreateFAR(p)
-	}
-	for _, p := range plan.CreateQERs {
-		sess.ApplyCreateQER(p)
-	}
-	for _, p := range plan.CreateURRs {
-		sess.ApplyCreateURR(p)
-	}
-	for _, p := range plan.CreateBARs {
-		sess.ApplyCreateBAR(p)
-	}
-	for _, p := range plan.CreatePDRs {
-		sess.ApplyCreatePDR(p)
-	}
-
-	// Apply Update operations (collect USAReports from PDR URR disassociation)
-	// UpdateFAR has no state change
-	// UpdateQER has no state change
-	for _, p := range plan.UpdateURRs {
-		sess.ApplyUpdateURR(p)
-	}
-	// UpdateBAR has no state change
-	for _, p := range plan.UpdatePDRs {
-		rs := sess.ApplyUpdatePDR(p)
-		if len(rs) > 0 {
-			usars = append(usars, rs...)
-		}
-	}
-
-	// Apply Query operations - QueryURR has no state change
-
-	// Apply Remove operations (collect USAReports from PDR disassociation)
-	for _, p := range plan.RemovePDRs {
-		rs := sess.ApplyRemovePDR(p)
-		if len(rs) > 0 {
-			usars = append(usars, rs...)
-		}
-	}
-	for _, p := range plan.RemoveBARs {
-		sess.ApplyRemoveBAR(p)
-	}
-	for _, p := range plan.RemoveURRs {
-		sess.ApplyRemoveURR(p)
-	}
-	for _, p := range plan.RemoveQERs {
-		sess.ApplyRemoveQER(p)
-	}
-	for _, p := range plan.RemoveFARs {
-		sess.ApplyRemoveFAR(p)
-	}
-	fteids.commitEndpoints()
-
-	// Collect USAReports from execution result (RemoveURR, UpdateURR, QueryURR)
-	if execResult != nil && len(execResult.USAReports) > 0 {
-		for i := range execResult.USAReports {
-			r := &execResult.USAReports[i]
-
-			for _, p := range plan.RemoveURRs {
-				if p.URRID == r.URRID {
-					r.USARTrigger.Flags |= report.USAR_TRIG_TERMR
-					break
-				}
-			}
-
-			for _, p := range plan.QueryURRs {
-				if p.QueryURRID == r.URRID {
-					r.USARTrigger.Flags |= report.USAR_TRIG_IMMER
-					break
-				}
-			}
-		}
-		usars = append(usars, execResult.USAReports...)
-	}
-
-	rsp := message.NewSessionModificationResponse(
-		0,             // mp
-		0,             // fo
-		sess.RemoteID, // seid
-		req.Header.SequenceNumber,
-		0, // pri
-		ie.NewCause(ie.CauseRequestAccepted),
-	)
-	rsp.CreatedUpdatedTrafficEndpoint = fteids.createdEndpoints()
-	for _, p := range plan.CreatePDRs {
-		if teid, ok := fteids.created[p.PDRID]; ok {
-			rsp.CreatedPDR = append(rsp.CreatedPDR, ie.NewCreatedPDR(ie.NewPDRID(p.PDRID), fteids.fteid(teid)))
-		}
-	}
-	for _, r := range usars {
-		urrInfo, ok := sess.URRIDs[r.URRID]
-		if !ok {
-			sess.log.Warnf("Sess Mod: URRInfo[%#x] not found", r.URRID)
-			continue
-		}
-		r.URSEQN = sess.URRSeq(r.URRID)
-		rsp.UsageReport = append(rsp.UsageReport,
-			ie.NewUsageReportWithinSessionModificationResponse(
-				r.IEsWithinSessModRsp(
-					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
-			))
-	}
-
-	if eesHandler != nil {
-		// These reports already belong to the PFCP response. Deliver only to EES.
-		if eesIdentity.UeIPv4Addr == "" {
-			eesIdentity = sess.identitySnapshot()
-		}
-		deliverEESUsage(eesHandler, sess.LocalID, eesIdentity, usars)
-	}
-
-	// Cleanup removed URRs
-	sess.CleanupRemovedURRs()
-
-	if err := s.sendRspTo(rsp, addr); err != nil {
-		s.log.Errorln(err)
-		return
-	}
-}
-
-func (s *PfcpServer) handleSessionDeletionRequest(
-	req *message.SessionDeletionRequest,
-	addr net.Addr,
-) {
-	s.log.Infoln("handleSessionDeletionRequest")
-
-	if !s.hasPeerAssociation(addr) {
-		s.sendSessDelFailRsp(req, addr, ie.CauseNoEstablishedPFCPAssociation)
-		return
-	}
-
-	lSeid := req.SEID()
-	sess, err := s.lnode.Sess(lSeid)
-	if err != nil {
-		s.log.Errorf("handleSessionDeletionRequest: %v", err)
-		s.sendSessDelFailRsp(req, addr, ie.CauseSessionContextNotFound)
-		return
-	}
-	if !sess.rnode.matchesPeer(addr) || s.rnodes[sess.rnode.ID] != sess.rnode {
-		s.log.Warnf("Session Deletion rejected: peer %v does not own SEID %#x", addr, lSeid)
-		s.sendSessDelFailRsp(req, addr, ie.CauseRequestRejected)
-		return
-	}
-
-	eesHandler := s.eesHandler()
-	var eesIdentity ees.SessionContext
-	if eesHandler != nil {
-		// Capture before cleanup; the local SEID may be reused afterwards.
-		eesIdentity = sess.identitySnapshot()
-	}
-	usars := sess.rnode.DeleteSess(lSeid)
-
-	rsp := message.NewSessionDeletionResponse(
-		0,             // mp
-		0,             // fo
-		sess.RemoteID, // seid
-		req.Header.SequenceNumber,
-		0, // pri
-		ie.NewCause(ie.CauseRequestAccepted),
-	)
-	for _, r := range usars {
-		urrInfo, ok := sess.URRIDs[r.URRID]
-		if !ok {
-			sess.log.Warnf("Sess Del: URRInfo[%#x] not found", r.URRID)
-			continue
-		}
-		r.URSEQN = sess.URRSeq(r.URRID)
-		// indicates usage report being reported for a URR due to the termination of the PFCP session
-		r.USARTrigger.Flags |= report.USAR_TRIG_TERMR
-		rsp.UsageReport = append(rsp.UsageReport,
-			ie.NewUsageReportWithinSessionDeletionResponse(
-				r.IEsWithinSessDelRsp(
-					urrInfo.MeasureMethod, urrInfo.MeasureInformation)...,
-			))
-
-		if urrInfo.removed {
-			delete(sess.URRIDs, r.URRID)
-		}
-	}
-
-	deliverEESUsage(eesHandler, lSeid, eesIdentity, usars)
-
-	err = s.sendRspTo(rsp, addr)
-	if err != nil {
-		s.log.Errorln(err)
-		return
-	}
-}
-
-func (s *PfcpServer) handleSessionReportResponse(
-	rsp *message.SessionReportResponse,
-	addr net.Addr,
-	req message.Message,
-) {
-	s.log.Infoln("handleSessionReportResponse")
-
-	s.log.Debugf("seid: %#x\n", rsp.SEID())
-	if rsp.Header.SEID == 0 {
-		if rsp.Cause == nil {
-			s.log.Errorf("rsp SEID is 0 without Cause IE")
-			return
-		}
-		cause, err := rsp.Cause.Cause()
-		if err != nil {
-			s.log.Errorf("rsp SEID is 0 with invalid Cause IE: %v", err)
-			return
-		}
-		if cause != ie.CauseSessionContextNotFound {
-			s.log.Errorf("rsp SEID is 0 with unexpected cause[%d]", cause)
-			return
-		}
-
-		s.log.Warnf("rsp SEID is 0 and cause is Session context not found; delete it on local")
-		sess, err := s.lnode.RemoteSess(req.SEID(), addr)
-		if err != nil {
-			s.log.Errorln(err)
-			return
-		}
-		sess.rnode.DeleteSess(sess.LocalID)
-		return
-	}
-
-	sess, err := s.lnode.Sess(rsp.SEID())
-	if err != nil {
-		s.log.Errorln(err)
-		return
-	}
-
-	s.log.Debugf("sess: %#+v\n", sess)
-}
-
-func (s *PfcpServer) handleSessionReportRequestTimeout(
-	req *message.SessionReportRequest,
-	addr net.Addr,
-) {
-	s.log.Warnf("handleSessionReportRequestTimeout: SEID[%#x]", req.SEID())
-	// TODO?
-}
-
-// getUEAddressFromPDR returns the UEIPaddress() from the PDR IE.
-func getUEAddressFromPDR(pdr *ie.IE) *ie.UEIPAddressFields {
-	ies, err := pdr.CreatePDR()
-	if err != nil {
-		return nil
-	}
-
-	for _, i := range ies {
-		// only care about PDI
-		if i.Type == ie.PDI {
-			ies, err := i.PDI()
-			if err != nil {
-				return nil
-			}
-			for _, x := range ies {
-				if x.Type == ie.UEIPAddress {
-					fields, err := x.UEIPAddress()
-					if err != nil {
-						return nil
-					}
-					return fields
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func getPDRIDFromPDR(pdr *ie.IE) uint16 {
-	ies, err := pdr.CreatePDR()
-	if err != nil {
+func (s *Session) Len(pdrid uint16) int {
+	q, ok := s.q[pdrid]
+	if !ok {
 		return 0
 	}
-
-	for _, i := range ies {
-		if i.Type == ie.PDRID {
-			id, err := i.PDRID()
-			if err != nil {
-				return 0
-			}
-			return id
-		}
-	}
-	return 0
+	return len(q)
 }
 
-func (s *PfcpServer) sendSessEstFailRsp(
-	req *message.SessionEstablishmentRequest,
-	addr net.Addr,
-	cause uint8,
-	additionalIEs ...*ie.IE,
-) {
-	var peerSEID uint64
-	if req.CPFSEID != nil {
-		if fseid, err := req.CPFSEID.FSEID(); err == nil {
-			peerSEID = fseid.SEID
-		}
+func (s *Session) Pop(pdrid uint16) ([]byte, bool) {
+	if s.closing {
+		return nil, false
 	}
-	ies := append([]*ie.IE{newIeNodeID(s.nodeID), ie.NewCause(cause)}, additionalIEs...)
-	rsp := message.NewSessionEstablishmentResponse(
-		0, // mp
-		0, // fo
-		peerSEID,
-		req.Header.SequenceNumber,
-		0, // pri
-		ies...,
-	)
-	if err := s.sendRspTo(rsp, addr); err != nil {
-		s.log.Errorln(err)
+	q, ok := s.q[pdrid]
+	if !ok {
+		return nil, ok
 	}
-}
-
-func (s *PfcpServer) sendSessDelFailRsp(req *message.SessionDeletionRequest, addr net.Addr, cause uint8) {
-	rsp := message.NewSessionDeletionResponse(0, 0, 0, req.Header.SequenceNumber, 0, ie.NewCause(cause))
-	if err := s.sendRspTo(rsp, addr); err != nil {
-		s.log.Errorln(err)
-	}
-}
-
-func (s *PfcpServer) sendSessModFailRsp(
-	req *message.SessionModificationRequest,
-	sess *Sess,
-	addr net.Addr,
-	cause uint8,
-	additionalIEs ...*ie.IE,
-) {
-	var seid uint64
-	if sess != nil {
-		seid = sess.RemoteID
-	}
-	ies := append([]*ie.IE{ie.NewCause(cause)}, additionalIEs...)
-	rsp := message.NewSessionModificationResponse(
-		0, // mp
-		0, // fo
-		seid,
-		req.Header.SequenceNumber,
-		0, // pri
-		ies...,
-	)
-	err := s.sendRspTo(rsp, addr)
-	if err != nil {
-		s.log.Errorln(err)
-	}
-}
-
-func pfcpCauseFromError(err error) uint8 {
-	switch {
-	case errors.Is(err, ErrMissingMandatoryIE):
-		return ie.CauseMandatoryIEMissing
-
-	case errors.Is(err, ErrMissingConditionalIE):
-		return ie.CauseConditionalIEMissing
-
-	case errors.Is(err, ErrInvalidFTEIDAllocation):
-		return ie.CauseInvalidFTEIDAllocationOption
-
-	case errors.Is(err, ErrFTEIDInUse):
-		return ie.CauseRequestRejected
-
-	case errors.Is(err, ErrRuleNotFound) ||
-		errors.Is(err, ErrRuleCreationModificationFailed) ||
-		errors.Is(err, ErrMutualExclusionConflict):
-		return ie.CauseRuleCreationModificationFailure
-
+	select {
+	case pkt := <-q:
+		s.log.Debugf("Pop bufPkt from q[%d](len:%d)", pdrid, len(q))
+		return pkt, true
 	default:
-		return ie.CauseSystemFailure
+		return nil, false
 	}
 }
 
-// validateMutualExclusion checks for conflicting operations on the same rule within a single request.
-// Conflicts detected:
-// - Remove + Update same ID (update will fail after remove)
-// - Remove + Query same URR ID (query will fail after remove)
-// - Remove + Remove same ID (duplicate remove)
-// - Create + Create same ID (duplicate create)
-// Allowed combinations:
-// - Create + Update same ID
-// - Create + Remove same ID
-func validateMutualExclusion(plan *forwarder.ModificationPlan) error {
-	// Helper to check duplicates in a slice
-	checkDuplicates := func(ids []uint32, opName string) error {
-		seen := make(map[uint32]bool)
-		for _, id := range ids {
-			if seen[id] {
-				return errors.Wrapf(ErrMutualExclusionConflict, "duplicate %s for ID %d", opName, id)
-			}
-			seen[id] = true
+func (s *Session) URRSeq(urrid uint32) uint32 {
+	info, ok := s.URRIDs[urrid]
+	if !ok {
+		return 0
+	}
+	seq := info.SEQN
+	info.SEQN++
+	return seq
+}
+
+func (s *Session) identitySnapshot() ees.SessionContext {
+	identity := ees.SessionContext{RemoteSEID: s.RemoteID, Generation: s.generation}
+	var selected uint16
+	for id, pdr := range s.PDRIDs {
+		if pdr.PDI == nil || pdr.PDI.UEIPAddress == nil {
+			continue
 		}
-		return nil
-	}
-
-	// Helper to check overlap between two ID slices
-	checkOverlap := func(ids1, ids2 []uint32, op1Name, op2Name string) error {
-		set := make(map[uint32]bool)
-		for _, id := range ids1 {
-			set[id] = true
+		if ip := pdr.PDI.UEIPAddress.IPv4Address.To4(); ip != nil &&
+			(identity.UeIPv4Addr == "" || id < selected) {
+			identity.UeIPv4Addr, selected = ip.String(), id
 		}
-		for _, id := range ids2 {
-			if set[id] {
-				return errors.Wrapf(ErrMutualExclusionConflict, "%s and %s conflict for ID %d", op1Name, op2Name, id)
-			}
-		}
-		return nil
 	}
-
-	// Collect IDs from plans
-	collectPDRIDs := func(plans []*forwarder.PDRPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, uint32(p.PDRID))
-		}
-		return ids
+	if info := s.URRIDs[ees.SingleUPFMAQEURRID]; info != nil && !info.removed &&
+		info.Config.ReportingTriggers != nil && *info.Config.ReportingTriggers&report.RPT_TRIG_PERIO != 0 &&
+		info.Config.MeasurePeriod != nil {
+		identity.MeasurePeriod = *info.Config.MeasurePeriod
 	}
-	collectFARIDs := func(plans []*forwarder.FARPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, p.FARID)
-		}
-		return ids
-	}
-	collectQERIDs := func(plans []*forwarder.QERPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, p.QERID)
-		}
-		return ids
-	}
-	collectURRIDs := func(plans []*forwarder.URRPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, p.URRID)
-		}
-		return ids
-	}
-	collectQueryURRIDs := func(plans []*forwarder.URRPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, p.QueryURRID)
-		}
-		return ids
-	}
-	collectBARIDs := func(plans []*forwarder.BARPlan) []uint32 {
-		ids := make([]uint32, 0, len(plans))
-		for _, p := range plans {
-			ids = append(ids, uint32(p.BARID))
-		}
-		return ids
-	}
-
-	// === PDR checks ===
-	createPDRIDs := collectPDRIDs(plan.CreatePDRs)
-	removePDRIDs := collectPDRIDs(plan.RemovePDRs)
-	updatePDRIDs := collectPDRIDs(plan.UpdatePDRs)
-
-	if err := checkDuplicates(createPDRIDs, "CreatePDR"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removePDRIDs, "RemovePDR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removePDRIDs, updatePDRIDs, "RemovePDR", "UpdatePDR"); err != nil {
-		return err
-	}
-
-	// === FAR checks ===
-	createFARIDs := collectFARIDs(plan.CreateFARs)
-	removeFARIDs := collectFARIDs(plan.RemoveFARs)
-	updateFARIDs := collectFARIDs(plan.UpdateFARs)
-
-	if err := checkDuplicates(createFARIDs, "CreateFAR"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removeFARIDs, "RemoveFAR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeFARIDs, updateFARIDs, "RemoveFAR", "UpdateFAR"); err != nil {
-		return err
-	}
-
-	// === QER checks ===
-	createQERIDs := collectQERIDs(plan.CreateQERs)
-	removeQERIDs := collectQERIDs(plan.RemoveQERs)
-	updateQERIDs := collectQERIDs(plan.UpdateQERs)
-
-	if err := checkDuplicates(createQERIDs, "CreateQER"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removeQERIDs, "RemoveQER"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeQERIDs, updateQERIDs, "RemoveQER", "UpdateQER"); err != nil {
-		return err
-	}
-
-	// === URR checks ===
-	createURRIDs := collectURRIDs(plan.CreateURRs)
-	removeURRIDs := collectURRIDs(plan.RemoveURRs)
-	updateURRIDs := collectURRIDs(plan.UpdateURRs)
-	queryURRIDs := collectQueryURRIDs(plan.QueryURRs)
-
-	if err := checkDuplicates(createURRIDs, "CreateURR"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removeURRIDs, "RemoveURR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeURRIDs, updateURRIDs, "RemoveURR", "UpdateURR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeURRIDs, queryURRIDs, "RemoveURR", "QueryURR"); err != nil {
-		return err
-	}
-
-	// === BAR checks ===
-	createBARIDs := collectBARIDs(plan.CreateBARs)
-	removeBARIDs := collectBARIDs(plan.RemoveBARs)
-	updateBARIDs := collectBARIDs(plan.UpdateBARs)
-
-	if err := checkDuplicates(createBARIDs, "CreateBAR"); err != nil {
-		return err
-	}
-	if err := checkDuplicates(removeBARIDs, "RemoveBAR"); err != nil {
-		return err
-	}
-	if err := checkOverlap(removeBARIDs, updateBARIDs, "RemoveBAR", "UpdateBAR"); err != nil {
-		return err
-	}
-
-	return nil
+	return identity
 }

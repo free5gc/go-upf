@@ -35,7 +35,7 @@ func TestAssociationUpdate(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, _, owner, peer := newPeerGuardFixture(t, tc.peerIP)
-			existing := owner.NewSess(0x1234)
+			existing := s.dispatcher.node.CreateSession(owner, 0x1234)
 			req := message.NewAssociationUpdateRequest(1)
 			req.NodeID = tc.nodeID
 			msg := exchangePeerGuardRequest(t, s, peer, req)
@@ -57,9 +57,9 @@ func TestAssociationUpdate(t *testing.T) {
 			}
 
 			// The association and its sessions stay, whatever the answer.
-			_, associated := s.rnodes[owner.ID]
+			_, associated := s.dispatcher.node.associations[owner.PeerNodeID]
 			require.True(t, associated, "the association was deleted")
-			_, sessErr := s.lnode.Sess(existing.LocalID)
+			_, sessErr := s.dispatcher.node.Session(existing.LocalID)
 			require.NoError(t, sessErr)
 		})
 	}

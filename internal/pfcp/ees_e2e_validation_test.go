@@ -137,7 +137,7 @@ func unsubscribe(loc string) (int, error) {
 // the real PFCP server and the real EES stack (API, store, aggregator,
 // notifier) run together. With healthy, failing, hanging and unrelated
 // subscribers plus concurrent subscribe/delete churn, the SMF must still see
-// exactly the upstream golden, and EES must deliver every URR 2 byte it was
+// exactly the golden trace, and EES must deliver every URR 2 byte it was
 // handed, per UE, to the healthy subscriber.
 func TestValidationEndToEndSMFUnaffectedByLiveEES(t *testing.T) {
 	healthy := newE2EConsumer(t, http.StatusNoContent)

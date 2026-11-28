@@ -18,6 +18,7 @@ import (
 
 	"github.com/free5gc/go-upf/internal/forwarder"
 	"github.com/free5gc/go-upf/internal/report"
+	"github.com/free5gc/go-upf/internal/rules"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
@@ -34,7 +35,7 @@ var parityBaseTime = time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)
 // parityDriver reuses the real gtp5g plan builders (pure IE parsing) and
 // replaces kernel execution with a deterministic, recorded model.
 type parityDriver struct {
-	*forwarder.Gtp5g
+	forwarder.Empty
 	mu      sync.Mutex
 	calls   []string
 	urrs    map[[2]uint64]bool   // installed (lSeid, urrid)
@@ -44,8 +45,7 @@ type parityDriver struct {
 
 func newParityDriver() *parityDriver {
 	return &parityDriver{
-		Gtp5g: &forwarder.Gtp5g{},
-		urrs:  make(map[[2]uint64]bool), reads: make(map[[2]uint64]uint64),
+		urrs: make(map[[2]uint64]bool), reads: make(map[[2]uint64]uint64),
 	}
 }
 
@@ -80,77 +80,90 @@ func (d *parityDriver) QueryURR(lSeid uint64, urrid uint32) ([]report.USAReport,
 	return []report.USAReport{d.usage(lSeid, urrid, "QueryURR", "  ")}, nil
 }
 
-func (d *parityDriver) ExecuteEstablishmentPlan(p *forwarder.ModificationPlan) (*forwarder.ExecutionResult, error) {
+func (d *parityDriver) Establish(p *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
 	return d.execute("Establishment", p)
 }
 
-func (d *parityDriver) ExecuteModificationPlan(p *forwarder.ModificationPlan) (*forwarder.ExecutionResult, error) {
+func (d *parityDriver) Modify(p *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
 	return d.execute("Modification", p)
 }
 
-func (d *parityDriver) execute(kind string, p *forwarder.ModificationPlan) (*forwarder.ExecutionResult, error) {
+func (d *parityDriver) Cleanup(p *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
+	return d.execute("Cleanup", p)
+}
+
+type paritySessionDatapath struct {
+	*parityDriver
+	seid uint64
+}
+
+func (d paritySessionDatapath) QueryURR(id uint32) ([]report.USAReport, error) {
+	return d.parityDriver.QueryURR(d.seid, id)
+}
+
+func (d *parityDriver) execute(kind string, p *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	result := forwarder.NewExecutionResult()
+	result := removedRules(p)
 	d.calls = append(d.calls, fmt.Sprintf("Execute%s seid=%d", kind, p.SEID))
-	rec := func(op string, id any, attrs any) {
-		d.calls = append(d.calls, fmt.Sprintf("  %s %v %+v", op, id, attrs))
+	rec := func(op string, id any) {
+		d.calls = append(d.calls, fmt.Sprintf("  %s %v", op, id))
 	}
 	for _, x := range p.CreateFARs {
-		rec("CreateFAR", x.FARID, x.Attrs)
+		rec("CreateFAR", x.FARID)
 	}
 	for _, x := range p.CreateQERs {
-		rec("CreateQER", x.QERID, x.Attrs)
+		rec("CreateQER", x.QERID)
 	}
 	for _, x := range p.CreateURRs {
-		rec("CreateURR", x.URRID, x.Attrs)
+		rec("CreateURR", x.URRID)
 		d.urrs[[2]uint64{p.SEID, uint64(x.URRID)}] = true
 	}
 	for _, x := range p.CreateBARs {
-		rec("CreateBAR", x.BARID, x.Attrs)
+		rec("CreateBAR", x.BARID)
 	}
 	for _, x := range p.CreatePDRs {
-		rec("CreatePDR", x.PDRID, x.Attrs)
+		rec("CreatePDR", x.PDRID)
 	}
 	for _, x := range p.RemovePDRs {
-		rec("RemovePDR", x.PDRID, nil)
+		rec("RemovePDR", x)
 	}
 	for _, x := range p.RemoveBARs {
-		rec("RemoveBAR", x.BARID, nil)
+		rec("RemoveBAR", x)
 	}
 	for _, x := range p.RemoveURRs {
-		rec("RemoveURR", x.URRID, nil)
-		key := [2]uint64{p.SEID, uint64(x.URRID)}
+		rec("RemoveURR", x)
+		key := [2]uint64{p.SEID, uint64(x)}
 		if d.urrs[key] {
-			result.USAReports = append(result.USAReports, d.usage(p.SEID, x.URRID, "RemoveURR", "  "))
+			result.USAReports = append(result.USAReports, d.usage(p.SEID, x, "RemoveURR", "  "))
 		}
 		delete(d.urrs, key)
 	}
 	for _, x := range p.RemoveQERs {
-		rec("RemoveQER", x.QERID, nil)
+		rec("RemoveQER", x)
 	}
 	for _, x := range p.RemoveFARs {
-		rec("RemoveFAR", x.FARID, nil)
+		rec("RemoveFAR", x)
 	}
 	for _, x := range p.UpdateFARs {
-		rec("UpdateFAR", x.FARID, x.Attrs)
+		rec("UpdateFAR", x.FARID)
 	}
 	for _, x := range p.UpdateQERs {
-		rec("UpdateQER", x.QERID, x.Attrs)
+		rec("UpdateQER", x.QERID)
 	}
 	for _, x := range p.UpdateURRs {
-		rec("UpdateURR", x.URRID, x.Attrs)
+		rec("UpdateURR", x.URRID)
 		result.USAReports = append(result.USAReports, d.usage(p.SEID, x.URRID, "UpdateURR", "  "))
 	}
 	for _, x := range p.UpdateBARs {
-		rec("UpdateBAR", x.BARID, x.Attrs)
+		rec("UpdateBAR", x.BARID)
 	}
 	for _, x := range p.UpdatePDRs {
-		rec("UpdatePDR", x.PDRID, x.Attrs)
+		rec("UpdatePDR", x.PDRID)
 	}
 	for _, x := range p.QueryURRs {
-		rec("QueryURR", x.QueryURRID, nil)
-		result.USAReports = append(result.USAReports, d.usage(p.SEID, x.QueryURRID, "QueryURR", "  "))
+		rec("QueryURR", x)
+		result.USAReports = append(result.USAReports, d.usage(p.SEID, x, "QueryURR", "  "))
 	}
 	return result, nil
 }
@@ -351,6 +364,9 @@ func runPFCPParityScenario(t *testing.T, hook func(*PfcpServer)) []string {
 	cfg := &factory.Config{Pfcp: &factory.Pfcp{Addr: "127.0.0.1", NodeID: "127.0.0.1"}}
 	driver := newParityDriver()
 	server := NewPfcpServer(cfg, driver)
+	server.dispatcher.node.newDatapath = func(seid uint64) forwarder.SessionDatapath {
+		return paritySessionDatapath{driver, seid}
+	}
 	server.listen = upfAddr.String()
 	driver.HandleReport(server)
 	if hook != nil {
@@ -390,6 +406,7 @@ func runPFCPParityScenario(t *testing.T, hook func(*PfcpServer)) []string {
 		}
 	}
 	require.NotNil(t, first, "UPF did not answer association setup")
+	t.Cleanup(func() { server.Stop(); wg.Wait() })
 	trace = append(trace, "== association", describePFCP(first))
 
 	// Small CP SEIDs as allocated by free5GC SMF; A's remote SEID equals B's

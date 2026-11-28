@@ -36,7 +36,7 @@ func TestAssociationRelease(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, _, owner, peer := newPeerGuardFixture(t, tc.peerIP)
-			existing := owner.NewSess(0x1234)
+			existing := s.dispatcher.node.CreateSession(owner, 0x1234)
 			req := message.NewAssociationReleaseRequest(1, tc.nodeID)
 			msg := exchangePeerGuardRequest(t, s, peer, req)
 			rsp, ok := msg.(*message.AssociationReleaseResponse)
@@ -56,8 +56,8 @@ func TestAssociationRelease(t *testing.T) {
 				require.Empty(t, rsp.IEs)
 			}
 
-			_, associated := s.rnodes[owner.ID]
-			_, sessErr := s.lnode.Sess(existing.LocalID)
+			_, associated := s.dispatcher.node.associations[owner.PeerNodeID]
+			_, sessErr := s.dispatcher.node.Session(existing.LocalID)
 			if tc.released {
 				require.False(t, associated, "the association is still there")
 				require.Error(t, sessErr, "the session of the association is still there")

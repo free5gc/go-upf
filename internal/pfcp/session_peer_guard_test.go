@@ -10,31 +10,33 @@ import (
 	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/forwarder"
+	"github.com/free5gc/go-upf/internal/rules"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
 type peerGuardDriver struct {
-	forwarder.Empty
+	forwarder.SessionDatapath
 	establishments int
 	deletions      int
 }
 
-func (d *peerGuardDriver) ExecuteEstablishmentPlan(*forwarder.ModificationPlan) (*forwarder.ExecutionResult, error) {
+func (d *peerGuardDriver) Establish(*rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
 	d.establishments++
-	return forwarder.NewExecutionResult(), nil
+	return &forwarder.ApplyResult{}, nil
 }
 
-func (d *peerGuardDriver) ExecuteModificationPlan(*forwarder.ModificationPlan) (*forwarder.ExecutionResult, error) {
+func (d *peerGuardDriver) Cleanup(changes *rules.RuleChangeSet) (*forwarder.ApplyResult, error) {
 	d.deletions++
-	return forwarder.NewExecutionResult(), nil
+	return removedRules(changes), nil
 }
 
-func newPeerGuardFixture(t *testing.T, peerIP string) (*PfcpServer, *peerGuardDriver, *RemoteNode, *net.UDPConn) {
+func newPeerGuardFixture(t *testing.T, peerIP string) (*PfcpServer, *peerGuardDriver, *PFCPAssociation, *net.UDPConn) {
 	t.Helper()
 	d := &peerGuardDriver{}
 	s := NewPfcpServer(&factory.Config{Pfcp: &factory.Pfcp{
 		Addr: "127.0.0.1", NodeID: "127.0.0.1", RetransTimeout: time.Minute,
-	}}, d)
+	}}, forwarder.Empty{})
+	s.dispatcher.node.newDatapath = func(uint64) forwarder.SessionDatapath { return d }
 	var err error
 	s.conn, err = net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
@@ -43,10 +45,8 @@ func newPeerGuardFixture(t *testing.T, peerIP string) (*PfcpServer, *peerGuardDr
 	peer, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP(peerIP)})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, peer.Close()) })
-	owner := s.NewNode("127.0.0.2", &net.UDPAddr{IP: net.ParseIP("127.0.0.2"), Port: 8805}, d)
-	other := s.NewNode("127.0.0.3", &net.UDPAddr{IP: net.ParseIP("127.0.0.3"), Port: 8805}, d)
-	s.rnodes[owner.ID] = owner
-	s.rnodes[other.ID] = other
+	owner := s.dispatcher.node.EstablishAssociation("127.0.0.2", &net.UDPAddr{IP: net.ParseIP("127.0.0.2"), Port: 8805})
+	s.dispatcher.node.EstablishAssociation("127.0.0.3", &net.UDPAddr{IP: net.ParseIP("127.0.0.3"), Port: 8805})
 	return s, d, owner, peer
 }
 
@@ -59,7 +59,7 @@ func exchangePeerGuardRequest(t *testing.T, s *PfcpServer, peer *net.UDPConn, re
 	require.NoError(t, req.MarshalTo(requestBytes))
 	parsed, err := message.Parse(requestBytes)
 	require.NoError(t, err)
-	require.NoError(t, s.reqDispacher(parsed, addr))
+	require.NoError(t, s.dispatcher.HandleRequest(parsed, addr))
 	require.NoError(t, peer.SetReadDeadline(time.Now().Add(time.Second)))
 	buf := make([]byte, 4096)
 	n, _, err := peer.ReadFromUDP(buf)
@@ -94,7 +94,7 @@ func TestSessionEstablishmentPeerGuard(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, d, owner, peer := newPeerGuardFixture(t, tc.peerIP)
-			existing := owner.NewSess(0x1234)
+			existing := s.dispatcher.node.CreateSession(owner, 0x1234)
 			ies := []*ie.IE{ie.NewNodeID(tc.nodeID, "", "")}
 			if tc.invalidFSEID {
 				ies = append(ies, ie.New(ie.FSEID, nil))
@@ -108,7 +108,8 @@ func TestSessionEstablishmentPeerGuard(t *testing.T) {
 			require.NotNil(t, rsp.Cause)
 			cause, err := rsp.Cause.Cause()
 			require.NoError(t, err)
-			t.Logf("cause=%d session_count=%d establishment_calls=%d", cause, len(s.lnode.sess), d.establishments)
+			t.Logf("cause=%d session_count=%d establishment_calls=%d",
+				cause, len(s.dispatcher.node.sessions.sessions), d.establishments)
 			require.Equal(t, tc.wantCause, cause)
 			// Node ID is mandatory in all Establishment Responses (TS 29.244 Table 7.5.3.1-1).
 			require.NotNil(t, rsp.NodeID)
@@ -124,14 +125,14 @@ func TestSessionEstablishmentPeerGuard(t *testing.T) {
 			}
 			if tc.wantCause == ie.CauseRequestAccepted {
 				require.Equal(t, 1, d.establishments)
-				require.Len(t, s.lnode.sess, 2)
+				require.Len(t, s.dispatcher.node.sessions.sessions, 2)
 				require.NotNil(t, rsp.UPFSEID)
 			} else {
 				require.Zero(t, d.establishments)
-				require.Len(t, s.lnode.sess, 1)
+				require.Len(t, s.dispatcher.node.sessions.sessions, 1)
 				require.Nil(t, rsp.UPFSEID)
 			}
-			got, err := s.lnode.Sess(existing.LocalID)
+			got, err := s.dispatcher.node.Session(existing.LocalID)
 			require.NoError(t, err)
 			require.Same(t, existing, got)
 		})
@@ -155,11 +156,11 @@ func TestSessionDeletionPeerGuard(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, d, owner, peer := newPeerGuardFixture(t, tc.peerIP)
-			sess := owner.NewSess(0x1234)
-			sibling := owner.NewSess(0x5678)
-			sess.FARIDs[7] = struct{}{}
+			sess := s.dispatcher.node.CreateSession(owner, 0x1234)
+			sibling := s.dispatcher.node.CreateSession(owner, 0x5678)
+			sess.FARIDs[7] = &rules.FARConfig{FARID: 7}
 			if tc.staleOwner {
-				s.rnodes[owner.ID] = s.NewNode(owner.ID, owner.addr, d)
+				s.dispatcher.node.associations[owner.PeerNodeID] = newPFCPAssociation(owner.PeerNodeID, owner.peerAddr, owner.log)
 			}
 			target := sess.LocalID
 			if tc.unknown {
@@ -172,27 +173,27 @@ func TestSessionDeletionPeerGuard(t *testing.T) {
 			require.NotNil(t, rsp.Cause)
 			cause, err := rsp.Cause.Cause()
 			require.NoError(t, err)
-			_, sessionErr := s.lnode.Sess(sess.LocalID)
+			_, sessionErr := s.dispatcher.node.Session(sess.LocalID)
 			t.Logf("cause=%d session_exists=%t deletion_calls=%d", cause, sessionErr == nil, d.deletions)
 			require.Equal(t, tc.wantCause, cause)
 			require.Nil(t, rsp.OffendingIE)
 			require.Empty(t, rsp.IEs)
 			if tc.wantCause == ie.CauseRequestAccepted {
 				require.Equal(t, 1, d.deletions)
-				_, lookupErr := s.lnode.Sess(sess.LocalID)
+				_, lookupErr := s.dispatcher.node.Session(sess.LocalID)
 				require.Error(t, lookupErr)
-				require.Len(t, owner.sess, 1)
+				require.Len(t, owner.sessionIDs, 1)
 				require.Equal(t, sess.RemoteID, rsp.SEID())
 			} else {
 				require.Zero(t, d.deletions)
-				got, lookupErr := s.lnode.Sess(sess.LocalID)
+				got, lookupErr := s.dispatcher.node.Session(sess.LocalID)
 				require.NoError(t, lookupErr)
 				require.Same(t, sess, got)
 				require.Contains(t, sess.FARIDs, uint32(7))
-				require.Len(t, owner.sess, 2)
+				require.Len(t, owner.sessionIDs, 2)
 				require.Zero(t, rsp.SEID())
 			}
-			got, err := s.lnode.Sess(sibling.LocalID)
+			got, err := s.dispatcher.node.Session(sibling.LocalID)
 			require.NoError(t, err)
 			require.Same(t, sibling, got)
 		})

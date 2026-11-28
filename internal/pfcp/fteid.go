@@ -6,8 +6,10 @@ import (
 	"slices"
 
 	"github.com/wmnsk/go-pfcp/ie"
+	"github.com/wmnsk/go-pfcp/message"
 
 	"github.com/free5gc/go-upf/internal/logger"
+	"github.com/free5gc/go-upf/internal/rules"
 	"github.com/free5gc/go-upf/pkg/factory"
 )
 
@@ -21,7 +23,7 @@ type fteidAllocator struct {
 }
 
 type teidUse struct {
-	owner *Sess // the session that the TEID was chosen for, nil for a TEID of the CP function
+	owner *Session // the session that the TEID was chosen for, nil for a TEID of the CP function
 	pdrs  int
 }
 
@@ -80,7 +82,7 @@ func (a *fteidAllocator) drop(teid uint32) {
 }
 
 // choose allocates to sess a TEID that no PDR uses and that is not in named.
-func (a *fteidAllocator) choose(sess *Sess, named map[uint32]struct{}) uint32 {
+func (a *fteidAllocator) choose(sess *Session, named map[uint32]struct{}) uint32 {
 	if a.teids == nil {
 		a.teids = make(map[uint32]*teidUse)
 	}
@@ -97,13 +99,14 @@ func (a *fteidAllocator) choose(sess *Sess, named map[uint32]struct{}) uint32 {
 
 // fteidRequest is the F-TEID allocation of one PFCP Session Establishment or Modification Request.
 type fteidRequest struct {
-	sess       *Sess
-	alloc      *fteidAllocator
-	restoring  bool                // the Restoration Indication of an establishment
-	named      map[uint32]struct{} // the TEIDs of the CP function in the request's PDRs and Traffic Endpoints
-	byChooseID map[uint8]uint32
-	chosen     []uint32
-	created    map[uint16]uint32 // the TEID chosen for a Create PDR, by PDR ID
+	sess        *Session
+	alloc       *fteidAllocator
+	restoring   bool                // the Restoration Indication of an establishment
+	named       map[uint32]struct{} // the TEIDs of the CP function in the request's PDRs and Traffic Endpoints
+	byChooseID  map[uint8]uint32
+	chosen      []uint32
+	creatingPDR map[uint16]bool
+	created     map[uint16]uint32 // the TEID chosen for a Create PDR, by PDR ID
 	// The Traffic Endpoints that the request creates or updates, as it leaves them, those that it removes, and
 	// the TEIDs chosen for them, by Traffic Endpoint ID; the Traffic Endpoint that each PDR with a PDI in the
 	// request refers to, nil for none, by PDR ID (traffic_endpoint.go).
@@ -113,14 +116,15 @@ type fteidRequest struct {
 	endpointRefs     map[uint16]*endpointRef
 }
 
-func (s *Sess) newFTEIDRequest(restoring bool, rules ...[]*ie.IE) *fteidRequest {
+func (s *Session) newFTEIDRequest(restoring bool, rules ...[]*ie.IE) *fteidRequest {
 	r := &fteidRequest{
-		sess:       s,
-		alloc:      &s.rnode.local.fteids,
-		restoring:  restoring,
-		named:      make(map[uint32]struct{}),
-		byChooseID: make(map[uint8]uint32),
-		created:    make(map[uint16]uint32),
+		sess:        s,
+		alloc:       s.fteids,
+		restoring:   restoring,
+		named:       make(map[uint32]struct{}),
+		byChooseID:  make(map[uint8]uint32),
+		created:     make(map[uint16]uint32),
+		creatingPDR: make(map[uint16]bool),
 
 		endpoints:        make(map[uint8]*trafficEndpoint),
 		removedEndpoints: make(map[uint8]struct{}),
@@ -153,7 +157,10 @@ func (r *fteidRequest) createPDR(req *ie.IE) (*ie.IE, error) {
 	if err != nil {
 		return req, nil
 	}
-	ies, changed, err := r.pdi(ies, true)
+	if id, idErr := req.PDRID(); idErr == nil {
+		r.creatingPDR[id] = true
+	}
+	ies, changed, err := r.pdi(slices.Clone(ies), true)
 	if err != nil || !changed {
 		return req, err
 	}
@@ -167,7 +174,11 @@ func (r *fteidRequest) updatePDR(req *ie.IE) (*ie.IE, error) {
 	if err != nil {
 		return req, nil
 	}
-	ies, changed, err := r.pdi(ies, false)
+	id, idErr := req.PDRID()
+	if idErr == nil && r.sess.PDRIDs[id] == nil && !r.creatingPDR[id] {
+		return req, ErrRuleNotFound
+	}
+	ies, changed, err := r.pdi(slices.Clone(ies), false)
 	if err != nil || !changed {
 		return req, err
 	}
@@ -191,8 +202,8 @@ func (r *fteidRequest) pdi(ies []*ie.IE, create bool) ([]*ie.IE, bool, error) {
 	}
 	if pdiAt < 0 {
 		// An Update PDR without a PDI keeps the PDR's, and the Traffic Endpoint that it refers to.
-		if info, ok := r.sess.PDRIDs[pdrID]; ok && !create && info.endpoint != nil {
-			return r.referTo(append(ies, nil), len(ies), pdrID, info.endpoint)
+		if ref := r.sess.endpointRefs[pdrID]; !create && ref != nil {
+			return r.referTo(append(ies, nil), len(ies), pdrID, ref)
 		}
 		return ies, false, nil
 	}
@@ -200,6 +211,7 @@ func (r *fteidRequest) pdi(ies []*ie.IE, create bool) ([]*ie.IE, bool, error) {
 	if err != nil {
 		return ies, false, nil
 	}
+	pdi = slices.Clone(pdi)
 	if at := slices.IndexFunc(pdi, isTrafficEndpointID); at >= 0 {
 		id, idErr := pdi[at].TrafficEndpointID()
 		// A PDI that refers to a Traffic Endpoint has no Local F-TEID of its own (Table 7.5.2.2-2).
@@ -291,7 +303,7 @@ func (r *fteidRequest) checkCPAllocated(teid, current uint32, create bool) error
 // localTEID is the TEID of the PDR's Local F-TEID, before the request or as the request creates it.
 func (r *fteidRequest) localTEID(pdrID uint16) uint32 {
 	if info, ok := r.sess.PDRIDs[pdrID]; ok {
-		return info.LocalTEID
+		return pdrLocalTEID(info)
 	}
 	return r.created[pdrID]
 }
@@ -337,4 +349,85 @@ func localTEIDOf(pdr *ie.IE) (uint32, bool) {
 		return fteid.TEID, true
 	}
 	return 0, false
+}
+
+func pdrLocalTEID(pdr *rules.PDRConfig) uint32 {
+	if pdr == nil || pdr.PDI == nil || pdr.PDI.FTEID == nil {
+		return 0
+	}
+	return pdr.PDI.FTEID.TEID
+}
+
+// Acquire all new references before releasing old ones. Moving a TEID
+// between rules in the same request must retain its allocating session.
+func (r *fteidRequest) commitTEIDs(state *RuleState) {
+	var replaced []uint32
+	replace := func(old, next uint32) {
+		if old != next {
+			r.alloc.hold(next)
+			replaced = append(replaced, old)
+		}
+	}
+	for id, next := range state.pdrOverrides {
+		if _, removed := state.removedPDRs[id]; !removed {
+			replace(pdrLocalTEID(r.sess.PDRIDs[id]), pdrLocalTEID(next))
+		}
+	}
+	for id := range state.removedPDRs {
+		replace(pdrLocalTEID(r.sess.PDRIDs[id]), 0)
+	}
+	for id, next := range r.endpoints {
+		replace(r.sess.trafficEndpoints[id].localTEID(), next.localTEID())
+	}
+	for id := range r.removedEndpoints {
+		replace(r.sess.trafficEndpoints[id].localTEID(), 0)
+	}
+	for _, id := range replaced {
+		r.alloc.drop(id)
+	}
+}
+
+func (r *fteidRequest) prepareCreate(endpoints, pdrs []*ie.IE) ([]*ie.IE, error) {
+	if err := r.takeEndpoints(endpoints, nil, nil); err != nil {
+		return nil, err
+	}
+	return preparePDRs(pdrs, r.createPDR)
+}
+
+func (r *fteidRequest) prepareModification(req *message.SessionModificationRequest) (
+	*message.SessionModificationRequest, error,
+) {
+	if err := r.takeEndpoints(
+		req.CreateTrafficEndpoint, req.UpdateTrafficEndpoint, req.RemoveTrafficEndpoint,
+	); err != nil {
+		return nil, err
+	}
+	resolved := *req
+	var err error
+	resolved.CreatePDR, err = preparePDRs(req.CreatePDR, r.createPDR)
+	if err != nil {
+		return nil, err
+	}
+	resolved.UpdatePDR, err = preparePDRs(req.UpdatePDR, r.updatePDR)
+	if err != nil {
+		return nil, err
+	}
+	resolved.RemovePDR = slices.Clone(req.RemovePDR)
+	r.expandEndpointChanges(&resolved)
+	return &resolved, nil
+}
+
+func preparePDRs(request []*ie.IE, resolve func(*ie.IE) (*ie.IE, error)) ([]*ie.IE, error) {
+	result := make([]*ie.IE, 0, len(request))
+	for _, item := range request {
+		if item == nil {
+			return nil, ErrMissingMandatoryIE
+		}
+		parsed, err := resolve(item)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, parsed)
+	}
+	return result, nil
 }
